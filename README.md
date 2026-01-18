@@ -2,8 +2,11 @@
 
 > **M**ulti-agent **O**rchestration **CO**re
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![GitHub stars](https://img.shields.io/github/stars/moco-ai/moco?style=social)](https://github.com/moco-ai/moco)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![GitHub issues](https://img.shields.io/github/issues/moco-ai/moco)](https://github.com/moco-ai/moco/issues)
+[![GitHub release](https://img.shields.io/github/v/release/moco-ai/moco)](https://github.com/moco-ai/moco/releases)
 
 **マルチプロバイダ対応・プロファイルベースの軽量AIエージェントオーケストレーションフレームワーク**
 
