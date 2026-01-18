@@ -6,6 +6,7 @@ import typer
 import time
 import sys
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
 from dotenv import load_dotenv, find_dotenv
