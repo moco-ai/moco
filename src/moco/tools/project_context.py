@@ -46,7 +46,7 @@ def get_project_context(path: str = None, depth: int = 2) -> str:
 
     # 2. Directory Structure
     context.append("## Directory Structure")
-    tree = _generate_tree(root_path, root_path, depth, 0, ignore_patterns)
+    tree = _generate_tree(start_path, root_path, depth, 0, ignore_patterns)
     if tree:
         context.append("```text")
         context.extend(tree)
@@ -77,14 +77,22 @@ def get_project_context(path: str = None, depth: int = 2) -> str:
 def _find_project_root(start_path: Path) -> Path:
     """
     親ディレクトリを遡り、プロジェクトルートのマーカーを探す。
+    ただし、作業ディレクトリを超えて遡ることはしない。
     """
     markers = {".git", "pyproject.toml", "package.json", "setup.py", "Makefile", "requirements.txt", "go.mod", "Cargo.toml"}
     current = start_path
+    
+    # 作業ディレクトリの境界を取得
+    working_dir = get_working_directory()
+    boundary = Path(os.path.abspath(working_dir)).resolve() if working_dir else None
+
     # ルートディレクトリまで、または最大10階層遡る
     for _ in range(10):
         if any((current / marker).exists() for marker in markers):
             return current
-        if current.parent == current:
+        
+        # 境界に達したか、ルートに達した場合は停止
+        if (boundary and current == boundary) or current.parent == current:
             break
         current = current.parent
     return start_path

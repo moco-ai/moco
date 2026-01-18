@@ -5,6 +5,7 @@ import glob as glob_module
 import json
 from typing import List, Optional
 from moco.utils.path import resolve_safe_path
+from moco.tools.base import read_file as base_read_file
 
 
 def list_dir(path: str = '.', show_hidden: bool = False) -> str:
@@ -61,64 +62,9 @@ def list_dir(path: str = '.', show_hidden: bool = False) -> str:
 def read_file(path: str, offset: int = 1, limit: int = 10000) -> str:
     """
     ファイルを読み込みます。
-
-    Args:
-        path: 読み込むファイルのパス
-        offset: 読み込み開始行番号（1始まり）
-        limit: 読み込む行数（デフォルト10000）
-
-    Returns:
-        ファイルの内容
+    moco.tools.base.read_file のエイリアスです。
     """
-    MAX_FILE_SIZE = 2 * 1024 * 1024  # 2MB
-    MAX_LINE_LENGTH = 1000
-
-    try:
-        path = resolve_safe_path(path)
-
-        if not os.path.exists(path):
-            return f"Error: File not found: {path}"
-
-        if not os.path.isfile(path):
-            return f"Error: Not a file: {path}"
-
-        file_size = os.path.getsize(path)
-
-        # 2MBを超えるファイルで offset/limit がデフォルトのままの場合は警告
-        if file_size > MAX_FILE_SIZE and offset == 1 and limit == 50:
-             return f"Error: File size ({file_size} bytes) exceeds 2MB. Please specify 'offset' and 'limit' to read this file."
-
-        lines = []
-        next_offset = offset
-
-        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-            for i, line in enumerate(f, 1):
-                if i < offset:
-                    continue
-                if i >= offset + limit:
-                    next_offset = i
-                    break
-
-                # 1行あたルの文字数制限
-                if len(line) > MAX_LINE_LENGTH:
-                    line = line[:MAX_LINE_LENGTH] + "... [TRUNCATED]"
-
-                lines.append(f"{i:6}|{line.rstrip()}")
-                next_offset = i + 1
-
-        if not lines:
-            return f"No content found at offset {offset}"
-
-        result = "\n".join(lines)
-
-        # 切り捨て通知
-        if len(lines) == limit:
-            result += f"\n\n⚠️ Content truncated to {limit} lines.\n👉 NEXT STEP: 続きを読むには以下を実行:\n   read_file(path=\"{path}\", offset={next_offset}, limit={limit})"
-
-        return result
-
-    except Exception as e:
-        return f"Error reading file: {e}"
+    return base_read_file(path, offset, limit)
 
 
 def glob_search(pattern: str, directory: str = '.') -> str:

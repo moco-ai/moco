@@ -30,8 +30,16 @@ def grep(pattern: str, path: str = '.', recursive: bool = True,
         def search_file(file_path: str) -> List[str]:
             matches = []
             MAX_LINE_LENGTH = 500
+            
+            # シンボリックリンクの安全性をチェック
             try:
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                # 実体を解決して安全性を確認
+                resolved_file_path = resolve_safe_path(file_path)
+            except PermissionError:
+                return []
+
+            try:
+                with open(resolved_file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     for line_num, line in enumerate(f, 1):
                         if regex.search(line):
                             line_content = line.rstrip()
@@ -144,8 +152,15 @@ def find_definition(symbol: str, directory: str = '.', language: str = 'python')
                     continue
 
                 file_path = os.path.join(root, file)
+                
+                # 安全性をチェック
                 try:
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    resolved_file_path = resolve_safe_path(file_path)
+                except PermissionError:
+                    continue
+
+                try:
+                    with open(resolved_file_path, 'r', encoding='utf-8', errors='ignore') as f:
                         for line_num, line in enumerate(f, 1):
                             for pattern in lang_patterns:
                                 if re.search(pattern, line):

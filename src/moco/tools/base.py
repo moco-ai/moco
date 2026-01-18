@@ -1,32 +1,53 @@
 import subprocess
 import os
 import re
+from typing import Tuple, Final
 from ..utils.path import resolve_safe_path, get_working_directory
 
 
-DANGEROUS_PATTERNS = [
-    r'rm\s+-rf\s+/',           # rm -rf / 系
-    r'rm\s+-rf\s+~',           # ホームディレクトリ削除
-    r':(){ :|:& };:',            # フォークボム
-    r'mkfs\.',                  # ファイルシステムフォーマット
-    r'dd\s+if=.*of=/dev/',      # デバイスへの書き込み
-    r'chmod\s+-R\s+777\s+/',  # パーミッション変更
-    r'chown\s+-R.*/',           # オーナー変更
-    r'\|\s*sh\b',             # パイプでシェル実行
-    r'\|\s*bash\b',
-    r'curl.*\|\s*(sh|bash)',   # curl | bash パターン
-    r'wget.*\|\s*(sh|bash)',
-    r'>\s*/dev/sd',             # デバイスへのリダイレクト
-    r'sudo\s+rm',               # sudo rm
-    r'sudo\s+dd',
+# 安全性のためのデフォルト最大行数 (read_file)
+DEFAULT_MAX_LINES = 10000
+
+# 危険なパターンの定義
+DANGEROUS_PATTERNS: Final[list[str]] = [
+    # 破壊的な削除 (フラグに任意の文字を含めるように改善)
+    r'rm\s+.*(-[a-z]*[rf][a-z]*|--recursive|--force)\s+(/|~|\$HOME)',
+    # フォークボム
+    r':\(\)\{\s*:\|:&\s*\};:',
+    # フォーマット・ディスク操作 (ddをより厳しく)
+    r'mkfs\.',
+    r'dd\s+.*of=',
+    # デバイス・ファイルへの直接書き込み/切り詰め ( /dev/null への出力は許可 )
+    r'(?<![0-9&])>\s*(?!/dev/null)[^&|]',
+    r'(?<!&)[0-9]>\s*(?!/dev/null)[^&|]',
+    # 全開放パーミッション・所有権
+    r'chmod\s+.*777',
+    r'chown\s+.*-R',
+    # シェル/インタプリタへの流し込み
+    r'[|;&<]\s*(bash|sh|zsh|python\d?|perl|ruby|php|node)\b',
+    r'\b(bash|sh|zsh|python\d?|perl|ruby|php|node)\s+.*-c\s+',
+    # リモートスクリプト実行 (パイプ先を拡充)
+    r'(curl|wget).*([|;&<]\s*(bash|sh|zsh|python\d?|perl|ruby|node)\b|-o\s+)',
+    # 特権使用
+    r'sudo\s+(rm|dd|chmod|chown|mkfs|su|apt|yum|dnf)\b',
+    # findによる削除
+    r'find\s+.*\s+-delete',
 ]
 
+# 事前にコンパイルしてパフォーマンスを改善
+_DANGEROUS_RE = re.compile('|'.join(f'(?:{p})' for p in DANGEROUS_PATTERNS), re.IGNORECASE)
 
-def _is_dangerous_command(command: str) -> tuple[bool, str]:
+
+def is_dangerous_command(command: str) -> Tuple[bool, str]:
     """コマンドが危険かどうかチェック"""
-    for pattern in DANGEROUS_PATTERNS:
-        if re.search(pattern, command, re.IGNORECASE):
-            return True, f"Blocked dangerous pattern: {pattern}"
+    # /dev/null へのリダイレクトを一時的に無害化（判定から除外）
+    # スペースの有無にかかわらず対応
+    safe_command = re.sub(r'[0-9&]?\s*>\s*/dev/null', '', command, flags=re.IGNORECASE)
+    
+    normalized_command = safe_command.strip()
+    match = _DANGEROUS_RE.search(normalized_command)
+    if match:
+        return True, "Potentially destructive or unauthorized command detected."
     return False, ""
 
 
@@ -38,68 +59,52 @@ def read_file(path: str, offset: int = None, limit: int = None) -> str:
     Args:
         path (str): 読み込むファイルのパス
         offset (int, optional): 読み込み開始行番号（1始まり）。省略時は1行目から。
-        limit (int, optional): 読み込む行数。省略時は全行。
+        limit (int, optional): 読み込む行数。省略時は全行（ただし DEFAULT_MAX_LINES までの制限あり）。
 
     Returns:
         str: ファイルの内容（行番号付き）
-
-    Examples:
-        read_file("main.py")  # 全文読み込み
-        read_file("main.py", offset=1, limit=50)  # 1-50行目
-        read_file("main.py", offset=100, limit=30)  # 100-129行目
     """
     try:
         # パスを解決
         path = resolve_safe_path(path)
-
-        # LLM が文字列で渡す場合があるので変換
-        if offset is not None:
-            offset = int(offset)
-        if limit is not None:
-            limit = int(limit)
-
         if not os.path.exists(path):
             return f"Error: File not found: {path}"
 
-        with open(path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
+        # LLM からの入力を安全にキャスト
+        try:
+            start_line = max(1, int(offset)) if offset is not None else 1
+            max_lines = int(limit) if limit is not None else DEFAULT_MAX_LINES
+        except (ValueError, TypeError):
+            return "Error: Invalid offset or limit. They must be integers."
 
-        total_lines = len(lines)
-
-        # offset/limit が指定されていない場合は全文返す
-        if offset is None and limit is None:
-            # 行番号付きで返す
-            numbered_lines = []
-            for i, line in enumerate(lines, 1):
-                numbered_lines.append(f"{i:6}|{line.rstrip()}")
-            return "\n".join(numbered_lines)
-
-        # offset/limit 処理
-        start = (offset or 1) - 1  # 0-indexed に変換
-        start = max(0, start)
-
-        if limit:
-            end = start + limit
-        else:
-            end = total_lines
-
-        end = min(end, total_lines)
-
-        # 範囲外チェック
-        if start >= total_lines:
-            return f"Error: offset {offset} is beyond file length ({total_lines} lines)"
-
-        # 行番号付きで返す
         result_lines = []
-        if start > 0:
-            result_lines.append(f"... {start} lines not shown ...")
+        current_line = 0
 
-        for i in range(start, end):
-            line_num = i + 1
-            result_lines.append(f"{line_num:6}|{lines[i].rstrip()}")
+        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+            # 指定行までスキップ (メモリ効率のため iterator を使用)
+            for _ in range(start_line - 1):
+                if not f.readline():
+                    break
+                current_line += 1
 
-        if end < total_lines:
-            result_lines.append(f"... {total_lines - end} lines not shown ...")
+            if current_line < start_line - 1:
+                return f"Error: offset {start_line} is beyond file length"
+
+            if start_line > 1:
+                result_lines.append(f"... {start_line - 1} lines not shown ...")
+
+            # 必要な分だけ読み込み
+            count = 0
+            for line in f:
+                current_line += 1
+                result_lines.append(f"{current_line:6}|{line.rstrip()}")
+                count += 1
+                if count >= max_lines:
+                    # 続きがあるか確認
+                    if f.readline():
+                        # 総行数は数えない (巨大ファイル対策)
+                        result_lines.append(f"... more lines available (limit={max_lines}) ...")
+                    break
 
         return "\n".join(result_lines)
 
@@ -110,20 +115,6 @@ def read_file(path: str, offset: int = None, limit: int = None) -> str:
 def write_file(path: str, content: str, overwrite: bool = False) -> str:
     """
     ファイルに内容を書き込みます。
-    既存ファイルを上書きする場合は overwrite=True を指定するか、
-    先に read_file でファイル内容を確認してください。
-
-    Args:
-        path (str): 書き込み先のファイルパス
-        content (str): 書き込む内容
-        overwrite (bool): Trueの場合、既存ファイルを上書き。デフォルトはFalse。
-
-    Returns:
-        str: 成功/失敗メッセージ
-
-    Examples:
-        write_file("new_file.py", "print('hello')")  # 新規作成
-        write_file("existing.py", content, overwrite=True)  # 上書き
     """
     try:
         # パスを解決
@@ -138,7 +129,9 @@ def write_file(path: str, content: str, overwrite: bool = False) -> str:
                 f"Or read the file first with: read_file('{path}')"
             )
 
-        os.makedirs(os.path.dirname(path), exist_ok=True) if os.path.dirname(path) else None
+        if os.path.dirname(path):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+
         with open(path, 'w', encoding='utf-8') as f:
             f.write(content)
 
@@ -151,26 +144,6 @@ def write_file(path: str, content: str, overwrite: bool = False) -> str:
 def edit_file(path: str, old_string: str, new_string: str) -> str:
     """
     ファイルの一部を置換して編集します（search/replace形式）。
-
-    Args:
-        path (str): 編集するファイルのパス
-        old_string (str): 置換対象の文字列（ユニークな文字列を指定すること）
-        new_string (str): 置換後の文字列
-
-    Returns:
-        str: 成功/失敗メッセージ
-
-    Examples:
-        edit_file("main.py", "def old_func():", "def new_func():")
-        edit_file("cli.py",
-            "def version():\n    pass",
-            "def version():\n    print('v1.0')\n\ndef chat():\n    pass"
-        )
-
-    注意:
-        - old_string はファイル内で一意である必要があります
-        - 複数箇所にマッチする場合はエラーになります
-        - 大きな変更を追加する場合は、既存コードの後に挿入位置を指定してください
     """
     try:
         # パスを解決
@@ -236,19 +209,11 @@ def edit_file(path: str, old_string: str, new_string: str) -> str:
 def execute_bash(command: str, allow_dangerous: bool = False) -> str:
     """
     Bashコマンドを実行し、結果を返します。
-    セキュリティに注意して使用してください。
-
-    Args:
-        command (str): 実行するBashコマンド
-        allow_dangerous (bool): Trueの場合、危険なコマンドの実行を許可する
-
-    Returns:
-        str: コマンドの標準出力、またはエラー時の標準エラー出力
     """
     try:
         # 危険なコマンドのチェック
         if not allow_dangerous:
-            is_dangerous, reason = _is_dangerous_command(command)
+            is_dangerous, reason = is_dangerous_command(command)
             if is_dangerous:
                 return f"Error: Command blocked for security reasons. {reason}"
 
