@@ -31,6 +31,60 @@ moco は、複数のLLMプロバイダ（Gemini, OpenAI, OpenRouter）に対応�
 - **🔌 MCP対応**: Model Context Protocol で外部ツールサーバーと連携
 - **💾 チェックポイント**: 会話状態を保存し、後から復元可能
 
+## 📋 CLI コマンド一覧
+
+### 基本コマンド
+
+```bash
+moco run "タスク"              # タスクを実行
+moco chat                      # 対話型チャット
+moco version                   # バージョン表示
+moco list-profiles             # プロファイル一覧
+```
+
+### タスク管理（バックグラウンド実行）
+
+```bash
+moco tasks run "タスク" --provider zai -w /path/to/project  # バックグラウンド実行
+moco tasks list                # タスク一覧
+moco tasks status              # リアルタイムダッシュボード
+moco tasks logs <task_id>      # ログ表示
+moco tasks cancel <task_id>    # キャンセル
+```
+
+### セッション管理
+
+```bash
+moco sessions list             # セッション一覧
+moco sessions show <id>        # セッション詳細
+moco run "続き" --continue     # 直前のセッションを継続
+moco run "続き" -s my-session  # 名前付きセッションを継続
+```
+
+### スキル管理（Claude Skills互換）
+
+```bash
+moco skills list               # インストール済みスキル一覧
+moco skills info               # 利用可能なレジストリ情報
+moco skills sync anthropics    # 公式スキルを同期
+moco skills sync community     # コミュニティスキルを同期
+moco skills search pdf         # スキル検索
+moco skills install <github>   # GitHubからインストール
+moco skills uninstall <name>   # アンインストール
+```
+
+### オプション
+
+```bash
+--profile, -p <name>           # プロファイル指定
+--provider <name>              # プロバイダ指定 (gemini/openai/openrouter/zai)
+--working-dir, -w <path>       # 作業ディレクトリ
+--sandbox                      # Dockerコンテナ内で隔離実行
+--sandbox-image <image>        # サンドボックスイメージ (default: python:3.12-slim)
+--stream/--no-stream           # ストリーミング出力
+--verbose, -v                  # 詳細ログ
+```
+
 ## 🚀 クイックスタート
 
 ### インストール
@@ -43,8 +97,8 @@ cd moco-agent
 # 依存関係をインストール
 pip install -e .
 
-# または pip で直接インストール（公開後）
-pip install moco-agent
+# または pipx で直接インストール
+pipx install .
 ```
 
 ### 環境変数の設定
@@ -243,6 +297,33 @@ tools:
 | `webfetch` | Webページ取得 | - |
 | `todowrite` | TODOリスト書き込み | - |
 | `todoread` | TODOリスト読み込み | - |
+
+### Git ツール
+
+| ツール名 | 説明 |
+|----------|------|
+| `git_status` | Git ステータス表示 |
+| `git_diff` | 差分表示 |
+| `git_commit` | AI生成コミットメッセージでコミット |
+| `create_pr` | GitHub PR作成 |
+
+### スキルツール
+
+| ツール名 | 説明 |
+|----------|------|
+| `search_skills` | スキルを検索（ローカル + リモート） |
+| `load_skill` | スキルをロードして知識を使用 |
+| `list_loaded_skills` | ロード済みスキル一覧 |
+
+### プロセス管理ツール
+
+| ツール名 | 説明 |
+|----------|------|
+| `start_background` | バックグラウンドプロセス開始 |
+| `stop_process` | プロセス停止 |
+| `list_processes` | プロセス一覧 |
+| `send_input` | プロセスに入力送信 |
+| `wait_for_pattern` | 出力パターンを待機 |
 
 ### プロファイル固有ツール
 

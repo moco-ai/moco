@@ -19,6 +19,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.0] - 2026-01-18
+
+🚀 **CLI 機能強化リリース** - Gemini CLI / Claude Code レベルの機能追加
+
+### Added
+
+#### タスク管理（バックグラウンド実行）
+- `moco tasks run`: タスクをバックグラウンドで実行
+- `moco tasks list`: タスク一覧（経過時間付き）
+- `moco tasks status`: リアルタイムダッシュボード
+- `moco tasks logs`: タスクログ表示
+- `moco tasks cancel`: タスクキャンセル（短縮ID対応）
+
+#### セッション管理
+- `moco sessions list`: セッション一覧
+- `moco sessions show`: セッション詳細表示
+- `--continue` / `-c`: 直前のセッション継続
+- `--session` / `-s`: 名前付きセッション
+
+#### スキル管理（Claude Skills 互換）
+- `moco skills list`: インストール済みスキル一覧
+- `moco skills info`: レジストリ情報
+- `moco skills sync`: レジストリからスキル同期
+- `moco skills install`: GitHubからインストール
+- `moco skills search`: スキル検索
+- `search_skills` / `load_skill` ツール: エージェントがスキルを動的にロード
+
+#### Sandbox（隔離実行）
+- `--sandbox`: Dockerコンテナ内で `execute_bash` を隔離実行
+- `--sandbox-image`: カスタムDockerイメージ指定（default: python:3.12-slim）
+- ネットワーク無効化、リソース制限、タイムアウト設定
+
+#### Git 統合
+- `git_status` / `git_diff`: Git 状態確認
+- `git_commit`: AI生成コミットメッセージでコミット
+- `create_pr`: GitHub CLI で PR 作成
+
+#### Usage 管理
+- トークン使用量の追跡
+- コスト計算・集計
+
+#### チェックポイント強化
+- `CheckpointStore`: SQLite ベースのセッション保存
+- セッションの保存・復元・一覧・削除
+
+#### トークンキャッシュ
+- `TokenCache`: 長いコンテキストのキャッシュ
+- LRU eviction、TTL 設定
+
+#### パッチ UI
+- `PatchViewer`: Rich ベースのパッチレビューUI
+- インタラクティブな承認・拒否
+
+#### VS Code Extension
+- `vscode-extension/`: 基本的なVS Code拡張
+- コマンドパレットから `moco run` 実行
+- ファイル右クリックメニュー対応
+
+#### プロセス管理ツール
+- `start_background`: バックグラウンドプロセス開始
+- `stop_process`: プロセス停止
+- `list_processes`: プロセス一覧
+- `send_input`: プロセスに入力送信
+- `wait_for_pattern` / `wait_for_exit`: 出力待機
+
+### Changed
+- `--provider` オプションに `zai` (Z.ai GLM-4.7) を追加
+- `moco tasks run` に `--provider` 引数を追加
+- `skill_loader` が `MOCO_WORKING_DIRECTORY` を参照するように変更
+
+### Fixed
+- `get_task()` が短縮IDで動作しない問題を修正
+- `git_tools.py` の `Runtime` → `AgentRuntime` インポートエラーを修正
+- `base.py` の相対インポートエラーを修正
+
+---
+
 ## [0.1.0] - 2026-01-08
 
 🎉 **初回リリース** - moco-agent の最初の公開バージョン
