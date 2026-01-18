@@ -880,7 +880,7 @@ class SkillLoader:
             from google import genai
             from google.genai import types
             
-    api_key = (
+            api_key = (
                 os.environ.get("GENAI_API_KEY") or
                 os.environ.get("GEMINI_API_KEY") or
                 os.environ.get("GOOGLE_API_KEY")

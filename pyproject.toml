@@ -21,11 +21,17 @@ dependencies = [
     "python-multipart",
     "cryptography",
     "google-generativeai",
+    "google-genai",
     "python-dotenv",
     "httpx",
     "sqlmodel",
     "alembic",
-    "PyGithub"
+    "PyGithub",
+    "numpy",
+    "faiss-cpu",
+    "tiktoken",
+    "aiohttp",
+    "openai"
 ]
 
 [project.scripts]
