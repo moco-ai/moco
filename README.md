@@ -78,6 +78,7 @@ moco skills uninstall <name>   # アンインストール
 ```bash
 --profile, -p <name>           # プロファイル指定
 --provider <name>              # プロバイダ指定 (gemini/openai/openrouter/zai)
+--model, -m <name>             # モデル指定 (例: gpt-4o, gemini-2.5-pro, claude-sonnet-4)
 --working-dir, -w <path>       # 作業ディレクトリ
 --sandbox                      # Dockerコンテナ内で隔離実行
 --sandbox-image <image>        # サンドボックスイメージ (default: python:3.12-slim)
@@ -228,10 +229,12 @@ graph TB
 | `GEMINI_API_KEY` | Gemini API キー (後方互換) | - |
 | `OPENAI_API_KEY` | OpenAI API キー | - |
 | `OPENROUTER_API_KEY` | OpenRouter API キー | - |
+| `ZAI_API_KEY` | Z.ai API キー | - |
 | `LLM_PROVIDER` | デフォルトプロバイダ | `gemini` |
-| `GEMINI_MODEL` | Gemini モデル名 | `gemini-2.5-flash-preview-05-20` |
-| `OPENAI_MODEL` | OpenAI モデル名 | `gpt-4o` |
-| `OPENROUTER_MODEL` | OpenRouter モデル名 | `anthropic/claude-sonnet-4` |
+| `GEMINI_MODEL` | Gemini モデル名 | `gemini-3-flash-preview` |
+| `OPENAI_MODEL` | OpenAI モデル名 | `gpt-5.1` |
+| `OPENROUTER_MODEL` | OpenRouter モデル名 | `google/gemini-3-flash-preview` |
+| `ZAI_MODEL` | Z.ai モデル名 | `glm-4.7` |
 | `SEMANTIC_DB_PATH` | セマンティックメモリDB | `data/semantic.db` |
 
 ### プロファイル設定

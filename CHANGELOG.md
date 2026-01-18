@@ -86,7 +86,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `--provider` オプションに `zai` (Z.ai GLM-4.7) を追加
-- `moco tasks run` に `--provider` 引数を追加
+- `--model` / `-m` オプションを追加（`moco run`, `moco chat`, `moco tasks run` で使用可能）
+- `moco tasks run` に `--provider` および `--model` 引数を追加
 - `skill_loader` が `MOCO_WORKING_DIRECTORY` を参照するように変更
 
 ### Fixed
