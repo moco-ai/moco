@@ -3,10 +3,11 @@ import subprocess
 import threading
 import time
 import re
+import os
 from collections import deque
 from typing import Dict, Optional, List
 from dataclasses import dataclass, field
-from moco.tools.base import _is_dangerous_command
+from .base import is_dangerous_command
 
 # プロセス出力バッファの最大行数。
 PROCESS_OUTPUT_BUFFER_SIZE = 1000
@@ -34,33 +35,34 @@ def _read_output(proc_info: ProcessInfo):
 
 def start_background(command: str, name: str = None, cwd: str = None, allow_dangerous: bool = False) -> dict:
     """コマンドをバックグラウンドで実行
-
+    
     Args:
         command: 実行するコマンド
-        name: プロセスの識別名（省略時はコマンドの先頭30文字）
+        name: プロセスの識別名（省略時はコマンドのベース名）
         cwd: 作業ディレクトリ
         allow_dangerous: Trueの場合、危険なコマンドの実行を許可する
-
-    Returns:
-        {"pid": int, "name": str, "status": str}
     """
     # 危険なコマンドのチェック
     if not allow_dangerous:
-        is_dangerous, reason = _is_dangerous_command(command)
+        is_dangerous, reason = is_dangerous_command(command)
         if is_dangerous:
             return {"error": f"Command blocked for security reasons. {reason}"}
 
     process = subprocess.Popen(
         command,
         shell=True,
-        stdin=subprocess.PIPE,  # 入力を送れるようにする
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         cwd=cwd,
     )
+    
+    # プロセス名の機密情報漏洩対策：コマンドの先頭30文字ではなく、最初の単語かベース名を使用
+    default_name = os.path.basename(command.split()[0]) if command else "process"
+    
     proc_info = ProcessInfo(
         pid=process.pid,
-        name=name or command[:30],
+        name=name or default_name,
         process=process,
     )
     _processes[process.pid] = proc_info

@@ -8,6 +8,9 @@ from ..utils.path import resolve_safe_path, get_working_directory
 # 安全性のためのデフォルト最大行数 (read_file)
 DEFAULT_MAX_LINES = 10000
 
+# 編集可能な最大ファイルサイズ (5MB)
+MAX_EDIT_SIZE = 5 * 1024 * 1024
+
 # 危険なパターンの定義
 DANGEROUS_PATTERNS: Final[list[str]] = [
     # 破壊的な削除 (フラグに任意の文字を含めるように改善)
@@ -18,8 +21,8 @@ DANGEROUS_PATTERNS: Final[list[str]] = [
     r'mkfs\.',
     r'dd\s+.*of=',
     # デバイス・ファイルへの直接書き込み/切り詰め ( /dev/null への出力は許可 )
-    r'(?<![0-9&])>\s*(?!/dev/null)[^&|]',
-    r'(?<!&)[0-9]>\s*(?!/dev/null)[^&|]',
+    r'(?<![0-9&])>\s*[^&|]',
+    r'(?<!&)[0-9]>\s*[^&|]',
     # 全開放パーミッション・所有権
     r'chmod\s+.*777',
     r'chown\s+.*-R',
@@ -151,6 +154,14 @@ def edit_file(path: str, old_string: str, new_string: str) -> str:
 
         if not os.path.exists(path):
             return f"Error: File not found: {path}"
+
+        # 巨大ファイル編集のガード
+        file_size = os.path.getsize(path)
+        if file_size > MAX_EDIT_SIZE:
+             return (
+                 f"Error: File is too large to edit via string replacement ({file_size} bytes). "
+                 f"Maximum allowed size is {MAX_EDIT_SIZE} bytes."
+             )
 
         with open(path, 'r', encoding='utf-8') as f:
             content = f.read()

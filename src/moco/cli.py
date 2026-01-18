@@ -67,7 +67,7 @@ def run(
     theme_config = THEMES[theme]
 
     init_environment()
-    
+
     # 作業ディレクトリを環境変数に設定（ツールから参照可能にする）
     # 注意: os.chdir() はプロファイル読み込みに影響するため、ここでは行わない
     # ツール側で MOCO_WORKING_DIRECTORY を使って絶対パスに変換する
@@ -82,7 +82,7 @@ def run(
     # プロバイダーの解決（指定なしの場合は優先順位で自動選択）
     if provider is None:
         provider = get_available_provider()
-    
+
     if provider == "openai":
         provider_enum = LLMProvider.OPENAI
     elif provider == "openrouter":
@@ -259,7 +259,7 @@ def _print_error_hints(console, error: Exception):
 
 def _print_result(console, result: str, theme_name: ThemeName = ThemeName.DEFAULT, verbose: bool = False):
     """結果を整形して表示
-    
+
     Args:
         console: Rich console
         result: 結果文字列
@@ -306,7 +306,7 @@ def _print_result(console, result: str, theme_name: ThemeName = ThemeName.DEFAUL
             # 最後のエージェントの結果だけ表示
             last_agent = sections[-2] if len(sections) >= 2 else ""
             last_content = sections[-1].strip() if sections[-1] else ""
-            
+
             # orchestrator の最終回答は省略しない、他は短縮
             if last_agent == "@orchestrator":
                 # 最終回答は全文表示
@@ -318,13 +318,13 @@ def _print_result(console, result: str, theme_name: ThemeName = ThemeName.DEFAUL
                     display = '\n'.join(lines[:20]) + f"\n\n[dim]... ({len(lines) - 20} lines omitted, use -v for full output)[/dim]"
                 else:
                     display = last_content
-            
+
             console.print(Panel(
                 display,
                 title=f"[bold {theme.thoughts}]{last_agent}[/]",
                 border_style="dim" if last_agent != "@orchestrator" else theme.result,
             ))
-    
+
     # 最終サマリーを表示
     if final_summary:
         console.print(Panel(
@@ -456,18 +456,18 @@ def chat(
     init_environment()
     from rich.console import Console
     from rich.panel import Panel
-    
+
 
     from .core.orchestrator import Orchestrator
     from .core.runtime import LLMProvider
     from .core.llm_provider import get_available_provider
 
     console = Console()
-    
+
     # プロバイダーの解決（指定なしの場合は優先順位で自動選択）
     if provider is None:
         provider = get_available_provider()
-    
+
     if provider == "openai":
         provider_enum = LLMProvider.OPENAI
     elif provider == "openrouter":
@@ -510,7 +510,10 @@ def chat(
         border_style=theme_config.tools
     ))
 
+    # --- スラッシュコマンド対応 ---
     from .cli_commands import handle_slash_command
+    from .cancellation import create_cancel_event, request_cancel, clear_cancel_event, OperationCancelled
+    # ---
 
     try:
         while True:
@@ -529,9 +532,14 @@ def chat(
             if text.strip().startswith('/'):
                 if not handle_slash_command(text, command_context):
                     raise typer.Exit(code=0)
-                # handle_slash_command 内で session_id が更新されている可能性がある
-                session_id = command_context['session_id']
-                continue
+
+                # カスタムコマンド等で pending_prompt がセットされた場合、それを通常の入力として扱う
+                if 'pending_prompt' in command_context:
+                    text = command_context.pop('pending_prompt')
+                else:
+                    # handle_slash_command 内で session_id が更新されている可能性がある
+                    session_id = command_context['session_id']
+                    continue
 
             lowered = text.strip().lower()
             if lowered in ("exit", "quit"):
@@ -539,13 +547,20 @@ def chat(
                 raise typer.Exit(code=0)
 
             try:
+                cancel_event = create_cancel_event(session_id)
                 reply = o.run_sync(text, session_id)
             except KeyboardInterrupt:
-                console.print("\n[dim]Exiting...[/dim]")
-                raise typer.Exit(code=0)
+                request_cancel(session_id)
+                console.print("\n[yellow]Interrupted. Type 'exit' to quit or continue with a new prompt.[/yellow]")
+                continue
+            except OperationCancelled:
+                console.print("\n[yellow]Operation cancelled.[/yellow]")
+                continue
             except Exception as e:  # noqa: BLE001
                 console.print(f"[red]Error: {e}[/red]")
                 continue
+            finally:
+                clear_cancel_event(session_id)
 
             if reply:
                 console.print()
@@ -759,22 +774,22 @@ def tasks_run(
     from .core.task_runner import TaskRunner
     from .core.llm_provider import get_available_provider
     import os
-    
+
     # プロバイダーの解決（指定なしの場合は優先順位で自動選択）
     if provider is None:
         provider = get_available_provider()
-    
+
     # 作業ディレクトリを絶対パスに解決
     resolved_working_dir = None
     if working_dir:
         resolved_working_dir = os.path.abspath(working_dir)
-    
+
     store = TaskStore()
     task_id = store.add_task(task, profile, provider, resolved_working_dir)
-    
+
     runner = TaskRunner(store)
     runner.run_task(task_id, profile, task, resolved_working_dir)
-    
+
     typer.echo(f"Task started: {task_id}")
 
 
@@ -787,12 +802,12 @@ def tasks_list(
     from rich.console import Console
     from rich.table import Table
     from datetime import datetime
-    
+
     store = TaskStore()
     tasks = store.list_tasks(limit=limit)
-    
+
     console = Console()
-    
+
     def truncate(text: str, max_len: int = 35) -> str:
         """説明文を短く切り詰める（最初の行のみ）"""
         first_line = text.split('\n')[0].strip()
@@ -809,7 +824,7 @@ def tasks_list(
             end = datetime.fromisoformat(end_str) if end_str else datetime.now()
             delta = end - start
             total_seconds = int(delta.total_seconds())
-            
+
             if total_seconds < 60:
                 return f"{total_seconds}s"
             elif total_seconds < 3600:
@@ -822,14 +837,14 @@ def tasks_list(
                 return f"{hours}h {mins}m"
         except:
             return "-"
-    
+
     # サマリー
     running = sum(1 for t in tasks if t["status"] == "running")
     completed = sum(1 for t in tasks if t["status"] == "completed")
     failed = sum(1 for t in tasks if t["status"] == "failed")
-    
+
     console.print(f"\n🔄 Running: [yellow]{running}[/]  ✅ Done: [green]{completed}[/]  ❌ Failed: [red]{failed}[/]\n")
-    
+
     table = Table(title="Task List")
     table.add_column("", width=2)  # アイコン
     table.add_column("ID", style="cyan", no_wrap=True, width=10)
@@ -837,10 +852,10 @@ def tasks_list(
     table.add_column("Status", width=10)
     table.add_column("Duration", width=10, justify="right")
     table.add_column("Created", no_wrap=True, width=16)
-    
+
     for t in tasks:
         status = t["status"]
-        
+
         # アイコンと色
         if status == "running":
             icon = "🔄"
@@ -860,7 +875,7 @@ def tasks_list(
         else:
             icon = "❓"
             color = "white"
-        
+
         # 経過時間
         if status == "running":
             duration = format_duration(t["started_at"])
@@ -868,7 +883,7 @@ def tasks_list(
             duration = format_duration(t["started_at"], t["completed_at"])
         else:
             duration = "-"
-        
+
         table.add_row(
             icon,
             t["task_id"][:10],
@@ -877,7 +892,7 @@ def tasks_list(
             f"[{color}]{duration}[/]",
             t["created_at"][5:16].replace("T", " ")  # MM-DD HH:MM
         )
-    
+
     console.print(table)
 
 
@@ -890,14 +905,13 @@ def tasks_status():
     from rich.live import Live
     from rich.panel import Panel
     from rich.text import Text
-    from rich.spinner import Spinner
     from datetime import datetime
     import time
     import os
 
     store = TaskStore()
     console = Console()
-    
+
     # スピナーのフレーム
     spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
     frame_idx = [0]  # ミュータブルなカウンター
@@ -918,7 +932,7 @@ def tasks_status():
             end = datetime.fromisoformat(end_str) if end_str else datetime.now()
             delta = end - start
             total_seconds = int(delta.total_seconds())
-            
+
             if total_seconds < 60:
                 return f"{total_seconds}s"
             elif total_seconds < 3600:
@@ -945,17 +959,17 @@ def tasks_status():
     def generate_display():
         """テーブルとサマリーを生成"""
         tasks = store.list_tasks(limit=15)
-        
+
         # サマリー計算
         running = sum(1 for t in tasks if t["status"] == "running")
         completed = sum(1 for t in tasks if t["status"] == "completed")
         failed = sum(1 for t in tasks if t["status"] == "failed")
         pending = sum(1 for t in tasks if t["status"] == "pending")
-        
+
         # スピナーフレーム更新
         spinner = spinner_frames[frame_idx[0] % len(spinner_frames)]
         frame_idx[0] += 1
-        
+
         # ヘッダーサマリー
         now = datetime.now().strftime("%H:%M:%S")
         header = Text()
@@ -968,7 +982,7 @@ def tasks_status():
             header.append(f"❌ Failed: {failed}  ", style="red")
         if pending > 0:
             header.append(f"⏳ Pending: {pending}", style="dim")
-        
+
         # テーブル
         table = Table(title="", box=None, padding=(0, 1))
         table.add_column("", width=2)  # アイコン
@@ -981,7 +995,7 @@ def tasks_status():
         for t in tasks:
             status = t["status"]
             pid = t.get("pid")
-            
+
             # アイコンと色
             if status == "running":
                 icon = spinner
@@ -1005,7 +1019,7 @@ def tasks_status():
             else:
                 icon = "❓"
                 color = "white"
-            
+
             # 経過時間
             if status == "running":
                 duration = format_duration(t["started_at"])
@@ -1013,7 +1027,7 @@ def tasks_status():
                 duration = format_duration(t["started_at"], t["completed_at"])
             else:
                 duration = "-"
-            
+
             # ステータス表示（PID付き）
             status_text = status
             if status == "running" and pid:
@@ -1027,7 +1041,7 @@ def tasks_status():
                 f"[{color}]{duration}[/]",
                 truncate(t["task_description"])
             )
-        
+
         # パネルにまとめる
         from rich.console import Group
         return Panel(
@@ -1046,7 +1060,6 @@ def tasks_status():
         console.print("\n[dim]Dashboard closed.[/]")
 
 
-@tasks_app.command("logs")
 @tasks_app.command("logs")
 def tasks_logs(
     task_id: str = typer.Argument(..., help="タスクID"),
@@ -1092,18 +1105,20 @@ def tasks_exec(
         os.environ['MOCO_WORKING_DIRECTORY'] = working_dir
 
     store = TaskStore()
-    
+
     # プロバイダの解決
+    from .core.runtime import LLMProvider
     p_enum = LLMProvider.OPENROUTER
     if provider == "openai": p_enum = LLMProvider.OPENAI
     elif provider == "gemini": p_enum = LLMProvider.GEMINI
     elif provider == "zai": p_enum = LLMProvider.ZAI
 
     try:
+        from .core.orchestrator import Orchestrator
         orchestrator = Orchestrator(profile=profile, provider=p_enum, working_directory=working_dir)
         # run_sync を使用してタスクを実行
         result = orchestrator.run_sync(task_description)
-        
+
         store.update_task(
             task_id,
             status=TaskStatus.COMPLETED,

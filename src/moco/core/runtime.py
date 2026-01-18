@@ -1798,7 +1798,7 @@ class AgentRuntime:
                                 result = block_msg
                             elif func_name in self.available_tools:
                                 try:
-                                    raw_result = _execute_tool_safely(self.available_tools[func_name], args_dict)
+                                    raw_result = await _execute_tool_safely_async(self.available_tools[func_name], args_dict)
                                     result = _truncate_tool_output(raw_result, func_name)
                                 except Exception as e:
                                     result = f"Error executing {func_name}: {e}"
@@ -1914,7 +1914,7 @@ class AgentRuntime:
                     result = block_msg
                 elif func_name in self.available_tools:
                     try:
-                        raw_result = _execute_tool_safely(self.available_tools[func_name], args_dict)
+                        raw_result = await _execute_tool_safely_async(self.available_tools[func_name], args_dict)
                         result = _truncate_tool_output(raw_result, func_name)
                     except Exception as e:
                         result = f"Error executing {func_name}: {e}"
