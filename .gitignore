@@ -74,3 +74,6 @@ data/
 profiles/
 knowledge_base/
 runbooks/
+
+# Code index cache
+.code_index/
