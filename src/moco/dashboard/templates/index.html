@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #0f3460;
+            --text-primary: #eaeaea;
+            --text-secondary: #a0a0a0;
+            --accent: #e94560;
+            --accent-light: #ff6b6b;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --border: #334155;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: var(--bg-secondary);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 1.5rem;
+            color: var(--accent);
+        }
+        
+        .status-bar {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.875rem;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+        
+        .status-dot.warning {
+            background: var(--warning);
+        }
+        
+        .status-dot.error {
+            background: var(--accent);
+        }
+        
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            padding: 1rem;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+        
+        .card {
+            background: var(--bg-card);
+            border-radius: 8px;
+            padding: 1rem;
+            border: 1px solid var(--border);
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .card-title {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        
+        .card-full {
+            grid-column: 1 / -1;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+        
+        .stat-box {
+            background: var(--bg-secondary);
+            padding: 1rem;
+            border-radius: 6px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: bold;
+            color: var(--accent-light);
+        }
+        
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+        
+        .table th, .table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .table th {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        
+        .table tr:hover {
+            background: rgba(255,255,255,0.05);
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .badge-open {
+            background: rgba(74, 222, 128, 0.2);
+            color: var(--success);
+        }
+        
+        .badge-closed {
+            background: rgba(160, 160, 160, 0.2);
+            color: var(--text-secondary);
+        }
+        
+        .log-container {
+            height: 300px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.75rem;
+            background: var(--bg-primary);
+            padding: 0.5rem;
+            border-radius: 4px;
+        }
+        
+        .log-entry {
+            padding: 0.25rem 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        
+        .log-time {
+            color: var(--text-secondary);
+            margin-right: 0.5rem;
+        }
+        
+        .log-level-info {
+            color: #60a5fa;
+        }
+        
+        .log-level-warn {
+            color: var(--warning);
+        }
+        
+        .log-level-error {
+            color: var(--accent);
+        }
+        
+        .chart-container {
+            height: 250px;
+            position: relative;
+        }
+        
+        .refresh-btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+        
+        .refresh-btn:hover {
+            background: var(--accent-light);
+        }
+        
+        .model-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0.5rem 0;
+        }
+        
+        .model-name {
+            width: 150px;
+            font-size: 0.75rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .model-bar-fill {
+            height: 20px;
+            background: linear-gradient(90deg, var(--accent), var(--accent-light));
+            border-radius: 4px;
+            min-width: 2px;
+        }
+        
+        .model-cost {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-left: auto;
+        }
+        
+        @media (max-width: 1200px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>🤖 {{ title }}</h1>
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-dot" id="wsStatus"></span>
+                <span id="wsStatusText">接続中...</span>
+            </div>
+            <div class="status-item">
+                <span>最終更新: <span id="lastUpdate">-</span></span>
+            </div>
+            <button class="refresh-btn" onclick="refreshAll()">🔄 更新</button>
+        </div>
+    </header>
+    
+    <main class="container">
+        <!-- 統計サマリー -->
+        <div class="card card-full">
+            <div class="card-header">
+                <span class="card-title">📊 概要</span>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-value" id="totalCost">$0.00</div>
+                    <div class="stat-label">総コスト</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="totalTokens">0</div>
+                    <div class="stat-label">総トークン</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="totalSessions">0</div>
+                    <div class="stat-label">セッション数</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="totalCalls">0</div>
+                    <div class="stat-label">API呼び出し</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- コストグラフ -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">💰 コスト推移</span>
+            </div>
+            <div class="chart-container">
+                <canvas id="costChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- モデル別使用量 -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">🧠 モデル別コスト</span>
+            </div>
+            <div id="modelUsage"></div>
+        </div>
+        
+        <!-- セッション一覧 -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">📁 最近のセッション</span>
+            </div>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>タイトル</th>
+                        <th>ステータス</th>
+                        <th>更新日時</th>
+                    </tr>
+                </thead>
+                <tbody id="sessionsTable">
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- エージェント一覧 -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">🤖 エージェント</span>
+            </div>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>名前</th>
+                        <th>モデル</th>
+                        <th>ツール数</th>
+                    </tr>
+                </thead>
+                <tbody id="agentsTable">
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- リアルタイムログ -->
+        <div class="card card-full">
+            <div class="card-header">
+                <span class="card-title">📜 リアルタイムログ</span>
+                <button class="refresh-btn" onclick="clearLogs()">クリア</button>
+            </div>
+            <div class="log-container" id="logContainer">
+            </div>
+        </div>
+    </main>
+    
+    <script>
+        // 設定
+        const REFRESH_INTERVAL = {{ refresh_interval }} * 1000;
+        let costChart = null;
+        let ws = null;
+        
+        // 初期化
+        document.addEventListener('DOMContentLoaded', () => {
+            initChart();
+            refreshAll();
+            connectWebSocket();
+            setInterval(refreshAll, REFRESH_INTERVAL);
+        });
+        
+        // Chart.js 初期化
+        function initChart() {
+            const ctx = document.getElementById('costChart').getContext('2d');
+            costChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'コスト ($)',
+                        data: [],
+                        borderColor: '#e94560',
+                        backgroundColor: 'rgba(233, 69, 96, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false,
+                        },
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            ticks: { color: '#a0a0a0' },
+                        },
+                        y: {
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            ticks: { 
+                                color: '#a0a0a0',
+                                callback: (v) => '$' + v.toFixed(4),
+                            },
+                        },
+                    },
+                },
+            });
+        }
+        
+        // WebSocket 接続
+        function connectWebSocket() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${location.host}/ws/logs`);
+            
+            ws.onopen = () => {
+                document.getElementById('wsStatus').className = 'status-dot';
+                document.getElementById('wsStatusText').textContent = '接続中';
+            };
+            
+            ws.onclose = () => {
+                document.getElementById('wsStatus').className = 'status-dot error';
+                document.getElementById('wsStatusText').textContent = '切断';
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            ws.onerror = () => {
+                document.getElementById('wsStatus').className = 'status-dot warning';
+            };
+            
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'initial') {
+                    msg.logs.forEach(addLogEntry);
+                } else if (msg.type === 'log') {
+                    addLogEntry(msg.data);
+                }
+            };
+            
+            // Ping/Pong
+            setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send('ping');
+                }
+            }, 30000);
+        }
+        
+        // 全データ更新
+        async function refreshAll() {
+            await Promise.all([
+                refreshStats(),
+                refreshCosts(),
+                refreshCostHistory(),
+                refreshSessions(),
+                refreshAgents(),
+            ]);
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        }
+        
+        // 統計更新
+        async function refreshStats() {
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                
+                if (data.total_sessions !== undefined) {
+                    document.getElementById('totalSessions').textContent = data.total_sessions;
+                }
+                if (data.total_calls !== undefined) {
+                    document.getElementById('totalCalls').textContent = data.total_calls.toLocaleString();
+                }
+            } catch (e) {
+                console.error('Stats refresh failed:', e);
+            }
+        }
+        
+        // コスト更新
+        async function refreshCosts() {
+            try {
+                const res = await fetch('/api/costs');
+                const data = await res.json();
+                
+                document.getElementById('totalCost').textContent = '$' + (data.total_cost || 0).toFixed(4);
+                document.getElementById('totalTokens').textContent = (data.total_tokens?.total || 0).toLocaleString();
+                
+                // モデル別使用量
+                const modelUsage = document.getElementById('modelUsage');
+                const models = Object.entries(data.by_model || {});
+                const maxCost = Math.max(...models.map(([_, v]) => v.cost), 0.0001);
+                
+                modelUsage.innerHTML = models
+                    .sort((a, b) => b[1].cost - a[1].cost)
+                    .slice(0, 8)
+                    .map(([model, info]) => `
+                        <div class="model-bar">
+                            <span class="model-name" title="${model}">${model}</span>
+                            <div class="model-bar-fill" style="width: ${(info.cost / maxCost * 100).toFixed(1)}%"></div>
+                            <span class="model-cost">${info.calls} calls / $${info.cost.toFixed(4)}</span>
+                        </div>
+                    `).join('');
+            } catch (e) {
+                console.error('Costs refresh failed:', e);
+            }
+        }
+        
+        // コスト履歴更新
+        async function refreshCostHistory() {
+            try {
+                const res = await fetch('/api/costs/history?hours=24&interval=hour');
+                const data = await res.json();
+                
+                if (costChart && data.history) {
+                    costChart.data.labels = data.history.map(h => h.timestamp.split(' ')[1] || h.timestamp);
+                    costChart.data.datasets[0].data = data.history.map(h => h.cost);
+                    costChart.update();
+                }
+            } catch (e) {
+                console.error('Cost history refresh failed:', e);
+            }
+        }
+        
+        // セッション更新
+        async function refreshSessions() {
+            try {
+                const res = await fetch('/api/sessions?limit=10');
+                const data = await res.json();
+                
+                const tbody = document.getElementById('sessionsTable');
+                tbody.innerHTML = (data.sessions || []).map(s => `
+                    <tr>
+                        <td><code>${s.session_id.slice(0, 15)}...</code></td>
+                        <td>${s.title || '-'}</td>
+                        <td><span class="badge badge-${s.status?.toLowerCase() || 'open'}">${s.status || 'OPEN'}</span></td>
+                        <td>${formatDate(s.last_updated)}</td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('Sessions refresh failed:', e);
+            }
+        }
+        
+        // エージェント更新
+        async function refreshAgents() {
+            try {
+                const res = await fetch('/api/agents');
+                const data = await res.json();
+                
+                const tbody = document.getElementById('agentsTable');
+                tbody.innerHTML = (data.agents || []).map(a => `
+                    <tr>
+                        <td>${a.name}</td>
+                        <td><code>${a.model || '-'}</code></td>
+                        <td>${a.tool_count || 0}</td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('Agents refresh failed:', e);
+            }
+        }
+        
+        // ログエントリ追加
+        function addLogEntry(entry) {
+            const container = document.getElementById('logContainer');
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            
+            const level = (entry.level || 'info').toLowerCase();
+            const time = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : '-';
+            
+            div.innerHTML = `
+                <span class="log-time">${time}</span>
+                <span class="log-level-${level}">[${level.toUpperCase()}]</span>
+                ${entry.message || JSON.stringify(entry)}
+            `;
+            
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+            
+            // 最大行数制限
+            while (container.children.length > 500) {
+                container.removeChild(container.firstChild);
+            }
+        }
+        
+        // ログクリア
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = '';
+        }
+        
+        // 日付フォーマット
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const d = new Date(dateStr);
+            return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moco"
+version = "0.1.0"
+description = "Moco: Multi-profile Operational Control Orchestrator"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    {name = "Moco Team"}
+]
+dependencies = [
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0.0",
+    "python-jose[cryptography]",
+    "passlib[bcrypt]",
+    "python-multipart",
+    "cryptography",
+    "google-generativeai",
+    "python-dotenv",
+    "httpx",
+    "sqlmodel",
+    "alembic",
+    "PyGithub"
+]
+
+[project.scripts]
+moco = "moco.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+moco = ["*.md", "core/prompts/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"

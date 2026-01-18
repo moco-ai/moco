@@ -1,0 +1,160 @@
+# MkDocs Configuration for moco-agent
+# Documentation: https://www.mkdocs.org/
+
+site_name: moco
+site_description: マルチプロバイダ対応のプロファイルベース AI エージェントフレームワーク
+site_url: https://moco-team.github.io/moco-agent
+repo_url: https://github.com/moco-team/moco-agent
+repo_name: moco-team/moco-agent
+
+# Copyright
+copyright: Copyright &copy; 2024-2026 Moco Team
+
+# Theme Configuration
+theme:
+  name: material
+  language: ja
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: ダークモードに切り替え
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: ライトモードに切り替え
+  
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+  
+  icon:
+    repo: fontawesome/brands/github
+    logo: material/robot-outline
+  
+  font:
+    text: Noto Sans JP
+    code: JetBrains Mono
+
+# Plugins
+plugins:
+  - search:
+      lang:
+        - ja
+        - en
+      separator: '[\s\-\.]+'
+  
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [".."]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_category_heading: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            group_by_category: true
+            show_signature: true
+            show_signature_annotations: true
+            separate_signature: true
+            line_length: 80
+            merge_init_into_class: true
+            docstring_section_style: spacy
+
+# Markdown Extensions
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  
+  # Code blocks
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  
+  # Content tabs
+  - pymdownx.tabbed:
+      alternate_style: true
+  
+  # Task lists
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  
+  # Other extensions
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+
+# Navigation
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Guides:
+    - プロファイル作成: guides/profiles.md
+    - ガードレール設定: guides/guardrails.md
+  - API Reference:
+    - Core: api/core.md
+    - Tools: api/tools.md
+
+# Extra CSS/JS
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/extra.js
+
+# Extra configuration
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/moco-team/moco-agent
+  
+  generator: false
+  
+  # Version provider (optional)
+  # version:
+  #   provider: mike

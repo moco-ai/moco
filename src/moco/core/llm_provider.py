@@ -1,0 +1,129 @@
+"""
+LLM プロバイダー統一管理
+
+プロバイダー優先順位: 1. zai, 2. openrouter, 3. gemini
+"""
+
+import os
+import logging
+from typing import Optional, Tuple
+
+logger = logging.getLogger(__name__)
+
+# プロバイダー定数
+PROVIDER_ZAI = "zai"
+PROVIDER_OPENROUTER = "openrouter"
+PROVIDER_GEMINI = "gemini"
+PROVIDER_OPENAI = "openai"
+
+# プロバイダー優先順位
+PROVIDER_PRIORITY = [PROVIDER_ZAI, PROVIDER_OPENROUTER, PROVIDER_GEMINI]
+
+# プロバイダーごとのデフォルトモデル
+DEFAULT_MODELS = {
+    PROVIDER_ZAI: "glm-4.7",
+    PROVIDER_OPENROUTER: "google/gemini-3-flash-preview",
+    PROVIDER_GEMINI: "gemini-2.0-flash",
+    PROVIDER_OPENAI: "gpt-4o",
+}
+
+# 分析用（軽量）モデル
+ANALYZER_MODELS = {
+    PROVIDER_ZAI: "glm-4.7",
+    PROVIDER_OPENROUTER: "google/gemini-3-flash-preview",
+    PROVIDER_GEMINI: "gemini-2.0-flash",
+    PROVIDER_OPENAI: "gpt-4o-mini",
+}
+
+
+def _check_api_key(provider: str) -> bool:
+    """指定プロバイダーの API キーが設定されているか確認"""
+    if provider == PROVIDER_ZAI:
+        return bool(os.environ.get("ZAI_API_KEY"))
+    elif provider == PROVIDER_OPENROUTER:
+        return bool(os.environ.get("OPENROUTER_API_KEY"))
+    elif provider == PROVIDER_GEMINI:
+        return bool(os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY"))
+    elif provider == PROVIDER_OPENAI:
+        return bool(os.environ.get("OPENAI_API_KEY"))
+    return False
+
+
+def get_available_provider() -> str:
+    """
+    利用可能なプロバイダーを優先順位で返す。
+    
+    優先順位: zai → openrouter → gemini
+    
+    環境変数 MOCO_DEFAULT_PROVIDER で強制指定可能。
+    
+    Returns:
+        利用可能なプロバイダー名
+    """
+    # 環境変数で強制指定
+    forced = os.environ.get("MOCO_DEFAULT_PROVIDER")
+    if forced and forced in [PROVIDER_ZAI, PROVIDER_OPENROUTER, PROVIDER_GEMINI, PROVIDER_OPENAI]:
+        if _check_api_key(forced):
+            logger.info(f"Using forced provider: {forced}")
+            return forced
+        else:
+            logger.warning(f"Forced provider {forced} has no API key, falling back to priority order")
+    
+    # 優先順位で確認
+    for provider in PROVIDER_PRIORITY:
+        if _check_api_key(provider):
+            logger.debug(f"Selected provider by priority: {provider}")
+            return provider
+    
+    # どれも利用できない場合は openrouter をデフォルトに（エラーは後で発生）
+    logger.warning("No API keys found, defaulting to openrouter")
+    return PROVIDER_OPENROUTER
+
+
+def get_default_model(provider: Optional[str] = None) -> str:
+    """
+    プロバイダーのデフォルトモデルを返す。
+    
+    Args:
+        provider: プロバイダー名（省略時は自動選択）
+    
+    Returns:
+        モデル名
+    """
+    if provider is None:
+        provider = get_available_provider()
+    return DEFAULT_MODELS.get(provider, DEFAULT_MODELS[PROVIDER_OPENROUTER])
+
+
+def get_analyzer_model(provider: Optional[str] = None) -> str:
+    """
+    分析用の軽量モデルを返す。
+    
+    環境変数 MOCO_ANALYZER_MODEL で上書き可能。
+    
+    Args:
+        provider: プロバイダー名（省略時は自動選択）
+    
+    Returns:
+        モデル名
+    """
+    # 環境変数で上書き
+    override = os.environ.get("MOCO_ANALYZER_MODEL")
+    if override:
+        return override
+    
+    if provider is None:
+        provider = get_available_provider()
+    return ANALYZER_MODELS.get(provider, ANALYZER_MODELS[PROVIDER_OPENROUTER])
+
+
+def get_provider_and_model() -> Tuple[str, str]:
+    """
+    利用可能なプロバイダーとそのデフォルトモデルを返す。
+    
+    Returns:
+        (provider, model) のタプル
+    """
+    provider = get_available_provider()
+    model = get_default_model(provider)
+    return provider, model

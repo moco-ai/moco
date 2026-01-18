@@ -1,0 +1,28 @@
+# =============================================================================
+# Default Profile
+# =============================================================================
+# A minimal profile for general-purpose AI agent tasks.
+# Use this as a template for creating your own profiles.
+
+name: default
+description: General-purpose AI agent for common tasks
+
+# Include base tools (read_file, write_file, bash, grep, etc.)
+include_base_tools: true
+
+# Optional: Specify which base tools to include/exclude
+# tools:
+#   include:
+#     - read_file
+#     - write_file
+#     - bash
+#     - grep
+#   exclude:
+#     - dangerous_tool
+
+# Optional: MCP server configuration
+# mcp:
+#   servers:
+#     - name: filesystem
+#       command: npx
+#       args: ["-y", "@anthropic/mcp-server-filesystem", "/path/to/dir"]

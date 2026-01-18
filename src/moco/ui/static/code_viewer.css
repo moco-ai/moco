@@ -1,0 +1,354 @@
+/**
+ * Code Viewer CSS
+ * シンタックスハイライト、行番号、ダークテーマ対応のスタイル
+ */
+
+/* ベーススタイル */
+.code-viewer {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    tab-size: 4;
+    overflow: auto;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+    border: 1px solid #e1e4e8;
+}
+
+/* コードコンテナ */
+.code-container {
+    display: flex;
+    position: relative;
+    min-height: 100px;
+}
+
+/* 行番号 */
+.line-numbers {
+    flex-shrink: 0;
+    padding: 16px 12px;
+    background-color: #f0f1f3;
+    border-right: 1px solid #e1e4e8;
+    text-align: right;
+    user-select: none;
+    color: #6a737d;
+    font-size: 12px;
+    line-height: 1.5em;
+}
+
+.line-numbers span {
+    display: block;
+    padding: 0 8px;
+}
+
+/* コードエリア */
+.code-content {
+    flex: 1;
+    padding: 16px 20px;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.code-content code {
+    display: block;
+    background: none;
+    padding: 0;
+    margin: 0;
+    color: #24292e;
+}
+
+/* シンタックスハイライト - 基本 */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+    color: #6a737d;
+    font-style: italic;
+}
+
+.token.punctuation {
+    color: #24292e;
+}
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+    color: #005cc5;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+    color: #032f62;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+    color: #d73a49;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+    color: #d73a49;
+    font-weight: 600;
+}
+
+.token.function,
+.token.class-name {
+    color: #6f42c1;
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+    color: #e36209;
+}
+
+/* 選択時のハイライト */
+.code-content ::selection {
+    background-color: #b3d4fc;
+}
+
+/* 現在行のハイライト */
+.code-line.active {
+    background-color: #fff5b1;
+}
+
+/* ダークテーマ */
+.code-viewer.dark {
+    background-color: #1e1e1e;
+    border-color: #3e3e42;
+    color: #d4d4d4;
+}
+
+.code-viewer.dark .line-numbers {
+    background-color: #252526;
+    border-right-color: #3e3e42;
+    color: #858585;
+}
+
+.code-viewer.dark .code-content code {
+    color: #d4d4d4;
+}
+
+/* ダークテーマ - シンタックスハイライト */
+.code-viewer.dark .token.comment,
+.code-viewer.dark .token.prolog,
+.code-viewer.dark .token.doctype,
+.code-viewer.dark .token.cdata {
+    color: #6a9955;
+}
+
+.code-viewer.dark .token.punctuation {
+    color: #d4d4d4;
+}
+
+.code-viewer.dark .token.property,
+.code-viewer.dark .token.tag,
+.code-viewer.dark .token.boolean,
+.code-viewer.dark .token.number,
+.code-viewer.dark .token.constant,
+.code-viewer.dark .token.symbol,
+.code-viewer.dark .token.deleted {
+    color: #b5cea8;
+}
+
+.code-viewer.dark .token.selector,
+.code-viewer.dark .token.attr-name,
+.code-viewer.dark .token.string,
+.code-viewer.dark .token.char,
+.code-viewer.dark .token.builtin,
+.code-viewer.dark .token.inserted {
+    color: #ce9178;
+}
+
+.code-viewer.dark .token.operator,
+.code-viewer.dark .token.entity,
+.code-viewer.dark .token.url,
+.code-viewer.dark .language-css .token.string,
+.code-viewer.dark .style .token.string {
+    color: #d4d4d4;
+}
+
+.code-viewer.dark .token.atrule,
+.code-viewer.dark .token.attr-value,
+.code-viewer.dark .token.keyword {
+    color: #569cd6;
+}
+
+.code-viewer.dark .token.function,
+.code-viewer.dark .token.class-name {
+    color: #dcdcaa;
+}
+
+.code-viewer.dark .token.regex,
+.code-viewer.dark .token.important,
+.code-viewer.dark .token.variable {
+    color: #9cdcfe;
+}
+
+.code-viewer.dark .code-line.active {
+    background-color: #264f78;
+}
+
+.code-viewer.dark ::selection {
+    background-color: #264f78;
+}
+
+/* ツールバー */
+.code-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    background-color: #f6f8fa;
+    border-bottom: 1px solid #e1e4e8;
+    border-radius: 8px 8px 0 0;
+}
+
+.code-viewer.dark .code-toolbar {
+    background-color: #2d2d30;
+    border-bottom-color: #3e3e42;
+}
+
+.code-language {
+    font-size: 12px;
+    font-weight: 600;
+    color: #586069;
+    text-transform: uppercase;
+}
+
+.code-viewer.dark .code-language {
+    color: #cccccc;
+}
+
+.code-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.code-action-btn {
+    padding: 4px 12px;
+    font-size: 12px;
+    border: 1px solid #e1e4e8;
+    background-color: #fafbfc;
+    color: #24292e;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.code-action-btn:hover {
+    background-color: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.code-viewer.dark .code-action-btn {
+    background-color: #3e3e42;
+    border-color: #5a5a5e;
+    color: #cccccc;
+}
+
+.code-viewer.dark .code-action-btn:hover {
+    background-color: #4e4e52;
+    border-color: #6a6a6e;
+}
+
+/* レスポンシブデザイン */
+@media (max-width: 768px) {
+    .code-viewer {
+        font-size: 12px;
+        border-radius: 0;
+    }
+    
+    .line-numbers {
+        padding: 12px 8px;
+        font-size: 11px;
+    }
+    
+    .code-content {
+        padding: 12px 16px;
+    }
+    
+    .code-toolbar {
+        padding: 6px 12px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .code-action-btn {
+        padding: 3px 8px;
+        font-size: 11px;
+    }
+}
+
+/* スクロールバーのスタイリング */
+.code-viewer::-webkit-scrollbar,
+.code-content::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.code-viewer::-webkit-scrollbar-track,
+.code-content::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.code-viewer::-webkit-scrollbar-thumb,
+.code-content::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+.code-viewer::-webkit-scrollbar-thumb:hover,
+.code-content::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+.code-viewer.dark::-webkit-scrollbar-track,
+.code-viewer.dark .code-content::-webkit-scrollbar-track {
+    background: #2d2d30;
+}
+
+.code-viewer.dark::-webkit-scrollbar-thumb,
+.code-viewer.dark .code-content::-webkit-scrollbar-thumb {
+    background: #5a5a5e;
+}
+
+.code-viewer.dark::-webkit-scrollbar-thumb:hover,
+.code-viewer.dark .code-content::-webkit-scrollbar-thumb:hover {
+    background: #6a6a6e;
+}
+
+/* 印刷用スタイル */
+@media print {
+    .code-viewer {
+        border: 1px solid #000;
+        background: white;
+    }
+    
+    .code-toolbar,
+    .code-actions {
+        display: none;
+    }
+    
+    .line-numbers {
+        background: white;
+        border-right: 1px solid #ccc;
+    }
+    
+    .code-content {
+        background: white;
+        color: black;
+    }
+}
