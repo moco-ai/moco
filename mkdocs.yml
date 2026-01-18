@@ -134,11 +134,11 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - Guides:
-    - プロファイル作成: guides/profiles.md
-    - ガードレール設定: guides/guardrails.md
+    - プロファイル作成: profiles.md
+    - カスタムツール作成: custom-tools.md
   - API Reference:
-    - Core: api/core.md
-    - Tools: api/tools.md
+    - Core: core.md
+    - Tools: tools.md
 
 # Extra CSS/JS
 extra_css:
