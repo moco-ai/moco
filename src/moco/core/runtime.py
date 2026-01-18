@@ -87,8 +87,14 @@ from .context_compressor import ContextCompressor
 # ツール使用ログ用
 MAX_ARG_LEN = 40  # 引数の最大文字数
 
-# stdout が切れている環境（Web UIをバックグラウンド起動等）での Broken pipe 対策
-_STDOUT_BROKEN = False
+class StreamPrintState:
+    """stdout状態を管理するクラス（テスト時にリセット可能）"""
+    broken = False
+    
+    @classmethod
+    def reset(cls):
+        """テスト用：状態をリセット"""
+        cls.broken = False
 
 
 def _safe_stream_print(text: str) -> None:
@@ -97,16 +103,15 @@ def _safe_stream_print(text: str) -> None:
     Web UI 実行時などで stdout が閉じられていると BrokenPipeError / OSError(errno=32) が出るため、
     以後の標準出力を抑制して処理自体は継続する。
     """
-    global _STDOUT_BROKEN
-    if _STDOUT_BROKEN:
+    if StreamPrintState.broken:
         return
     try:
         print(text, end="", flush=True)
     except BrokenPipeError:
-        _STDOUT_BROKEN = True
+        StreamPrintState.broken = True
     except OSError as e:
         if getattr(e, "errno", None) == 32:
-            _STDOUT_BROKEN = True
+            StreamPrintState.broken = True
             return
         raise
 
@@ -847,6 +852,77 @@ class AgentRuntime:
             return get_agent_stats(days=7)
         except Exception as e:
             return f"(エージェント統計取得エラー: {e})"
+
+    async def _execute_tool_with_tracking(
+        self, 
+        func_name: str, 
+        args_dict: Dict[str, Any], 
+        session_id: Optional[str] = None
+    ) -> str:
+        """ツール実行とトラッキングの共通処理
+        
+        Args:
+            func_name: ツール名
+            args_dict: ツール引数
+            session_id: セッションID（キャンセルチェック用）
+            
+        Returns:
+            ツール実行結果
+        """
+        # ログ出力
+        _log_tool_use(func_name, args_dict, self.verbose)
+        
+        # 開始通知
+        if self.progress_callback:
+            icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
+            self.progress_callback(
+                event_type="tool", 
+                name=f"{icon} {name}", 
+                detail=arg_str, 
+                agent_name=self.agent_name, 
+                parent_agent=self.parent_agent, 
+                status="running",
+                tool_name=func_name
+            )
+        
+        if self.verbose:
+            print(f"  args: {args_dict}")
+
+        # キャンセルチェック
+        if session_id:
+            check_cancelled(session_id)
+
+        # ループ検出
+        allowed, block_msg = self.tool_tracker.check_and_record(func_name, args_dict)
+        if not allowed:
+            result = block_msg
+        elif func_name in self.available_tools:
+            try:
+                raw_result = await _execute_tool_safely_async(self.available_tools[func_name], args_dict)
+                result = _truncate_tool_output(raw_result, func_name)
+            except Exception as e:
+                result = f"Error executing {func_name}: {e}"
+        else:
+            result = f"Error: Tool {func_name} not found"
+
+        # コンテキスト上限チェック
+        result = self._update_context_usage(result)
+
+        # 終了通知
+        if self.progress_callback:
+            icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
+            self.progress_callback(
+                event_type="tool", 
+                name=f"{icon} {name}", 
+                detail=arg_str, 
+                agent_name=self.agent_name, 
+                parent_agent=self.parent_agent, 
+                status="completed",
+                tool_name=func_name,
+                result=result
+            )
+
+        return result
 
     async def run(self, user_input: str, history: Optional[List[Any]] = None, session_id: Optional[str] = None) -> str:
         """
