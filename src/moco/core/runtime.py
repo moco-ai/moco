@@ -1243,56 +1243,7 @@ class AgentRuntime:
                             except json.JSONDecodeError:
                                 args_dict = {}
 
-                            _log_tool_use(func_name, args_dict, self.verbose)
-                            if self.progress_callback:
-                                icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
-                                # 開始通知
-                                self.progress_callback(
-                                    event_type="tool", 
-                                    name=f"{icon} {name}", 
-                                    detail=arg_str, 
-                                    agent_name=self.agent_name, 
-                                    parent_agent=self.parent_agent, 
-                                    status="running",
-                                    tool_name=func_name
-                                )
-                            
-                            if self.verbose:
-                                print(f"  args: {args_dict}")
-
-                            # ツール実行直前のキャンセルチェック
-                            if session_id:
-                                check_cancelled(session_id)
-
-                            # ループ検出
-                            allowed, block_msg = self.tool_tracker.check_and_record(func_name, args_dict)
-                            if not allowed:
-                                result = block_msg
-                            elif func_name in self.available_tools:
-                                try:
-                                    raw_result = await _execute_tool_safely_async(self.available_tools[func_name], args_dict)
-                                    result = _truncate_tool_output(raw_result, func_name)
-                                except Exception as e:
-                                    result = f"Error executing {func_name}: {e}"
-                            else:
-                                result = f"Error: Tool {func_name} not found"
-
-                            # コンテキスト上限チェック
-                            result = self._update_context_usage(result)
-
-                            if self.progress_callback:
-                                icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
-                                # 終了通知
-                                self.progress_callback(
-                                    event_type="tool", 
-                                    name=f"{icon} {name}", 
-                                    detail=arg_str, 
-                                    agent_name=self.agent_name, 
-                                    parent_agent=self.parent_agent, 
-                                    status="completed",
-                                    tool_name=func_name,
-                                    result=result
-                                )
+                            result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
 
                             messages.append({
                                 "role": "tool",
@@ -1381,49 +1332,7 @@ class AgentRuntime:
                     except json.JSONDecodeError:
                         args_dict = {}
 
-                    _log_tool_use(func_name, args_dict, self.verbose)
-                    if self.progress_callback:
-                        icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
-                        self.progress_callback(
-                            event_type="tool", 
-                            name=f"{icon} {name}", 
-                            detail=arg_str, 
-                            agent_name=self.agent_name, 
-                            parent_agent=self.parent_agent, 
-                            status="running",
-                            tool_name=func_name
-                        )
-                    if self.verbose:
-                        print(f"  args: {args_dict}")
-
-                    # ループ検出
-                    allowed, block_msg = self.tool_tracker.check_and_record(func_name, args_dict)
-                    if not allowed:
-                        result = block_msg
-                    elif func_name in self.available_tools:
-                        try:
-                            raw_result = await _execute_tool_safely_async(self.available_tools[func_name], args_dict)
-                            result = _truncate_tool_output(raw_result, func_name)
-                        except Exception as e:
-                            result = f"Error executing {func_name}: {e}"
-                    else:
-                        result = f"Error: Tool {func_name} not found"
-
-                    # コンテキスト上限チェック
-                    result = self._update_context_usage(result)
-
-                    if self.progress_callback:
-                        icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
-                        self.progress_callback(
-                            event_type="tool", 
-                            name=f"{icon} {name}", 
-                            detail=arg_str, 
-                            agent_name=self.agent_name, 
-                            parent_agent=self.parent_agent, 
-                            status="completed",
-                            tool_name=func_name,
-                            result=result
-                        )
+                    result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
 
                     # ツール結果を追加
                     messages.append({
@@ -1577,47 +1486,7 @@ class AgentRuntime:
                                 elif isinstance(args, dict):
                                     args_dict = args
 
-                            _log_tool_use(func_name, args_dict, self.verbose)
-                            if self.progress_callback:
-                                icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
-                                self.progress_callback(
-                                    event_type="tool",
-                                    name=f"{icon} {name}",
-                                    detail=arg_str,
-                                    agent_name=self.agent_name,
-                                    parent_agent=self.parent_agent,
-                                    status="running",
-                                    tool_name=func_name
-                                )
-                            if self.verbose:
-                                print(f"  args: {args_dict}")
-
-                            allowed, block_msg = self.tool_tracker.check_and_record(func_name, args_dict)
-                            if not allowed:
-                                result = block_msg
-                            elif func_name in self.available_tools:
-                                try:
-                                    raw_result = await _execute_tool_safely_async(self.available_tools[func_name], args_dict)
-                                    result = _truncate_tool_output(raw_result, func_name)
-                                except Exception as e:
-                                    result = f"Error executing {func_name}: {e}"
-                            else:
-                                result = f"Error: Tool {func_name} not found"
-
-                            result = self._update_context_usage(result)
-
-                            if self.progress_callback:
-                                icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
-                                self.progress_callback(
-                                    event_type="tool",
-                                    name=f"{icon} {name}",
-                                    detail=arg_str,
-                                    agent_name=self.agent_name,
-                                    parent_agent=self.parent_agent,
-                                    status="completed",
-                                    tool_name=func_name,
-                                    result=result
-                                )
+                            result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
 
                             tool_responses.append(
                                 types.Part(
@@ -1681,44 +1550,7 @@ class AgentRuntime:
                                 elif isinstance(args, dict):
                                     args_dict = args
 
-                            _log_tool_use(func_name, args_dict, self.verbose)
-                            if self.progress_callback:
-                                icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
-                                self.progress_callback(
-                                    event_type="tool",
-                                    name=f"{icon} {name}",
-                                    detail=arg_str,
-                                    agent_name=self.agent_name,
-                                    parent_agent=self.parent_agent,
-                                    status="running",
-                                    tool_name=func_name
-                                )
-                            
-                            allowed, block_msg = self.tool_tracker.check_and_record(func_name, args_dict)
-                            if not allowed:
-                                result = block_msg
-                            elif func_name in self.available_tools:
-                                try:
-                                    raw_result = await _execute_tool_safely_async(self.available_tools[func_name], args_dict)
-                                    result = _truncate_tool_output(raw_result, func_name)
-                                except Exception as e:
-                                    result = f"Error executing {func_name}: {e}"
-                            else:
-                                result = f"Error: Tool {func_name} not found"
-
-                            result = self._update_context_usage(result)
-
-                            if self.progress_callback:
-                                icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
-                                self.progress_callback(
-                                    event_type="tool",
-                                    name=f"{icon} {name}",
-                                    detail=arg_str,
-                                    agent_name=self.name,
-                                    status="completed",
-                                    tool_name=func_name,
-                                    result=result
-                                )
+                            result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
 
                             tool_responses.append(
                                 types.Part(
