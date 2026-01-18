@@ -134,7 +134,6 @@ pipx install .
 # .env ファイルを作成
 cat << EOF > .env
 # Gemini（デフォルト）
-GENAI_API_KEY=your-gemini-api-key
 GEMINI_API_KEY=your-gemini-api-key
 
 # OpenAI（オプション）
@@ -142,6 +141,9 @@ OPENAI_API_KEY=your-openai-api-key
 
 # OpenRouter（オプション）
 OPENROUTER_API_KEY=your-openrouter-api-key
+
+# Z.ai（オプション）
+ZAI_API_KEY=your-zai-api-key
 EOF
 ```
 
