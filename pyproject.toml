@@ -31,7 +31,9 @@ dependencies = [
     "faiss-cpu",
     "tiktoken",
     "aiohttp",
-    "openai"
+    "openai",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0"
 ]
 
 [project.scripts]
@@ -41,7 +43,7 @@ moco = "moco.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-moco = ["*.md", "core/prompts/*.yaml"]
+moco = ["*.md", "core/prompts/*.yaml", "ui/static/**/*", "ui/templates/**/*", "dashboard/templates/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

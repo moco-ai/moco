@@ -1188,6 +1188,29 @@ def tasks_exec(
         )
 
 
+@app.command()
+def ui(
+    host: str = typer.Option("0.0.0.0", "--host", "-h", help="ホストアドレス"),
+    port: int = typer.Option(8000, "--port", "-p", help="ポート番号"),
+    reload: bool = typer.Option(False, "--reload", "-r", help="開発モード（自動リロード）"),
+):
+    """Web UI を起動"""
+    import uvicorn
+    from rich.console import Console
+    
+    console = Console()
+    console.print(f"\n🚀 [bold cyan]Moco Web UI[/bold cyan] starting...")
+    console.print(f"   URL: [link]http://{host if host != '0.0.0.0' else 'localhost'}:{port}[/link]\n")
+    
+    uvicorn.run(
+        "moco.ui.api:app",
+        host=host,
+        port=port,
+        reload=reload,
+        log_level="info"
+    )
+
+
 def main():
     app()
 
