@@ -1,11 +1,13 @@
-# moco
+# MOCO
+
+> **M**ulti-agent **O**rchestration **CO**re
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> マルチプロバイダ対応・プロファイルベースの軽量AIエージェントフレームワーク
+**マルチプロバイダ対応・プロファイルベースの軽量AIエージェントオーケストレーションフレームワーク**
 
-moco は、複数のLLMプロバイダ（Gemini, OpenAI, OpenRouter）に対応し、ドメイン別のプロファイルでエージェントの振る舞いを柔軟にカスタマイズできるAIエージェントオーケストレーションフレームワークです。
+MOCO は、複数のLLMプロバイダ（Gemini, OpenAI, OpenRouter, Z.ai）に対応し、ドメイン別のプロファイルで複数エージェントの振る舞いを柔軟にカスタマイズできるマルチエージェントオーケストレーションフレームワークです。
 
 ## ✨ 特徴
 
