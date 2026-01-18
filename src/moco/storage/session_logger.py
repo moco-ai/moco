@@ -86,19 +86,19 @@ ROLLING_SUMMARIZE_PROMPT = """以下は「過去の要約」と「新しい会�
 
 class ContextHealthMonitor:
     """コンテキストの健康状態を監視"""
-    
+
     NOTICE_THRESHOLD = 4000
     WARNING_THRESHOLD = 6000
     CRITICAL_THRESHOLD = 8000
-    
+
     def __init__(self, chars_per_token: float = 2.5):
         self.chars_per_token = chars_per_token
-    
+
     def estimate_tokens(self, text: str) -> int:
         if not text:
             return 0
         return int(len(text) / self.chars_per_token)
-    
+
     def check_health(self, history: List[Dict], system_prompt: str = "") -> Dict[str, Any]:
         """コンテキストの健康状態をチェック"""
         total_chars = len(system_prompt)
@@ -107,13 +107,13 @@ class ContextHealthMonitor:
             if isinstance(content, list):
                 content = str(content)
             total_chars += len(str(content))
-        
+
         # total_chars は文字数。文字数からトークン数を推定する（数値を文字列化しない）
         total_tokens = int(total_chars / self.chars_per_token) if total_chars else 0
-        
+
         is_healthy = total_tokens < self.WARNING_THRESHOLD
         warning = None
-        
+
         if total_tokens >= self.CRITICAL_THRESHOLD:
             warning = f"🚨 CRITICAL: コンテキストが{total_tokens}トークン。要約を推奨。"
             is_healthy = False
@@ -121,7 +121,7 @@ class ContextHealthMonitor:
             warning = f"⚠️ WARNING: コンテキストが{total_tokens}トークン。"
         elif total_tokens >= self.NOTICE_THRESHOLD:
             warning = f"💡 NOTICE: コンテキストが{total_tokens}トークン。"
-        
+
         return {
             "total_tokens": total_tokens,
             "is_healthy": is_healthy,
@@ -135,7 +135,7 @@ class SessionLogger:
     Logger for persisting session history to SQLite.
     Supports rolling summarization for long sessions.
     """
-    
+
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or _get_default_db_path()
         self._lock = threading.RLock()
@@ -152,13 +152,13 @@ class SessionLogger:
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")
         return conn
-    
+
     def _init_db(self):
         """Initialize database tables."""
         try:
             conn = self._get_connection()
             cursor = conn.cursor()
-            
+
             # Sessions table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -171,7 +171,7 @@ class SessionLogger:
                     metadata TEXT
                 )
             """)
-            
+
             # Add profile column if it doesn't exist (for backward compatibility)
             try:
                 cursor.execute("ALTER TABLE sessions ADD COLUMN profile TEXT NOT NULL DEFAULT 'default'")
@@ -180,7 +180,7 @@ class SessionLogger:
                 if "duplicate column name" not in str(e):
                     raise
 
-            
+
             # Session Events table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS session_events (
@@ -193,7 +193,7 @@ class SessionLogger:
                     FOREIGN KEY (session_id) REFERENCES sessions(session_id)
                 )
             """)
-            
+
             # Agent conversation history
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS agent_messages (
@@ -206,7 +206,7 @@ class SessionLogger:
                     FOREIGN KEY (session_id) REFERENCES sessions(session_id)
                 )
             """)
-            
+
             # Rolling summaries
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS session_summaries (
@@ -226,7 +226,7 @@ class SessionLogger:
                 # duplicate column name -> already migrated
                 if "duplicate column name" not in str(e):
                     raise
-            
+
             # Todo list items
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS todos (
@@ -240,18 +240,18 @@ class SessionLogger:
                     FOREIGN KEY (session_id) REFERENCES sessions(session_id)
                 )
             """)
-            
+
             # Indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_status ON sessions(status)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_event_session ON session_events(session_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_session ON agent_messages(session_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_todos_session ON todos(session_id)")
-            
+
             conn.commit()
             conn.close()
         except Exception as e:
             logger.error(f"DB init failed: {e}")
-    
+
     def create_session(self, profile: str = 'default', title: str = "New Session", **metadata) -> str:
         """Create a new session and return its ID."""
         session_id = f"SES-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
@@ -259,31 +259,31 @@ class SessionLogger:
             with self._lock:
                 conn = self._get_connection()
                 cursor = conn.cursor()
-                
+
                 now = datetime.now().isoformat()
                 metadata_json = json.dumps(metadata, ensure_ascii=False)
-                
+
                 cursor.execute("""
                     INSERT INTO sessions (session_id, status, title, profile, created_at, last_updated, metadata)
                     VALUES (?, 'OPEN', ?, ?, ?, ?, ?)
                 """, (session_id, title, profile, now, now, metadata_json))
-                
+
                 conn.commit()
                 conn.close()
-                
+
             logger.info(f"Created session: {session_id} with profile: {profile}")
             return session_id
         except Exception as e:
             logger.error(f"Failed to create session: {e}")
             return session_id
-    
+
     def list_sessions(self, limit: int = 10, profile: str = None) -> List[Dict[str, Any]]:
         """List recent sessions, optionally filtered by profile."""
         try:
             with self._lock:
                 conn = self._get_connection()
                 cursor = conn.cursor()
-                
+
                 if profile:
                     cursor.execute("""
                         SELECT session_id, title, profile, status, created_at, last_updated
@@ -299,10 +299,10 @@ class SessionLogger:
                         ORDER BY last_updated DESC
                         LIMIT ?
                     """, (limit,))
-                
+
                 rows = cursor.fetchall()
                 conn.close()
-                
+
                 return [
                     {
                         "session_id": row[0],
@@ -317,7 +317,7 @@ class SessionLogger:
         except Exception as e:
             logger.error(f"Failed to list sessions: {e}")
             return []
-    
+
     def log_agent_message(
         self,
         session_id: str,
@@ -330,25 +330,25 @@ class SessionLogger:
             with self._lock:
                 conn = self._get_connection()
                 cursor = conn.cursor()
-                
+
                 message_id = str(uuid.uuid4())
                 now = datetime.now().isoformat()
-                
+
                 cursor.execute("""
                     INSERT INTO agent_messages (message_id, session_id, timestamp, role, agent_id, content)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (message_id, session_id, now, role, agent_id, content))
-                
+
                 # Update session last_updated
                 cursor.execute("""
                     UPDATE sessions SET last_updated = ? WHERE session_id = ?
                 """, (now, session_id))
-                
+
                 conn.commit()
                 conn.close()
         except Exception as e:
             logger.error(f"Failed to log agent message: {e}")
-    
+
     def get_agent_history(
         self,
         session_id: str,
@@ -358,7 +358,7 @@ class SessionLogger:
     ) -> List[Dict[str, Any]]:
         """
         Get agent conversation history with optional summarization.
-        
+
         Args:
             session_id: Session ID
             limit: Max messages to return
@@ -368,16 +368,16 @@ class SessionLogger:
         try:
             # Get existing summary
             summary = self._get_rolling_summary(session_id)
-            
+
             # Get recent messages
             messages = self._get_recent_messages(session_id, limit)
-            
+
             if not messages:
                 return []
-            
+
             # Check context health
             health = self.context_monitor.check_health(messages)
-            
+
             # セッション内は全件保持（Cursor方式）
             # 要約は context_compressor で 200K トークン超えた時のみ
             # if health["recommend_summarize"] and len(messages) > 30:
@@ -385,9 +385,9 @@ class SessionLogger:
             #     self._update_rolling_summary(session_id, summary, older_messages)
             #     messages = messages[-20:]
             #     summary = self._get_rolling_summary(session_id)
-            
+
             result = []
-            
+
             # Add summary if exists
             if summary:
                 summary_text = f"[過去の会話の要約]\n{summary}\n[要約ここまで]"
@@ -395,7 +395,7 @@ class SessionLogger:
                     result.append({"role": "user", "parts": [summary_text]})
                 else:
                     result.append({"role": "system", "content": summary_text})
-            
+
             # Add recent messages
             for msg in messages:
                 role = "user" if msg["role"] == "user" else ("model" if format == "gemini" else "assistant")
@@ -403,13 +403,13 @@ class SessionLogger:
                     result.append({"role": role, "parts": [msg["content"]]})
                 else:
                     result.append({"role": role, "content": msg["content"]})
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(f"Failed to get agent history: {e}")
             return []
-    
+
     def get_messages(self, session_id: str, limit: int = 100) -> List[Dict[str, Any]]:
         """Get raw messages for a session."""
         return self._get_recent_messages(session_id, limit)
@@ -421,7 +421,7 @@ class SessionLogger:
                 conn = self._get_connection()
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                
+
                 cursor.execute("""
                     SELECT role, content, agent_id, timestamp
                     FROM agent_messages
@@ -429,30 +429,30 @@ class SessionLogger:
                     ORDER BY timestamp DESC
                     LIMIT ?
                 """, (session_id, limit))
-                
+
                 rows = cursor.fetchall()
                 conn.close()
-            
+
             # Reverse to get oldest first
             return [dict(row) for row in reversed(rows)]
         except Exception as e:
             logger.error(f"Failed to get messages: {e}")
             return []
-    
+
     def _get_rolling_summary(self, session_id: str) -> Optional[str]:
         """Get existing rolling summary."""
         try:
             with self._lock:
                 conn = self._get_connection()
                 cursor = conn.cursor()
-                
+
                 cursor.execute("""
                     SELECT summary FROM session_summaries WHERE session_id = ?
                 """, (session_id,))
-                
+
                 row = cursor.fetchone()
                 conn.close()
-                
+
                 return row[0] if row else None
         except Exception as e:
             logger.error(f"Failed to get summary: {e}")
@@ -464,28 +464,28 @@ class SessionLogger:
             with self._lock:
                 conn = self._get_connection()
                 cursor = conn.cursor()
-                
+
                 cursor.execute("""
                     SELECT summary_count FROM session_summaries WHERE session_id = ?
                 """, (session_id,))
-                
+
                 row = cursor.fetchone()
                 conn.close()
-                
+
                 return row[0] if row and row[0] else 0
         except Exception as e:
             logger.error(f"Failed to get summary depth: {e}")
             return 0
-    
+
     def _save_rolling_summary(self, session_id: str, summary: str):
         """Save rolling summary."""
         try:
             with self._lock:
                 conn = self._get_connection()
                 cursor = conn.cursor()
-                
+
                 now = datetime.now().isoformat()
-                
+
                 # 既存のsummary_countを取得
                 cursor.execute(
                     "SELECT summary_count FROM session_summaries WHERE session_id = ?",
@@ -493,51 +493,51 @@ class SessionLogger:
                 )
                 row = cursor.fetchone()
                 current_count = (row[0] or 0) if row else 0
-                
+
                 cursor.execute("""
-                    INSERT OR REPLACE INTO session_summaries 
+                    INSERT OR REPLACE INTO session_summaries
                     (session_id, summary, summarized_until_timestamp, updated_at, summary_count)
                     VALUES (?, ?, ?, ?, ?)
                 """, (session_id, summary, now, now, current_count + 1))
-                
+
                 conn.commit()
                 conn.close()
         except Exception as e:
             logger.error(f"Failed to save summary: {e}")
-    
+
     def _update_rolling_summary(
-        self, 
-        session_id: str, 
-        existing_summary: Optional[str], 
+        self,
+        session_id: str,
+        existing_summary: Optional[str],
         messages: List[Dict[str, Any]]
     ) -> Optional[str]:
         """Update rolling summary with new messages."""
         if not messages:
             return existing_summary
-        
+
         if not GENAI_AVAILABLE:
             logger.warning("Gemini not available for summarization")
             return existing_summary
-        
+
         try:
             api_key = (
-                os.environ.get("GEMINI_API_KEY") or 
-                os.environ.get("GENAI_API_KEY") or 
+                os.environ.get("GENAI_API_KEY") or
+                os.environ.get("GEMINI_API_KEY") or
                 os.environ.get("GOOGLE_API_KEY")
             )
             if not api_key:
                 logger.warning("No API key for summarization")
                 return existing_summary
-            
+
             client = genai.Client(api_key=api_key)
-            
+
             # Build conversation text
             conversation_lines = []
             for msg in messages:
                 role = "ユーザー" if msg["role"] == "user" else "アシスタント"
                 conversation_lines.append(f"{role}: {msg['content'][:500]}")
             new_conversation = "\n".join(conversation_lines)
-            
+
             # Build prompt
             if existing_summary:
                 prompt = ROLLING_SUMMARIZE_PROMPT.format(
@@ -546,25 +546,25 @@ class SessionLogger:
                 )
             else:
                 prompt = SUMMARIZE_PROMPT.format(conversation=new_conversation)
-            
+
             # Call LLM
             response = client.models.generate_content(
                 model=_get_summarize_model(),
                 contents=prompt
             )
-            
+
             new_summary = response.text.strip() if response.text else None
-            
+
             if new_summary:
                 self._save_rolling_summary(session_id, new_summary)
                 logger.info(f"Updated summary for session {session_id}")
-            
+
             return new_summary
-            
+
         except Exception as e:
             logger.error(f"Failed to update summary: {e}")
             return existing_summary
-    
+
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Get session details."""
         try:
@@ -572,11 +572,11 @@ class SessionLogger:
                 conn = self._get_connection()
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                
+
                 cursor.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,))
                 row = cursor.fetchone()
                 conn.close()
-                
+
                 if row:
                     data = dict(row)
                     if data.get("metadata"):
@@ -589,24 +589,24 @@ class SessionLogger:
         except Exception as e:
             logger.error(f"Failed to get session: {e}")
             return None
-    
+
     def get_session_profile(self, session_id: str) -> str:
         """Get the profile of a session."""
         try:
             with self._lock:
                 conn = self._get_connection()
                 cursor = conn.cursor()
-                
+
                 cursor.execute("SELECT profile FROM sessions WHERE session_id = ?", (session_id,))
                 row = cursor.fetchone()
                 conn.close()
-                
+
                 return row[0] if row else 'default'
         except Exception as e:
             logger.error(f"Failed to get session profile for {session_id}: {e}")
             return 'default'
 
-    
+
     def add_event(self, session_id: str, event_type: str, source: str, content: Any) -> str:
         """Add an event to a session."""
         event_id = str(uuid.uuid4())
@@ -614,41 +614,41 @@ class SessionLogger:
             with self._lock:
                 conn = self._get_connection()
                 cursor = conn.cursor()
-                
+
                 now = datetime.now().isoformat()
                 content_json = json.dumps(content, ensure_ascii=False) if not isinstance(content, str) else content
-                
+
                 cursor.execute("""
                     INSERT INTO session_events (event_id, session_id, timestamp, event_type, source, content)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (event_id, session_id, now, event_type, source, content_json))
-                
+
                 cursor.execute("""
                     UPDATE sessions SET last_updated = ? WHERE session_id = ?
                 """, (now, session_id))
-                
+
                 conn.commit()
                 conn.close()
-                
+
             return event_id
         except Exception as e:
             logger.error(f"Failed to add event: {e}")
             return event_id
-    
+
     def update_session_status(self, session_id: str, status: str):
         """Update session status."""
         try:
             with self._lock:
                 conn = self._get_connection()
                 cursor = conn.cursor()
-                
+
                 now = datetime.now().isoformat()
-                
+
                 cursor.execute("""
                     UPDATE sessions SET status = ?, last_updated = ?
                     WHERE session_id = ?
                 """, (status, now, session_id))
-                
+
                 conn.commit()
                 conn.close()
         except Exception as e:
@@ -660,10 +660,10 @@ class SessionLogger:
             with self._lock:
                 conn = self._get_connection()
                 cursor = conn.cursor()
-                
+
                 # Delete existing todos for this session
                 cursor.execute("DELETE FROM todos WHERE session_id = ?", (session_id,))
-                
+
                 # Insert or replace todos
                 now = datetime.now().isoformat()
                 for todo in todos:
@@ -685,7 +685,7 @@ class SessionLogger:
                         now,
                         now
                     ))
-                
+
                 conn.commit()
                 conn.close()
         except Exception as e:
@@ -699,31 +699,31 @@ class SessionLogger:
                 conn = self._get_connection()
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                
+
                 cursor.execute("""
-                    SELECT id, content, status, priority 
-                    FROM todos 
+                    SELECT id, content, status, priority
+                    FROM todos
                     WHERE session_id = ?
                     ORDER BY created_at ASC
                 """, (session_id,))
-                
+
                 rows = cursor.fetchall()
                 conn.close()
-                
+
                 return [dict(row) for row in rows]
         except Exception as e:
             logger.error(f"Failed to get todos: {e}")
             return []
-    
+
     def clear_summary(self, session_id: str):
         """Clear the rolling summary for a session."""
         try:
             with self._lock:
                 conn = self._get_connection()
                 cursor = conn.cursor()
-                
+
                 cursor.execute("DELETE FROM session_summaries WHERE session_id = ?", (session_id,))
-                
+
                 conn.commit()
                 conn.close()
         except Exception as e:

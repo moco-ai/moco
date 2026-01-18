@@ -4,35 +4,11 @@ import os
 import subprocess
 import re
 from typing import List, Optional
+from moco.utils.path import resolve_safe_path
 
 
 # ESLint Unix format: path:line:column: message
 ESLINT_UNIX_RE = re.compile(r'^(.+):(\d+):(\d+): (.*)$')
-
-
-def _resolve_path(path: str) -> str:
-    """
-    相対パスを MOCO_WORKING_DIRECTORY を基準に解決する。
-    絶対パスの場合はそのまま返す。
-    """
-    if os.path.isabs(path):
-        res = path
-    else:
-        working_dir = os.environ.get('MOCO_WORKING_DIRECTORY')
-        if working_dir:
-            res = os.path.join(working_dir, path)
-        else:
-            res = path
-
-    # セキュリティチェック: 作業ディレクトリ外のアクセスを制限
-    working_dir = os.environ.get('MOCO_WORKING_DIRECTORY')
-    if working_dir:
-        abs_working_dir = os.path.abspath(working_dir)
-        abs_res = os.path.abspath(res)
-        # commonpath は共通の親ディレクトリを返します
-        if os.path.commonpath([abs_working_dir, abs_res]) != abs_working_dir:
-            raise ValueError(f"Security Error: Path {res} is outside of the working directory {abs_working_dir}")
-    return res
 
 
 def read_lints(paths: Optional[List[str]] = None) -> str:
@@ -48,7 +24,7 @@ def read_lints(paths: Optional[List[str]] = None) -> str:
     if paths is None:
         paths = ["."]
 
-    resolved_paths = [_resolve_path(p) for p in paths]
+    resolved_paths = [resolve_safe_path(p) for p in paths]
     all_errors = []
 
     for path in resolved_paths:
@@ -73,19 +49,19 @@ def read_lints(paths: Optional[List[str]] = None) -> str:
 def _run_linter_for_file(file_path: str) -> List[str]:
     """特定のファイルに対して適切なリンターを実行する"""
     ext = os.path.splitext(file_path)[1].lower()
-    
+
     if ext == ".py":
         return _run_python_linter(file_path)
     elif ext in [".js", ".jsx", ".ts", ".tsx"]:
         return _run_javascript_linter(file_path)
-    
+
     return []
 
 
 def _run_linter_for_dir(dir_path: str) -> List[str]:
     """ディレクトリ全体に対してリンターを実行する"""
     errors = []
-    
+
     # ファイルの存在チェックを1回の走査で行う
     has_py = False
     has_js = False
@@ -96,13 +72,13 @@ def _run_linter_for_dir(dir_path: str) -> List[str]:
             has_js = True
         if has_py and has_js:
             break
-            
+
     if has_py:
         errors.extend(_run_python_linter(dir_path))
-    
+
     if has_js:
         errors.extend(_run_javascript_linter(dir_path))
-    
+
     return errors
 
 
@@ -154,7 +130,7 @@ def _run_javascript_linter(target: str) -> List[str]:
             text=True,
             check=False
         )
-        
+
         stdout = result.stdout.strip()
         if stdout:
             lines = stdout.splitlines()

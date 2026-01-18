@@ -688,10 +688,12 @@ class AgentRuntime:
         else:
             # Gemini
             api_key = (
-                os.environ.get("GEMINI_API_KEY") or
                 os.environ.get("GENAI_API_KEY") or
+                os.environ.get("GEMINI_API_KEY") or
                 os.environ.get("GOOGLE_API_KEY")
             )
+            if not api_key:
+                raise ValueError("GENAI_API_KEY, GEMINI_API_KEY, or GOOGLE_API_KEY not set")
             self.client = genai.Client(api_key=api_key)
             self.openai_client = None
 
@@ -1356,11 +1358,290 @@ class AgentRuntime:
         return "Error: Max iterations reached without response."
 
     async def _run_gemini(self, user_input: str, history: Optional[List[Any]] = None, session_id: Optional[str] = None) -> str:
-        """Geminiでエージェントを実行（asyncラッパー）"""
-        return await asyncio.to_thread(self._run_gemini_sync, user_input, history, session_id=session_id)
+        """Geminiでエージェントを実行"""
+        if history is None:
+            history = []
 
-    def _run_gemini_sync(self, user_input: str, history: Optional[List[Any]] = None, session_id: Optional[str] = None) -> str:
-        """Geminiでエージェントを実行（sync本体）"""
+        # システムプロンプトの構築
+        system_instruction = self._get_system_prompt()
+
+        # ツール設定
+        tools_config = None
+        if self.tool_declarations:
+            # Python関数をそのまま渡すと自動的にスキーマ生成される
+            tools_config = [types.Tool(function_declarations=self.tool_declarations)]
+
+        messages = []
+        # 履歴の追加（dict形式をContent形式に変換）
+        for h in history:
+            if isinstance(h, dict):
+                role = h.get("role", "user")
+                parts = h.get("parts", [])
+                if not parts and "content" in h:
+                    parts = [h["content"]]
+                # partsをPartオブジェクトに変換
+                part_objects = []
+                for p in parts:
+                    if isinstance(p, str):
+                        part_objects.append(types.Part(text=p))
+                    else:
+                        part_objects.append(p)
+                messages.append(types.Content(role=role, parts=part_objects))
+            else:
+                # 既にContent形式の場合
+                messages.append(h)
+
+        messages.append(types.Content(role="user", parts=[types.Part(text=user_input)]))
+
+        # 設定（thinking mode を有効化）
+        config = types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            tools=tools_config,
+            temperature=0.7,
+            thinking_config=types.ThinkingConfig(
+                include_thoughts=True,
+                thinking_budget=32768,  # API仕様上の最小値
+            ),
+        )
+
+        while True:
+            if session_id:
+                check_cancelled(session_id)
+
+            try:
+                if self.stream:
+                    # ストリーミングモード
+                    response_stream = self.client.models.generate_content_stream(
+                        model=self.model_name,
+                        contents=messages,
+                        config=config
+                    )
+
+                    collected_text = ""
+                    collected_parts = []
+                    function_calls = []
+
+                    for chunk in response_stream:
+                        # usage情報の取得
+                        if chunk.usage_metadata:
+                            self.last_usage = {
+                                "prompt_tokens": chunk.usage_metadata.prompt_token_count,
+                                "completion_tokens": chunk.usage_metadata.candidates_token_count,
+                                "total_tokens": chunk.usage_metadata.total_token_count
+                            }
+
+                        if not chunk.candidates:
+                            continue
+
+                        candidate = chunk.candidates[0]
+                        if not candidate.content:
+                            continue
+
+                        for part in candidate.content.parts or []:
+                            # 思考プロセスの表示
+                            if hasattr(part, 'thought') and part.thought and part.text:
+                                if self.progress_callback:
+                                    self.progress_callback(
+                                        event_type="thinking",
+                                        content=part.text,
+                                        agent_name=self.name
+                                    )
+                                else:
+                                    thought_text = f"\n💭 [思考中...]\n{part.text}\n[/思考]\n"
+                                    _safe_stream_print(thought_text)
+                                continue
+                            if part.text:
+                                _safe_stream_print(part.text)
+                                collected_text += part.text
+                                self._partial_response = collected_text
+                                collected_parts.append(part)
+                                if self.progress_callback:
+                                    self.progress_callback(
+                                        event_type="chunk",
+                                        content=part.text,
+                                        agent_name=self.name
+                                    )
+                            if part.function_call:
+                                function_calls.append(part.function_call)
+                                collected_parts.append(part)
+
+                    if collected_text:
+                        _safe_stream_print("\n")
+
+                    if function_calls:
+                        messages.append(types.Content(role="model", parts=collected_parts))
+                        tool_responses = []
+                        for fc in function_calls:
+                            func_name = fc.name
+                            args = fc.args
+                            args_dict = {}
+                            if args:
+                                if hasattr(args, "items"):
+                                    args_dict = {k: v for k, v in args.items()}
+                                elif isinstance(args, dict):
+                                    args_dict = args
+
+                            _log_tool_use(func_name, args_dict, self.verbose)
+                            if self.progress_callback:
+                                icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
+                                self.progress_callback(
+                                    event_type="tool",
+                                    name=f"{icon} {name}",
+                                    detail=arg_str,
+                                    agent_name=self.agent_name,
+                                    parent_agent=self.parent_agent,
+                                    status="running",
+                                    tool_name=func_name
+                                )
+                            if self.verbose:
+                                print(f"  args: {args_dict}")
+
+                            allowed, block_msg = self.tool_tracker.check_and_record(func_name, args_dict)
+                            if not allowed:
+                                result = block_msg
+                            elif func_name in self.available_tools:
+                                try:
+                                    raw_result = await _execute_tool_safely_async(self.available_tools[func_name], args_dict)
+                                    result = _truncate_tool_output(raw_result, func_name)
+                                except Exception as e:
+                                    result = f"Error executing {func_name}: {e}"
+                            else:
+                                result = f"Error: Tool {func_name} not found"
+
+                            result = self._update_context_usage(result)
+
+                            if self.progress_callback:
+                                icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
+                                self.progress_callback(
+                                    event_type="tool",
+                                    name=f"{icon} {name}",
+                                    detail=arg_str,
+                                    agent_name=self.agent_name,
+                                    parent_agent=self.parent_agent,
+                                    status="completed",
+                                    tool_name=func_name,
+                                    result=result
+                                )
+
+                            tool_responses.append(
+                                types.Part(
+                                    function_response=types.FunctionResponse(
+                                        name=func_name,
+                                        response={"result": _ensure_jsonable(result)}
+                                    )
+                                )
+                            )
+                        messages.append(types.Content(role="tool", parts=tool_responses))
+                        continue
+                    else:
+                        return collected_text
+
+                else:
+                    # 非ストリーミングモード
+                    response = self.client.models.generate_content(
+                        model=self.model_name,
+                        contents=messages,
+                        config=config
+                    )
+                    
+                    if response.usage_metadata:
+                        self.last_usage = {
+                            "prompt_tokens": response.usage_metadata.prompt_token_count,
+                            "completion_tokens": response.usage_metadata.candidates_token_count,
+                            "total_tokens": response.usage_metadata.total_token_count
+                        }
+
+                    if not response.candidates:
+                        return "Error: No response candidates from Gemini."
+
+                    candidate = response.candidates[0]
+                    message = candidate.content
+                    if not message:
+                        return "Error: Empty response content from Gemini."
+
+                    messages.append(message)
+                    
+                    for part in message.parts or []:
+                        if hasattr(part, 'thought') and part.thought and part.text:
+                            if self.progress_callback:
+                                self.progress_callback(
+                                    event_type="thinking",
+                                    content=part.text,
+                                    agent_name=self.name
+                                )
+                            else:
+                                print(f"\n💭 [思考中...]\n{part.text}\n[/思考]")
+
+                    function_calls = [p.function_call for p in message.parts if p.function_call]
+                    if function_calls:
+                        tool_responses = []
+                        for fc in function_calls:
+                            func_name = fc.name
+                            args = fc.args
+                            args_dict = {}
+                            if args:
+                                if hasattr(args, "items"):
+                                    args_dict = {k: v for k, v in args.items()}
+                                elif isinstance(args, dict):
+                                    args_dict = args
+
+                            _log_tool_use(func_name, args_dict, self.verbose)
+                            if self.progress_callback:
+                                icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
+                                self.progress_callback(
+                                    event_type="tool",
+                                    name=f"{icon} {name}",
+                                    detail=arg_str,
+                                    agent_name=self.agent_name,
+                                    parent_agent=self.parent_agent,
+                                    status="running",
+                                    tool_name=func_name
+                                )
+                            
+                            allowed, block_msg = self.tool_tracker.check_and_record(func_name, args_dict)
+                            if not allowed:
+                                result = block_msg
+                            elif func_name in self.available_tools:
+                                try:
+                                    raw_result = await _execute_tool_safely_async(self.available_tools[func_name], args_dict)
+                                    result = _truncate_tool_output(raw_result, func_name)
+                                except Exception as e:
+                                    result = f"Error executing {func_name}: {e}"
+                            else:
+                                result = f"Error: Tool {func_name} not found"
+
+                            result = self._update_context_usage(result)
+
+                            if self.progress_callback:
+                                icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
+                                self.progress_callback(
+                                    event_type="tool",
+                                    name=f"{icon} {name}",
+                                    detail=arg_str,
+                                    agent_name=self.name,
+                                    status="completed",
+                                    tool_name=func_name,
+                                    result=result
+                                )
+
+                            tool_responses.append(
+                                types.Part(
+                                    function_response=types.FunctionResponse(
+                                        name=func_name,
+                                        response={"result": _ensure_jsonable(result)}
+                                    )
+                                )
+                            )
+                        messages.append(types.Content(role="tool", parts=tool_responses))
+                        continue
+                    else:
+                        full_text = "".join(p.text for p in message.parts if p.text)
+                        return full_text
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                return f"Error calling Gemini API: {e}"
         if history is None:
             history = []
 

@@ -485,6 +485,13 @@ def chat(
         use_optimizer=use_optimizer,
     )
 
+    # Context for slash commands
+    command_context = {
+        'orchestrator': o,
+        'console': console,
+        'verbose': verbose,
+    }
+
     # セッション自動継続または新規作成
     sessions = o.session_logger.list_sessions(limit=1)
     if sessions:
@@ -494,12 +501,16 @@ def chat(
         session_id = o.create_session(title="CLI Chat")
         console.print(f"[dim]New session: {session_id[:8]}...[/dim]")
 
+    command_context['session_id'] = session_id
+
     console.print(Panel(
         f"[bold {theme_config.status}]Profile:[/] {profile}  [bold {theme_config.status}]Provider:[/] {provider}\n"
-        f"[dim]Type 'exit' to quit, '/theme' to change theme[/dim]",
+        f"[dim]Type 'exit' to quit, '/help' for commands[/dim]",
         title="🤖 Moco chat",
         border_style=theme_config.tools
     ))
+
+    from .cli_commands import handle_slash_command
 
     try:
         while True:
@@ -514,29 +525,18 @@ def chat(
             if not text.strip():
                 continue
 
+            # スラッシュコマンド判定
+            if text.strip().startswith('/'):
+                if not handle_slash_command(text, command_context):
+                    raise typer.Exit(code=0)
+                # handle_slash_command 内で session_id が更新されている可能性がある
+                session_id = command_context['session_id']
+                continue
+
             lowered = text.strip().lower()
             if lowered in ("exit", "quit"):
                 console.print("[dim]Bye![/dim]")
                 raise typer.Exit(code=0)
-
-            # テーマ変更コマンド
-            if lowered.startswith("/theme"):
-                parts = text.strip().split()
-                if len(parts) == 1:
-                    # 一覧表示
-                    available = ", ".join([t.value for t in ThemeName])
-                    console.print(f"[dim]Available themes: {available}[/dim]")
-                    console.print(f"[dim]Current theme: {ui_state.theme.value}[/dim]")
-                    console.print(f"[dim]Usage: /theme <name>[/dim]")
-                else:
-                    new_theme_str = parts[1].lower()
-                    try:
-                        new_theme = ThemeName(new_theme_str)
-                        ui_state.theme = new_theme
-                        console.print(f"[green]Theme changed to: {new_theme.value}[/green]")
-                    except ValueError:
-                        console.print(f"[red]Error: Unknown theme '{new_theme_str}'[/red]")
-                continue
 
             try:
                 reply = o.run_sync(text, session_id)

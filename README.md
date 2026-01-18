@@ -53,6 +53,7 @@ pip install moco-agent
 # .env ファイルを作成
 cat << EOF > .env
 # Gemini（デフォルト）
+GENAI_API_KEY=your-gemini-api-key
 GEMINI_API_KEY=your-gemini-api-key
 
 # OpenAI（オプション）
@@ -169,7 +170,8 @@ graph TB
 
 | 変数名 | 説明 | デフォルト |
 |--------|------|-----------|
-| `GEMINI_API_KEY` | Gemini API キー | - |
+| `GENAI_API_KEY` | Gemini API キー | - |
+| `GEMINI_API_KEY` | Gemini API キー (後方互換) | - |
 | `OPENAI_API_KEY` | OpenAI API キー | - |
 | `OPENROUTER_API_KEY` | OpenRouter API キー | - |
 | `LLM_PROVIDER` | デフォルトプロバイダ | `gemini` |

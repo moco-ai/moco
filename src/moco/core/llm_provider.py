@@ -43,7 +43,7 @@ def _check_api_key(provider: str) -> bool:
     elif provider == PROVIDER_OPENROUTER:
         return bool(os.environ.get("OPENROUTER_API_KEY"))
     elif provider == PROVIDER_GEMINI:
-        return bool(os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY"))
+        return bool(os.environ.get("GENAI_API_KEY") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
     elif provider == PROVIDER_OPENAI:
         return bool(os.environ.get("OPENAI_API_KEY"))
     return False

@@ -68,13 +68,13 @@ class ContextCompressor:
         """Geminiクライアントを取得（遅延初期化）"""
         if self._gemini_client is None:
             api_key = (
-                os.environ.get("GEMINI_API_KEY") or
                 os.environ.get("GENAI_API_KEY") or
+                os.environ.get("GEMINI_API_KEY") or
                 os.environ.get("GOOGLE_API_KEY")
             )
             if not api_key:
                 raise ValueError(
-                    "Gemini API key not found. Set GEMINI_API_KEY, GENAI_API_KEY, or GOOGLE_API_KEY"
+                    "Gemini API key not found. Set GENAI_API_KEY, GEMINI_API_KEY, or GOOGLE_API_KEY"
                 )
             self._gemini_client = genai.Client(api_key=api_key)
         return self._gemini_client

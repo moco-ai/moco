@@ -4,21 +4,7 @@ import os
 import glob as glob_module
 import json
 from typing import List, Optional
-
-
-def _resolve_path(path: str) -> str:
-    """
-    相対パスを MOCO_WORKING_DIRECTORY を基準に解決する。
-    絶対パスの場合はそのまま返す。
-    """
-    if os.path.isabs(path):
-        return path
-    
-    working_dir = os.environ.get('MOCO_WORKING_DIRECTORY')
-    if working_dir:
-        return os.path.join(working_dir, path)
-    
-    return path
+from moco.utils.path import resolve_safe_path
 
 
 def list_dir(path: str = '.', show_hidden: bool = False) -> str:
@@ -33,8 +19,8 @@ def list_dir(path: str = '.', show_hidden: bool = False) -> str:
         ディレクトリ内容のリスト
     """
     try:
-        path = _resolve_path(path)
-        
+        path = resolve_safe_path(path)
+
         if not os.path.exists(path):
             return f"Error: Directory not found: {path}"
 
@@ -88,8 +74,8 @@ def read_file(path: str, offset: int = 1, limit: int = 10000) -> str:
     MAX_LINE_LENGTH = 1000
 
     try:
-        path = _resolve_path(path)
-        
+        path = resolve_safe_path(path)
+
         if not os.path.exists(path):
             return f"Error: File not found: {path}"
 
@@ -147,8 +133,8 @@ def glob_search(pattern: str, directory: str = '.') -> str:
         マッチしたファイルのリスト
     """
     try:
-        directory = _resolve_path(directory)
-        
+        directory = resolve_safe_path(directory)
+
         if not os.path.exists(directory):
             return f"Error: Directory not found: {directory}"
 
@@ -206,8 +192,8 @@ def tree(path: str = '.', max_depth: int = 3) -> str:
         return lines
 
     try:
-        path = _resolve_path(path)
-        
+        path = resolve_safe_path(path)
+
         if not os.path.exists(path):
             return f"Error: Path not found: {path}"
 
@@ -229,8 +215,8 @@ def file_info(path: str) -> str:
         ファイル情報のJSON文字列
     """
     try:
-        path = _resolve_path(path)
-        
+        path = resolve_safe_path(path)
+
         if not os.path.exists(path):
             return f"Error: Path not found: {path}"
 

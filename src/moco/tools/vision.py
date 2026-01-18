@@ -134,7 +134,7 @@ def _parse_base64_source(source: str) -> tuple[str, str]:
 
 def _detect_provider() -> Optional[str]:
     """環境変数からプロバイダを自動検出"""
-    if os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or os.environ.get("GENAI_API_KEY"):
+    if os.environ.get("GENAI_API_KEY") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
         return "gemini"
     if os.environ.get("OPENAI_API_KEY"):
         return "openai"
@@ -156,9 +156,9 @@ def _analyze_with_gemini(
     from google import genai
     from google.genai import types
 
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or os.environ.get("GENAI_API_KEY")
+    api_key = os.environ.get("GENAI_API_KEY") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
-        return "Error: GEMINI_API_KEY, GOOGLE_API_KEY, or GENAI_API_KEY environment variable not set"
+        return "Error: GENAI_API_KEY, GEMINI_API_KEY, GOOGLE_API_KEY, or GENAI_API_KEY environment variable not set"
 
     client = genai.Client(api_key=api_key)
     model = os.environ.get("GEMINI_VISION_MODEL", "gemini-2.0-flash")

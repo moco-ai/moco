@@ -3,40 +3,47 @@ from pathlib import Path
 import fnmatch
 from collections import Counter
 from typing import List, Dict, Optional
+from moco.utils.path import resolve_safe_path, get_working_directory
 
 def get_project_context(path: str = None, depth: int = 2) -> str:
     """
     プロジェクトの構造、主要ファイル、統計情報を取得してMarkdown形式で返す。
-    
+
     Args:
         path: 探索を開始するパス（Noneの場合はMOCO_WORKING_DIRECTORYまたはカレントディレクトリ）
         depth: ディレクトリツリーを表示する深さ
-        
+
     Returns:
         プロジェクトのコンテキスト情報（Markdown形式）
     """
     if path is None:
-        path = os.getenv('MOCO_WORKING_DIRECTORY', '.')
-    start_path = Path(path).resolve()
+        path = get_working_directory()
     
+    # パスを安全に解決
+    abs_path = resolve_safe_path(path)
+    start_path = Path(abs_path).resolve()
+
     # MOCO_WORKING_DIRECTORY が明示的に設定されている場合は、
     # プロジェクトルート探索をスキップして、指定されたパスをそのまま使う
-    if os.getenv('MOCO_WORKING_DIRECTORY'):
-        root_path = start_path
+    working_dir = get_working_directory()
+    if working_dir:
+        # 作業ディレクトリの絶対パスを取得
+        root_path = Path(os.path.abspath(working_dir)).resolve()
     else:
         root_path = _find_project_root(start_path)
-    ignore_patterns = _get_ignore_patterns(root_path)
     
+    ignore_patterns = _get_ignore_patterns(root_path)
+
     context = []
     context.append(f"# Project Context: {root_path.name}")
     context.append(f"Root: `{root_path}`\n")
-    
+
     # 1. README Summary
     readme_summary = _get_readme_summary(root_path)
     if readme_summary:
         context.append("## README Summary")
         context.append(f"```markdown\n{readme_summary}\n```\n")
-    
+
     # 2. Directory Structure
     context.append("## Directory Structure")
     tree = _generate_tree(root_path, root_path, depth, 0, ignore_patterns)
@@ -46,7 +53,7 @@ def get_project_context(path: str = None, depth: int = 2) -> str:
         context.append("```\n")
     else:
         context.append("No visible directories found at this depth.\n")
-    
+
     # 3. Configuration Files
     context.append("## Configuration Files")
     configs = _get_config_files(root_path)
@@ -54,7 +61,7 @@ def get_project_context(path: str = None, depth: int = 2) -> str:
         context.append(", ".join([f"`{c}`" for c in configs]) + "\n")
     else:
         context.append("No common configuration files found.\n")
-        
+
     # 4. File Extension Statistics
     context.append("## File Extension Statistics")
     stats = _get_extension_stats(root_path, ignore_patterns)
@@ -64,7 +71,7 @@ def get_project_context(path: str = None, depth: int = 2) -> str:
         context.extend(stats_md)
     else:
         context.append("No files found.")
-    
+
     return "\n".join(context)
 
 def _find_project_root(start_path: Path) -> Path:
@@ -87,7 +94,7 @@ def _get_ignore_patterns(root_path: Path) -> List[str]:
     デフォルトの無視パターンと.gitignoreからパターンを取得する。
     """
     patterns = [
-        ".git", "__pycache__", "node_modules", ".venv", "venv", 
+        ".git", "__pycache__", "node_modules", ".venv", "venv",
         "dist", "build", ".DS_Store", "*.pyc", ".idea", ".vscode",
         "*.egg-info", ".mypy_cache", ".pytest_cache"
     ]
@@ -119,7 +126,7 @@ def _is_ignored(path: Path, root_path: Path, patterns: List[str]) -> bool:
         rel_path = path.relative_to(root_path).as_posix()
     except ValueError:
         return False
-    
+
     for pattern in patterns:
         # 名前のみでマッチ
         if fnmatch.fnmatch(name, pattern):
@@ -130,7 +137,7 @@ def _is_ignored(path: Path, root_path: Path, patterns: List[str]) -> bool:
         # ディレクトリ配下のマッチを模倣
         if pattern in rel_path.split('/'):
             return True
-            
+
     return False
 
 def _generate_tree(path: Path, root_path: Path, max_depth: int, current_depth: int, ignore_patterns: List[str]) -> List[str]:
@@ -139,7 +146,7 @@ def _generate_tree(path: Path, root_path: Path, max_depth: int, current_depth: i
     """
     if current_depth > max_depth:
         return []
-    
+
     lines = []
     try:
         # ディレクトリを先に、名前順でソート
@@ -147,11 +154,11 @@ def _generate_tree(path: Path, root_path: Path, max_depth: int, current_depth: i
         for item in items:
             if _is_ignored(item, root_path, ignore_patterns):
                 continue
-            
+
             indent = "  " * current_depth
             prefix = "📁 " if item.is_dir() else "📄 "
             lines.append(f"{indent}{prefix}{item.name}")
-            
+
             if item.is_dir():
                 lines.extend(_generate_tree(item, root_path, max_depth, current_depth + 1, ignore_patterns))
     except (PermissionError, FileNotFoundError):
@@ -190,7 +197,7 @@ def _get_config_files(root_path: Path) -> List[str]:
     主要な設定ファイルの存在を確認する。
     """
     config_markers = [
-        "pyproject.toml", "requirements.txt", "package.json", 
+        "pyproject.toml", "requirements.txt", "package.json",
         "docker-compose.yml", "Dockerfile", "Makefile",
         "setup.py", "tox.ini", ".env.example", "tsconfig.json",
         "go.mod", "Cargo.toml", "composer.json", "Gemfile"
@@ -206,7 +213,7 @@ def _get_extension_stats(root_path: Path, ignore_patterns: List[str], max_depth:
     拡張子ごとのファイル数を集計する（パフォーマンスのため深さを制限）。
     """
     ext_counter = Counter()
-    
+
     def _scan(path: Path, current_depth: int):
         if current_depth > max_depth:
             return
@@ -221,7 +228,7 @@ def _get_extension_stats(root_path: Path, ignore_patterns: List[str], max_depth:
                     _scan(item, current_depth + 1)
         except (PermissionError, FileNotFoundError):
             pass
-            
+
     _scan(root_path, 0)
     return dict(ext_counter)
 

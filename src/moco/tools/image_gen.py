@@ -43,9 +43,9 @@ def generate_image(
         # 画像編集（要素削除・変更）
         generate_image("人物の服を赤いドレスに変更してください", input_image="portrait.jpg")
     """
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or os.environ.get("GENAI_API_KEY")
+    api_key = os.environ.get("GENAI_API_KEY") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
-        raise ValueError("GEMINI_API_KEY, GOOGLE_API_KEY, or GENAI_API_KEY environment variable is not set.")
+        raise ValueError("GENAI_API_KEY, GEMINI_API_KEY, GOOGLE_API_KEY, or GENAI_API_KEY environment variable is not set.")
     api_key = api_key.strip().strip('"').strip("'")
 
     client = genai.Client(api_key=api_key)

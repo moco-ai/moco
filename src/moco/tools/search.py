@@ -4,21 +4,7 @@ import os
 import re
 import subprocess
 from typing import List, Optional
-
-
-def _resolve_path(path: str) -> str:
-    """
-    相対パスを MOCO_WORKING_DIRECTORY を基準に解決する。
-    絶対パスの場合はそのまま返す。
-    """
-    if os.path.isabs(path):
-        return path
-    
-    working_dir = os.environ.get('MOCO_WORKING_DIRECTORY')
-    if working_dir:
-        return os.path.join(working_dir, path)
-    
-    return path
+from moco.utils.path import resolve_safe_path
 
 
 def grep(pattern: str, path: str = '.', recursive: bool = True,
@@ -37,7 +23,7 @@ def grep(pattern: str, path: str = '.', recursive: bool = True,
         検索結果
     """
     try:
-        path = _resolve_path(path)
+        path = resolve_safe_path(path)
         results = []
         regex = re.compile(pattern, re.IGNORECASE if ignore_case else 0)
 
@@ -145,7 +131,7 @@ def find_definition(symbol: str, directory: str = '.', language: str = 'python')
     lang_patterns = patterns.get(language, patterns['python'])
     lang_extensions = extensions.get(language, extensions['python'])
 
-    directory = _resolve_path(directory)
+    directory = resolve_safe_path(directory)
     results = []
 
     try:
@@ -208,7 +194,7 @@ def ripgrep(pattern: str, path: str = '.', file_type: str = None) -> str:
         検索結果
     """
     try:
-        path = _resolve_path(path)
+        path = resolve_safe_path(path)
         cmd = ['rg', '--line-number', '--no-heading', pattern, path]
 
         if file_type:

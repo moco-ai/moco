@@ -2,13 +2,13 @@
 import subprocess
 import threading
 import time
+import re
 from collections import deque
 from typing import Dict, Optional, List
 from dataclasses import dataclass, field
+from moco.tools.base import _is_dangerous_command
 
 # プロセス出力バッファの最大行数。
-# メモリ使用量を抑えつつ、十分なログ履歴を保持するバランスとして1000行を設定。
-# 長時間実行プロセスでも約100KB程度（1行100バイト想定）に収まる。
 PROCESS_OUTPUT_BUFFER_SIZE = 1000
 
 @dataclass
@@ -32,17 +32,24 @@ def _read_output(proc_info: ProcessInfo):
     with proc_info.lock:
         proc_info.status = "stopped"
 
-def start_background(command: str, name: str = None, cwd: str = None) -> dict:
+def start_background(command: str, name: str = None, cwd: str = None, allow_dangerous: bool = False) -> dict:
     """コマンドをバックグラウンドで実行
-    
+
     Args:
         command: 実行するコマンド
         name: プロセスの識別名（省略時はコマンドの先頭30文字）
         cwd: 作業ディレクトリ
-    
+        allow_dangerous: Trueの場合、危険なコマンドの実行を許可する
+
     Returns:
         {"pid": int, "name": str, "status": str}
     """
+    # 危険なコマンドのチェック
+    if not allow_dangerous:
+        is_dangerous, reason = _is_dangerous_command(command)
+        if is_dangerous:
+            return {"error": f"Command blocked for security reasons. {reason}"}
+
     process = subprocess.Popen(
         command,
         shell=True,
@@ -67,7 +74,10 @@ def stop_process(pid: int) -> dict:
         return {"error": f"Process {pid} not found"}
     proc_info = _processes[pid]
     proc_info.process.terminate()
-    proc_info.process.wait(timeout=5)
+    try:
+        proc_info.process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc_info.process.kill()
     with proc_info.lock:
         proc_info.status = "stopped"
     return {"pid": pid, "status": "stopped"}
@@ -104,24 +114,13 @@ def wait_for_pattern(pid: int, pattern: str, timeout: int = 30) -> dict:
 
 
 def wait_for_exit(pid: int, timeout: int = 300) -> dict:
-    """プロセスが終了するまで待機する
-    
-    wait_for_pattern と違い、特定のパターンではなく
-    プロセス自体の終了を待ちます。より確実。
-    
-    Args:
-        pid: プロセスID
-        timeout: タイムアウト秒数（デフォルト300秒=5分）
-    
-    Returns:
-        {"exited": True, "exit_code": int} または {"exited": False, "timeout": True}
-    """
+    """プロセスが終了するまで待機する"""
     if pid not in _processes:
         return {"error": f"Process {pid} not found"}
-    
+
     proc_info = _processes[pid]
     start = time.time()
-    
+
     while time.time() - start < timeout:
         exit_code = proc_info.process.poll()
         if exit_code is not None:
@@ -129,40 +128,25 @@ def wait_for_exit(pid: int, timeout: int = 300) -> dict:
                 proc_info.status = "stopped"
             return {"exited": True, "exit_code": exit_code, "timeout": False}
         time.sleep(0.5)
-    
+
     return {"exited": False, "exit_code": None, "timeout": True}
 
 
 def send_input(pid: int, text: str) -> dict:
-    """バックグラウンドプロセスの stdin に入力を送る
-    
-    プロセスが確認を求めて待機している場合に、
-    「はい」などの応答を送って続行させるために使用します。
-    
-    Args:
-        pid: プロセスID
-        text: 送信するテキスト（末尾に改行が自動追加される）
-    
-    Returns:
-        {"sent": True, "text": str} または {"error": str}
-        
-    Examples:
-        # moco が確認を求めてきたら「はい」と答える
-        send_input(12345, "はい、進めてください")
-    """
+    """バックグラウンドプロセスの stdin に入力を送る"""
     if pid not in _processes:
         return {"error": f"Process {pid} not found"}
-    
+
     proc_info = _processes[pid]
-    
+
     # プロセスがまだ動いているか確認
     if proc_info.process.poll() is not None:
         return {"error": f"Process {pid} has already terminated"}
-    
+
     # stdin が利用可能か確認
     if proc_info.process.stdin is None:
         return {"error": f"Process {pid} does not have stdin available"}
-    
+
     try:
         # テキストを送信（改行を追加）
         input_bytes = (text + "\n").encode('utf-8')

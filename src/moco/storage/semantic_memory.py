@@ -38,8 +38,8 @@ class SemanticMemory:
 
     def _get_client(self):
         api_key = (
-            os.environ.get("GEMINI_API_KEY") or
             os.environ.get("GENAI_API_KEY") or
+            os.environ.get("GEMINI_API_KEY") or
             os.environ.get("GOOGLE_API_KEY")
         )
         if not api_key:
