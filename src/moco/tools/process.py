@@ -7,7 +7,10 @@ import os
 from collections import deque
 from typing import Dict, Optional, List
 from dataclasses import dataclass, field
-from .base import is_dangerous_command
+try:
+    from .base import is_dangerous_command
+except ImportError:
+    from moco.tools.base import is_dangerous_command
 
 # プロセス出力バッファの最大行数。
 PROCESS_OUTPUT_BUFFER_SIZE = 1000

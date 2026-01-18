@@ -5,7 +5,11 @@ import signal
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
+from dotenv import load_dotenv, find_dotenv
 from ..storage.task_store import TaskStore, TaskStatus
+
+# サブプロセス起動前に .env を読み込む
+load_dotenv(find_dotenv())
 
 class TaskRunner:
     def __init__(self, task_store: Optional[TaskStore] = None):
@@ -37,6 +41,19 @@ class TaskRunner:
         # PYTHONPATH を確実に引き継ぐ (開発環境用)
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
+        
+        # 作業ディレクトリの .env を読み込んで環境変数に追加
+        env_file = Path(working_dir or os.getcwd()) / ".env"
+        if env_file.exists():
+            with open(env_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, _, value = line.partition('=')
+                        key = key.strip()
+                        value = value.strip().strip('"').strip("'")
+                        if key and key not in env:  # 既存の環境変数を上書きしない
+                            env[key] = value
         current_pythonpath = env.get("PYTHONPATH", "")
         # src ディレクトリがあれば開発中とみなして追加
         src_path = Path(__file__).parent.parent.parent

@@ -2,7 +2,11 @@ import subprocess
 import os
 import re
 from typing import Tuple, Final
-from ..utils.path import resolve_safe_path, get_working_directory
+try:
+    from ..utils.path import resolve_safe_path, get_working_directory
+except ImportError:
+    # サブプロセスからロードされる場合のフォールバック
+    from moco.utils.path import resolve_safe_path, get_working_directory
 
 
 # 安全性のためのデフォルト最大行数 (read_file)
