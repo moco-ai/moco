@@ -85,11 +85,18 @@ def run(
     if provider is None:
         provider = get_available_provider()
 
-    if provider == "openai":
+    # "zai/glm-4.7" のような形式をパース
+    provider_name = provider
+    if "/" in provider and model is None:
+        parts = provider.split("/", 1)
+        provider_name = parts[0]
+        model = parts[1]
+
+    if provider_name == "openai":
         provider_enum = LLMProvider.OPENAI
-    elif provider == "openrouter":
+    elif provider_name == "openrouter":
         provider_enum = LLMProvider.OPENROUTER
-    elif provider == "zai":
+    elif provider_name == "zai":
         provider_enum = LLMProvider.ZAI
     else:
         provider_enum = LLMProvider.GEMINI
@@ -472,11 +479,18 @@ def chat(
     if provider is None:
         provider = get_available_provider()
 
-    if provider == "openai":
+    # "zai/glm-4.7" のような形式をパース
+    provider_name = provider
+    if "/" in provider and model is None:
+        parts = provider.split("/", 1)
+        provider_name = parts[0]
+        model = parts[1]
+
+    if provider_name == "openai":
         provider_enum = LLMProvider.OPENAI
-    elif provider == "openrouter":
+    elif provider_name == "openrouter":
         provider_enum = LLMProvider.OPENROUTER
-    elif provider == "zai":
+    elif provider_name == "zai":
         provider_enum = LLMProvider.ZAI
     else:
         provider_enum = LLMProvider.GEMINI
@@ -789,6 +803,14 @@ def tasks_run(
     # プロバイダーの解決（指定なしの場合は優先順位で自動選択）
     if provider is None:
         provider = get_available_provider()
+    
+    # "zai/glm-4.7" のような形式をパース
+    resolved_provider = provider
+    resolved_model = model
+    if "/" in provider and model is None:
+        parts = provider.split("/", 1)
+        resolved_provider = parts[0]
+        resolved_model = parts[1]
 
     # 作業ディレクトリを絶対パスに解決
     resolved_working_dir = None
@@ -796,10 +818,10 @@ def tasks_run(
         resolved_working_dir = os.path.abspath(working_dir)
 
     store = TaskStore()
-    task_id = store.add_task(task, profile, provider, resolved_working_dir)
+    task_id = store.add_task(task, profile, resolved_provider, resolved_working_dir)
 
     runner = TaskRunner(store)
-    runner.run_task(task_id, profile, task, resolved_working_dir, provider, model)
+    runner.run_task(task_id, profile, task, resolved_working_dir, resolved_provider, resolved_model)
 
     typer.echo(f"Task started: {task_id}")
 
@@ -1132,11 +1154,18 @@ def tasks_exec(
     if provider is None:
         provider = get_available_provider()
     
-    p_enum = provider
-    if provider == "openai": p_enum = LLMProvider.OPENAI
-    elif provider == "gemini": p_enum = LLMProvider.GEMINI
-    elif provider == "zai": p_enum = LLMProvider.ZAI
-    elif provider == "openrouter": p_enum = LLMProvider.OPENROUTER
+    # "zai/glm-4.7" のような形式をパース
+    provider_name = provider
+    if "/" in provider and model is None:
+        parts = provider.split("/", 1)
+        provider_name = parts[0]
+        model = parts[1]
+    
+    p_enum = provider_name
+    if provider_name == "openai": p_enum = LLMProvider.OPENAI
+    elif provider_name == "gemini": p_enum = LLMProvider.GEMINI
+    elif provider_name == "zai": p_enum = LLMProvider.ZAI
+    elif provider_name == "openrouter": p_enum = LLMProvider.OPENROUTER
 
     try:
         from .core.orchestrator import Orchestrator
