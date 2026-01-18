@@ -40,8 +40,18 @@ MOCO は、複数のLLMプロバイダ（Gemini, OpenAI, OpenRouter, Z.ai）に�
 ```bash
 moco run "タスク"              # タスクを実行
 moco chat                      # 対話型チャット
+moco ui                        # Web UI を起動
 moco version                   # バージョン表示
 moco list-profiles             # プロファイル一覧
+```
+
+### Web UI
+
+```bash
+moco ui                        # http://0.0.0.0:8000 で起動
+moco ui -p 3000                # ポート指定
+moco ui -h 127.0.0.1           # ホスト指定
+moco ui -r                     # 開発モード（自動リロード）
 ```
 
 ### タスク管理（バックグラウンド実行）
@@ -80,12 +90,20 @@ moco skills uninstall <name>   # アンインストール
 ```bash
 --profile, -p <name>           # プロファイル指定
 --provider <name>              # プロバイダ指定 (gemini/openai/openrouter/zai)
---model, -m <name>             # モデル指定 (例: gpt-4o, gemini-2.5-pro, claude-sonnet-4)
+--provider <name/model>        # プロバイダ+モデル一括指定 (例: zai/glm-4.7)
+--model, -m <name>             # モデル指定 (例: gpt-4o, gemini-2.5-pro, glm-4.7)
 --working-dir, -w <path>       # 作業ディレクトリ
 --sandbox                      # Dockerコンテナ内で隔離実行
 --sandbox-image <image>        # サンドボックスイメージ (default: python:3.12-slim)
 --stream/--no-stream           # ストリーミング出力
 --verbose, -v                  # 詳細ログ
+```
+
+**プロバイダ指定例:**
+```bash
+moco run "タスク" --provider zai -m glm-4.7        # 別々に指定
+moco run "タスク" --provider zai/glm-4.7          # 一括指定（推奨）
+moco run "タスク" --provider openrouter -m claude-sonnet-4
 ```
 
 ## 🚀 クイックスタート

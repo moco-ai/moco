@@ -19,6 +19,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.1] - 2026-01-19
+
+### Added
+- `moco ui` コマンド: Web UI を起動（FastAPI + uvicorn）
+  - `--host`, `--port`, `--reload` オプション対応
+- `--provider zai/glm-4.7` 形式のサポート（provider/model 一括指定）
+
+### Changed
+- コード品質改善: `runtime.py` を 1,993行 → 1,572行 に削減（-21%）
+- ツール実行ロジックを共通メソッド `_execute_tool_with_tracking()` に統合
+- グローバル変数 `_STDOUT_BROKEN` を `StreamPrintState` クラスに移動（テスト可能化）
+
+### Fixed
+- `_run_gemini` メソッド内の到達不能コード 328行を削除
+- 非推奨の `asyncio.get_event_loop()` を `asyncio.get_running_loop()` に修正
+- bare `except` を `except Exception` に修正
+- `print()` を `logger` に置換（適切なログ出力）
+
+---
+
 ## [0.2.0] - 2026-01-18
 
 🚀 **CLI 機能強化リリース** - Gemini CLI / Claude Code レベルの機能追加
