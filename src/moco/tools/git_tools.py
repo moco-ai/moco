@@ -71,7 +71,7 @@ def check_gh_cli() -> bool:
     try:
         subprocess.run(["gh", "--version"], capture_output=True, check=True)
         return True
-    except:
+    except Exception:
         return False
 
 def create_pr() -> str:

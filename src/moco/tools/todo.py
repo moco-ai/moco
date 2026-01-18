@@ -92,7 +92,7 @@ def _parse_todos_loose(value: str) -> Union[List[Dict[str, Any]], Dict[str, Any]
             except json.JSONDecodeError:
                 try:
                     obj = ast.literal_eval(s3)
-                except:
+                except (ValueError, SyntaxError):
                     raise Exception(f"Failed to parse todos: {s}")
 
     # {"todos": [...]} のラップを許容

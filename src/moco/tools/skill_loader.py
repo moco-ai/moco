@@ -190,7 +190,7 @@ class SkillLoader:
                     skills[skill.name] = skill
             except Exception as e:
                 import sys
-                print(f"Failed to load skill from {file_path}: {e}", file=sys.stderr)
+                logger.warning(f"Failed to load skill from {file_path}: {e}")
 
         return skills
 
@@ -523,7 +523,7 @@ class SkillLoader:
                     check=True, capture_output=True, text=True
                 )
             except subprocess.CalledProcessError as e:
-                print(f"Git clone failed: {e.stderr}", file=sys.stderr)
+                logger.error(f"Git clone failed: {e.stderr}")
                 return 0, []
 
             # skills ディレクトリを探す
@@ -593,11 +593,11 @@ class SkillLoader:
         }
 
         if registry not in registries:
-            print(f"Unknown registry: {registry}. Available: {list(registries.keys())}", file=sys.stderr)
+            logger.error(f"Unknown registry: {registry}. Available: {list(registries.keys())}")
             return 0, []
 
         repo = registries[registry]
-        print(f"Syncing skills from {repo}...")
+        logger.info(f"Syncing skills from {repo}...")
         return self.install_skills_from_repo(repo)
 
     def search_skills(self, query: str) -> List[Dict[str, str]]:
@@ -853,7 +853,7 @@ class SkillLoader:
                         matched_skills.append(skills[skill_name])
                         matched_names.add(skill_name)
                         logger.info(f"Using cached skill '{skill_name}'")
-                        print(f"[Skills] Using cached: {skill_name}")
+                        logger.debug(f"[Skills] Using cached: {skill_name}")
                     else:
                         # リモートからオンデマンドで取得
                         skill = self.fetch_skill_on_demand(skill_name, registry)
@@ -861,7 +861,7 @@ class SkillLoader:
                             matched_skills.append(skill)
                             matched_names.add(skill_name)
                             logger.info(f"Fetched skill '{skill_name}' on-demand from {registry}")
-                            print(f"[Skills] Fetched from remote: {skill_name} ({registry})")
+                            logger.debug(f"[Skills] Fetched from remote: {skill_name} ({registry})")
             except Exception as e:
                 logger.warning(f"Remote search failed for {registry}: {e}")
 
@@ -907,7 +907,7 @@ class SkillLoader:
             translated = response.text.strip()
             logger.info(f"Translated query: '{query}' -> '{translated}'")
             # verbose 用に print も出力
-            print(f"[Skills] Translated: '{query}' -> '{translated}'")
+            logger.debug(f"[Skills] Translated: '{query}' -> '{translated}'")
             return translated
         except Exception as e:
             logger.debug(f"Translation failed: {e}")

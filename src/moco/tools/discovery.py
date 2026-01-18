@@ -1,10 +1,14 @@
 import os
+import sys
+import logging
 import importlib.util
 import inspect
 from typing import Dict, Callable, Optional, List, Any
 import yaml
 import glob
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 # mocoパッケージのルートを取得（moco/tools/discovery.py から2階層上）
 _MOCO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -136,7 +140,7 @@ def _load_tools_from_dir(tools_dir: str) -> Dict[str, Callable]:
                         if not name.startswith("_"):
                             tool_map[name] = func
                 except Exception as e:
-                    print(f"Error loading module from {filepath}: {e}", file=sys.stderr)
+                    logger.warning(f"Error loading module from {filepath}: {e}")
             else:
                 # 従来の方法（相対インポートなし）
                 module_name = f"_discovered_tools_{dir_hash}_{module_basename}"
@@ -149,7 +153,7 @@ def _load_tools_from_dir(tools_dir: str) -> Dict[str, Callable]:
                             if not name.startswith("_"):
                                 tool_map[name] = func
                     except Exception as e:
-                        print(f"Error loading module from {filepath}: {e}", file=sys.stderr)
+                        logger.warning(f"Error loading module from {filepath}: {e}")
     return tool_map
 
 
@@ -173,7 +177,7 @@ class AgentLoader:
                     agents[agent.name] = agent
             except Exception as e:
                 import sys
-                print(f"Failed to load agent from {file_path}: {e}", file=sys.stderr)
+                logger.warning(f"Failed to load agent from {file_path}: {e}")
         
         return agents
 

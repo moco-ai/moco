@@ -5,12 +5,15 @@ import ast
 import pickle
 import json
 import hashlib
+import logging
 import numpy as np
 import faiss
 import tiktoken
 from typing import List, Dict, Any, Optional, Set
 from pathlib import Path
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 # OpenAI client (optional)
 try:
@@ -303,7 +306,7 @@ class CodebaseSearcher:
                             "chunk_ids": chunk_ids
                         }
                     except Exception as e:
-                        print(f"Error processing {file_path}: {e}")
+                        logger.warning(f"Error processing {file_path}: {e}")
 
         if not all_chunks:
             return "No code files found to index."
@@ -342,7 +345,7 @@ class CodebaseSearcher:
         
         # IndexIDMap2でない場合は再構築が必要
         if not hasattr(self.index, 'remove_ids'):
-            print("Rebuilding index for incremental update support...")
+            logger.info("Rebuilding index for incremental update support...")
             return self.build_index(target_dir, extensions)
 
         # 現在のファイル一覧を取得
@@ -366,7 +369,7 @@ class CodebaseSearcher:
                 elif self._is_file_changed(file_path, file_info):
                     modified_files.append((file_path, file_info))
             except Exception as e:
-                print(f"Error checking {file_path}: {e}")
+                logger.warning(f"Error checking {file_path}: {e}")
 
         for cached_path in list(self.file_cache.keys()):
             if cached_path not in current_files:
@@ -411,7 +414,7 @@ class CodebaseSearcher:
                     "chunk_ids": chunk_ids
                 }
             except Exception as e:
-                print(f"Error processing {file_path}: {e}")
+                logger.warning(f"Error processing {file_path}: {e}")
 
         # 新しいチャンクの埋め込みを取得してインデックスに追加
         if new_chunks:

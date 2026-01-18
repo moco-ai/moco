@@ -552,7 +552,7 @@ async def get_stats(session_id: Optional[str] = None, scope: str = "all"):
                             agent_delegation[agent] += (delegation or 0)
                             if todo:
                                 agent_todo[agent] += 1
-                except:
+                except Exception:
                     continue
 
             for agent, count in agent_counts.items():

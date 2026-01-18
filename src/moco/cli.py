@@ -846,7 +846,7 @@ def tasks_list(
                 hours = total_seconds // 3600
                 mins = (total_seconds % 3600) // 60
                 return f"{hours}h {mins}m"
-        except:
+        except Exception:
             return "-"
 
     # サマリー
@@ -954,7 +954,7 @@ def tasks_status():
                 hours = total_seconds // 3600
                 mins = (total_seconds % 3600) // 60
                 return f"{hours}h {mins}m"
-        except:
+        except Exception:
             return "-"
 
     def is_process_running(pid: int) -> bool:
