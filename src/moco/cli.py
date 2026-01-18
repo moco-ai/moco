@@ -45,6 +45,7 @@ def run(
     task: str = typer.Argument(..., help="実行するタスク"),
     profile: str = typer.Option("default", "--profile", "-p", help="使用するプロファイル"),
     provider: Optional[str] = typer.Option(None, "--provider", help="LLMプロバイダ (gemini/openai/openrouter/zai) - 省略時は自動選択"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名 (例: gpt-4o, gemini-2.5-pro, claude-sonnet-4)"),
     stream: bool = typer.Option(False, "--stream/--no-stream", help="ストリーミング出力（デフォルト: オフ）"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
     rich_output: bool = typer.Option(True, "--rich/--plain", help="リッチ出力"),
@@ -52,7 +53,7 @@ def run(
     cont: bool = typer.Option(False, "--continue", "-c", help="直前のセッションを継続"),
     auto_retry: int = typer.Option(0, "--auto-retry", help="エラー時の自動リトライ回数"),
     retry_delay: int = typer.Option(3, "--retry-delay", help="リトライ間隔（秒）"),
-    show_metrics: bool = typer.Option(False, "--show-metrics", "-m", help="メトリクス表示"),
+    show_metrics: bool = typer.Option(False, "--show-metrics", "-M", help="メトリクス表示"),
     theme: ThemeName = typer.Option(ThemeName.DEFAULT, "--theme", help="UIカラーテーマ", case_sensitive=False),
     use_optimizer: bool = typer.Option(True, "--optimizer/--no-optimizer", help="Optimizerによるエージェント自動選択"),
     working_dir: Optional[str] = typer.Option(None, "--working-dir", "-w", help="作業ディレクトリ（subagentに自動伝達）"),
@@ -101,6 +102,7 @@ def run(
     o = Orchestrator(
         profile=profile,
         provider=provider_enum,
+        model=model,
         stream=stream,
         verbose=verbose,
         use_optimizer=use_optimizer,
@@ -445,6 +447,7 @@ def list_profiles():
 def chat(
     profile: str = typer.Option("default", "--profile", "-p", help="使用するプロファイル"),
     provider: Optional[str] = typer.Option(None, "--provider", help="LLMプロバイダ (gemini/openai/openrouter/zai) - 省略時は自動選択"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
     theme: ThemeName = typer.Option(ThemeName.DEFAULT, "--theme", help="UIカラーテーマ", case_sensitive=False),
     use_optimizer: bool = typer.Option(True, "--optimizer/--no-optimizer", help="Optimizerによるエージェント自動選択"),
@@ -481,6 +484,7 @@ def chat(
     o = Orchestrator(
         profile=profile,
         provider=provider_enum,
+        model=model,
         stream=False,
         verbose=verbose,
         use_optimizer=use_optimizer,
@@ -772,6 +776,7 @@ def tasks_run(
     task: str = typer.Argument(..., help="実行するタスク内容"),
     profile: str = typer.Option("default", "--profile", "-p", help="プロファイル"),
     provider: Optional[str] = typer.Option(None, "--provider", help="プロバイダ - 省略時は自動選択"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
     working_dir: Optional[str] = typer.Option(None, "--working-dir", "-w", help="作業ディレクトリ"),
 ):
     """タスクをバックグラウンドで実行"""
@@ -794,7 +799,7 @@ def tasks_run(
     task_id = store.add_task(task, profile, provider, resolved_working_dir)
 
     runner = TaskRunner(store)
-    runner.run_task(task_id, profile, task, resolved_working_dir)
+    runner.run_task(task_id, profile, task, resolved_working_dir, provider, model)
 
     typer.echo(f"Task started: {task_id}")
 
@@ -1106,8 +1111,9 @@ def tasks_exec(
     task_id: str,
     profile: str,
     task_description: str,
-    provider: str = "openrouter",
-    working_dir: Optional[str] = None,
+    provider: Optional[str] = typer.Option(None, "--provider", help="プロバイダ"),
+    model: Optional[str] = typer.Option(None, "--model", help="モデル名"),
+    working_dir: Optional[str] = typer.Option(None, "--working-dir", help="作業ディレクトリ"),
 ):
     """(内部用) タスクを実行し、DBを更新する"""
     init_environment()
@@ -1121,14 +1127,20 @@ def tasks_exec(
 
     # プロバイダの解決
     from .core.runtime import LLMProvider
-    p_enum = LLMProvider.OPENROUTER
+    from .core.llm_provider import get_available_provider
+    
+    if provider is None:
+        provider = get_available_provider()
+    
+    p_enum = provider
     if provider == "openai": p_enum = LLMProvider.OPENAI
     elif provider == "gemini": p_enum = LLMProvider.GEMINI
     elif provider == "zai": p_enum = LLMProvider.ZAI
+    elif provider == "openrouter": p_enum = LLMProvider.OPENROUTER
 
     try:
         from .core.orchestrator import Orchestrator
-        orchestrator = Orchestrator(profile=profile, provider=p_enum, working_directory=working_dir)
+        orchestrator = Orchestrator(profile=profile, provider=p_enum, model=model, working_directory=working_dir)
         # run_sync を使用してタスクを実行
         result = orchestrator.run_sync(task_description)
 

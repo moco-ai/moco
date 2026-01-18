@@ -18,7 +18,7 @@ class TaskRunner:
         self.log_dir = Path.home() / ".moco" / "logs"
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
-    def run_task(self, task_id: str, profile: str, description: str, working_dir: Optional[str] = None, provider: Optional[str] = None):
+    def run_task(self, task_id: str, profile: str, description: str, working_dir: Optional[str] = None, provider: Optional[str] = None, model: Optional[str] = None):
         """
         タスクをバックグラウンドで実行する。
         実際には、自分自身を別のプロセスとして起動し、そこでタスクを実行させる。
@@ -42,6 +42,10 @@ class TaskRunner:
         # プロバイダーが指定されている場合は引数として追加
         if provider:
             cmd.extend(["--provider", provider])
+        
+        # モデルが指定されている場合は引数として追加
+        if model:
+            cmd.extend(["--model", model])
         
         # PYTHONPATH を確実に引き継ぐ (開発環境用)
         env = os.environ.copy()
