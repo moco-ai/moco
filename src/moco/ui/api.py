@@ -17,11 +17,10 @@ import json
 import sqlite3
 import logging
 from datetime import datetime, date
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
-# .env を読み込む（親ディレクトリも探索）
-load_dotenv()  # カレント
-load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '..', '.env'))  # ai_manager/.env
+# .env を読み込む（親方向に自動探索）
+load_dotenv(find_dotenv())
 
 # moco imports
 import sys

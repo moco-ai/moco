@@ -8,7 +8,17 @@ import sys
 import threading
 from pathlib import Path
 from typing import Optional, List
+from dotenv import load_dotenv, find_dotenv
 from .ui.theme import ThemeName, THEMES
+
+def init_environment():
+    """環境変数の初期化"""
+    # 1. find_dotenv() で自動検索（カレントディレクトリから親方向に .env を探索）
+    # 2. フォールバックとして従来のパス（__file__ 基準で3階層上）
+    env_path = find_dotenv() or (Path(__file__).parent.parent.parent / ".env")
+    if env_path:
+        load_dotenv(env_path)
+
 
 app = typer.Typer(
     name="Moco",
@@ -56,13 +66,7 @@ def run(
 
     theme_config = THEMES[theme]
 
-    import os
-    from dotenv import load_dotenv, find_dotenv
-    # 1. find_dotenv() で自動検索（カレントディレクトリから親方向に .env を探索）
-    # 2. フォールバックとして従来のパス（__file__ 基準で3階層上）
-    env_path = find_dotenv() or (Path(__file__).parent.parent.parent / ".env")
-    if env_path:
-        load_dotenv(env_path)
+    init_environment()
     
     # 作業ディレクトリを環境変数に設定（ツールから参照可能にする）
     # 注意: os.chdir() はプロファイル読み込みに影響するため、ここでは行わない
@@ -449,12 +453,10 @@ def chat(
     ui_state.theme = theme
     theme_config = THEMES[theme]
 
-    from dotenv import load_dotenv
+    init_environment()
     from rich.console import Console
     from rich.panel import Panel
     
-    env_path = Path(__file__).parent.parent.parent / ".env"
-    load_dotenv(env_path)
 
     from .core.orchestrator import Orchestrator
     from .core.runtime import LLMProvider
@@ -752,6 +754,7 @@ def tasks_run(
     working_dir: Optional[str] = typer.Option(None, "--working-dir", "-w", help="作業ディレクトリ"),
 ):
     """タスクをバックグラウンドで実行"""
+    init_environment()
     from .storage.task_store import TaskStore
     from .core.task_runner import TaskRunner
     from .core.llm_provider import get_available_provider
@@ -1081,23 +1084,8 @@ def tasks_exec(
     working_dir: Optional[str] = None,
 ):
     """(内部用) タスクを実行し、DBを更新する"""
+    init_environment()
     from .storage.task_store import TaskStore, TaskStatus
-    from .core.orchestrator import Orchestrator
-    from .core.runtime import LLMProvider
-    from datetime import datetime
-    import os
-    from dotenv import load_dotenv
-
-    # 環境変数のロード
-    env_paths = [
-        Path.cwd() / ".env",
-        Path.home() / ".moco" / ".env",
-        Path(__file__).parent.parent.parent / ".env"
-    ]
-    for env_path in env_paths:
-        if env_path.exists():
-            load_dotenv(env_path)
-            break
 
     # 作業ディレクトリを環境変数に設定
     if working_dir:

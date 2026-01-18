@@ -9,21 +9,6 @@ import tiktoken
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 
-# .env ファイルを読み込む
-try:
-    from dotenv import load_dotenv
-    # プロジェクトルートの .env を探す
-    env_paths = [
-        Path(__file__).parent.parent.parent.parent / ".env",  # ai_manager/.env
-        Path.cwd() / ".env",
-    ]
-    for env_path in env_paths:
-        if env_path.exists():
-            load_dotenv(env_path)
-            break
-except ImportError:
-    pass
-
 # OpenAI client (optional)
 try:
     from openai import OpenAI
@@ -43,8 +28,8 @@ except ImportError:
 # 環境変数の確認
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 GEMINI_API_KEY = (
-    os.environ.get("GEMINI_API_KEY") or
     os.environ.get("GENAI_API_KEY") or
+    os.environ.get("GEMINI_API_KEY") or
     os.environ.get("GOOGLE_API_KEY")
 )
 INDEX_DIR = ".code_index"
