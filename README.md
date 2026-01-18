@@ -275,8 +275,11 @@ moco/profiles/my-profile/
 ├── agents/           # エージェント定義（Markdown）
 │   ├── orchestrator.md
 │   └── specialist.md
-└── tools/            # プロファイル固有ツール（Python）
-    └── custom_tool.py
+├── tools/            # プロファイル固有ツール（Python）
+│   └── custom_tool.py
+└── skills/           # スキル定義（Claude Skills互換）
+    └── my-skill/
+        └── skill.md
 ```
 
 #### profile.yaml
@@ -506,7 +509,7 @@ ruff check moco/
 
 ```bash
 # プロファイルディレクトリを作成
-mkdir -p moco/profiles/my-profile/{agents,tools}
+mkdir -p moco/profiles/my-profile/{agents,tools,skills}
 
 # profile.yaml を作成
 cat << EOF > moco/profiles/my-profile/profile.yaml
