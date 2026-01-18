@@ -747,6 +747,30 @@ class SessionLogger:
             logger.error(f"Failed to delete session {session_id}: {e}")
             raise e
 
+    def resolve_session_id(self, session_id_prefix: str) -> Optional[Dict[str, Any]]:
+        """Resolve a session ID from a prefix (partial ID)."""
+        try:
+            with self._lock:
+                conn = self._get_connection()
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+
+                # Try exact match first
+                cursor.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id_prefix,))
+                row = cursor.fetchone()
+                if row:
+                    conn.close()
+                    return dict(row)
+
+                # Try prefix match
+                cursor.execute("SELECT * FROM sessions WHERE session_id LIKE ? LIMIT 1", (f"{session_id_prefix}%",))
+                row = cursor.fetchone()
+                conn.close()
+                return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Failed to resolve session ID {session_id_prefix}: {e}")
+            return None
+
     def update_session(self, session_id: str, title: Optional[str] = None, status: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None):
         """Update session attributes."""
         try:

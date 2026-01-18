@@ -856,6 +856,9 @@ class AgentRuntime:
         if self.progress_callback:
             self.progress_callback(event_type="start", agent_name=self.name)
 
+        # セッションIDを保存
+        self._current_session_id = session_id
+
         # コンテキスト上限管理をリセット
         self._accumulated_tokens = 0
         self._tool_call_count = 0
@@ -901,7 +904,11 @@ class AgentRuntime:
             return
         try:
             from moco.core.cost_tracker import get_cost_tracker, TokenUsage
+            from moco.storage.usage_store import get_usage_store
+            
             tracker = get_cost_tracker()
+            usage_store = get_usage_store()
+            
             usage = TokenUsage(
                 input_tokens=self.last_usage.get("prompt_tokens", 0),
                 output_tokens=self.last_usage.get("completion_tokens", 0),
@@ -912,12 +919,26 @@ class AgentRuntime:
                 provider_name = "openrouter"
             elif self.provider == LLMProvider.ZAI:
                 provider_name = "zai"
-            
-            tracker.record(
+
+            session_id = getattr(self, "_current_session_id", None)
+
+            record = tracker.record(
                 provider=provider_name,
                 model=self.model_name,
                 usage=usage,
                 agent_name=self.name,
+                session_id=session_id,
+            )
+            
+            # DBにも永続化
+            usage_store.record_usage(
+                provider=provider_name,
+                model=self.model_name,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                cost_usd=record.cost_usd,
+                session_id=session_id,
+                agent_name=self.name
             )
         except Exception as e:
             if self.verbose:

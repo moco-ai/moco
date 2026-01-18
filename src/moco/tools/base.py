@@ -4,16 +4,20 @@ import re
 from typing import Tuple, Final
 try:
     from ..utils.path import resolve_safe_path, get_working_directory
+    from ..core.token_cache import TokenCache
 except ImportError:
     # サブプロセスからロードされる場合のフォールバック
     from moco.utils.path import resolve_safe_path, get_working_directory
-
+    from moco.core.token_cache import TokenCache
 
 # 安全性のためのデフォルト最大行数 (read_file)
 DEFAULT_MAX_LINES = 10000
 
 # 編集可能な最大ファイルサイズ (5MB)
 MAX_EDIT_SIZE = 5 * 1024 * 1024
+
+# キャッシュインスタンス
+_TOKEN_CACHE = TokenCache()
 
 # 危険なパターンの定義
 DANGEROUS_PATTERNS: Final[list[str]] = [
@@ -50,7 +54,7 @@ def is_dangerous_command(command: str) -> Tuple[bool, str]:
     # /dev/null へのリダイレクトを一時的に無害化（判定から除外）
     # スペースの有無にかかわらず対応
     safe_command = re.sub(r'[0-9&]?\s*>\s*/dev/null', '', command, flags=re.IGNORECASE)
-    
+
     normalized_command = safe_command.strip()
     match = _DANGEROUS_RE.search(normalized_command)
     if match:
@@ -73,8 +77,8 @@ def read_file(path: str, offset: int = None, limit: int = None) -> str:
     """
     try:
         # パスを解決
-        path = resolve_safe_path(path)
-        if not os.path.exists(path):
+        abs_path = resolve_safe_path(path)
+        if not os.path.exists(abs_path):
             return f"Error: File not found: {path}"
 
         # LLM からの入力を安全にキャスト
@@ -84,39 +88,45 @@ def read_file(path: str, offset: int = None, limit: int = None) -> str:
         except (ValueError, TypeError):
             return "Error: Invalid offset or limit. They must be integers."
 
+        # キャッシュのチェック (全文読み取り時のみキャッシュ機能を利用/保存する)
+        is_full_read = (start_line == 1 and (limit is None or limit >= DEFAULT_MAX_LINES))
+        
+        raw_content = None
+        if is_full_read:
+            raw_content = _TOKEN_CACHE.get(abs_path)
+
+        if raw_content is None:
+            # キャッシュにない場合はファイルから読み込み
+            try:
+                with open(abs_path, 'r', encoding='utf-8', errors='replace') as f:
+                    raw_content = f.read()
+                # 全文読み取り時のみキャッシュに保存
+                if is_full_read:
+                    _TOKEN_CACHE.set(abs_path, raw_content)
+            except Exception as e:
+                return f"Error reading file: {e}"
+
+        # 生データから指定範囲を抽出してフォーマット
+        lines = raw_content.splitlines()
+        total_lines = len(lines)
+        
         result_lines = []
-        current_line = 0
+        if start_line > 1:
+            result_lines.append(f"... {start_line - 1} lines not shown ...")
 
-        with open(path, 'r', encoding='utf-8', errors='replace') as f:
-            # 指定行までスキップ (メモリ効率のため iterator を使用)
-            for _ in range(start_line - 1):
-                if not f.readline():
-                    break
-                current_line += 1
+        # 抽出範囲
+        end_idx = min(start_line - 1 + max_lines, total_lines)
+        for i in range(start_line - 1, end_idx):
+            line_num = i + 1
+            result_lines.append(f"{line_num:6}|{lines[i]}")
 
-            if current_line < start_line - 1:
-                return f"Error: offset {start_line} is beyond file length"
-
-            if start_line > 1:
-                result_lines.append(f"... {start_line - 1} lines not shown ...")
-
-            # 必要な分だけ読み込み
-            count = 0
-            for line in f:
-                current_line += 1
-                result_lines.append(f"{current_line:6}|{line.rstrip()}")
-                count += 1
-                if count >= max_lines:
-                    # 続きがあるか確認
-                    if f.readline():
-                        # 総行数は数えない (巨大ファイル対策)
-                        result_lines.append(f"... more lines available (limit={max_lines}) ...")
-                    break
-
+        if end_idx < total_lines:
+            result_lines.append(f"... more lines available (limit={max_lines}, total={total_lines}) ...")
+            
         return "\n".join(result_lines)
 
     except Exception as e:
-        return f"Error reading file: {e}"
+        return f"Error processing file: {e}"
 
 
 def write_file(path: str, content: str, overwrite: bool = False) -> str:
@@ -125,22 +135,42 @@ def write_file(path: str, content: str, overwrite: bool = False) -> str:
     """
     try:
         # パスを解決
-        path = resolve_safe_path(path)
+        abs_path = resolve_safe_path(path)
+
+        # インタラクティブパッチUIの呼び出し
+        if os.environ.get('MOCO_INTERACTIVE_PATCH') == '1':
+            from ..ui.patch_viewer import preview_patch, save_patch
+            old_content = ""
+            if os.path.exists(abs_path):
+                with open(abs_path, 'r', encoding='utf-8') as f:
+                    old_content = f.read()
+
+            choice = preview_patch(path, old_content, content, title=f"Write File: {path}")
+            if choice == 'n':
+                return "Write cancelled by user."
+            if choice == 's':
+                save_patch(path, old_content, content)
+                return f"Patch saved for {path}. Write cancelled."
+            if choice == 'e':
+                return "Edit mode not implemented yet, write cancelled."
 
         # 既存ファイルのガード
-        if os.path.exists(path) and not overwrite:
-            file_size = os.path.getsize(path)
+        if os.path.exists(abs_path) and not overwrite:
+            file_size = os.path.getsize(abs_path)
             return (
                 f"Error: File already exists: {path} ({file_size} bytes)\n"
                 f"To overwrite, use: write_file(path, content, overwrite=True)\n"
                 f"Or read the file first with: read_file('{path}')"
             )
 
-        if os.path.dirname(path):
-            os.makedirs(os.path.dirname(path), exist_ok=True)
+        if os.path.dirname(abs_path):
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
-        with open(path, 'w', encoding='utf-8') as f:
+        with open(abs_path, 'w', encoding='utf-8') as f:
             f.write(content)
+
+        # キャッシュを無効化
+        _TOKEN_CACHE.delete_by_path(abs_path)
 
         lines = content.count('\n') + 1
         return f"Successfully wrote {lines} lines to {path}"
@@ -154,20 +184,20 @@ def edit_file(path: str, old_string: str, new_string: str) -> str:
     """
     try:
         # パスを解決
-        path = resolve_safe_path(path)
+        abs_path = resolve_safe_path(path)
 
-        if not os.path.exists(path):
+        if not os.path.exists(abs_path):
             return f"Error: File not found: {path}"
 
         # 巨大ファイル編集のガード
-        file_size = os.path.getsize(path)
+        file_size = os.path.getsize(abs_path)
         if file_size > MAX_EDIT_SIZE:
              return (
                  f"Error: File is too large to edit via string replacement ({file_size} bytes). "
                  f"Maximum allowed size is {MAX_EDIT_SIZE} bytes."
              )
 
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(abs_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
         # old_string がファイル内に存在するか確認
@@ -202,8 +232,23 @@ def edit_file(path: str, old_string: str, new_string: str) -> str:
         # 置換実行
         new_content = content.replace(old_string, new_string, 1)
 
-        with open(path, 'w', encoding='utf-8') as f:
+        # インタラクティブパッチUIの呼び出し
+        if os.environ.get('MOCO_INTERACTIVE_PATCH') == '1':
+            from ..ui.patch_viewer import preview_patch, save_patch
+            choice = preview_patch(path, content, new_content, title=f"Edit File: {path}")
+            if choice == 'n':
+                return "Edit cancelled by user."
+            if choice == 's':
+                save_patch(path, content, new_content)
+                return f"Patch saved for {path}. Edit cancelled."
+            if choice == 'e':
+                return "Edit mode not implemented yet, edit cancelled."
+
+        with open(abs_path, 'w', encoding='utf-8') as f:
             f.write(new_content)
+
+        # キャッシュを無効化
+        _TOKEN_CACHE.delete_by_path(abs_path)
 
         # 統計
         old_lines = old_string.count('\n') + 1
@@ -226,14 +271,28 @@ def execute_bash(command: str, allow_dangerous: bool = False) -> str:
     Bashコマンドを実行し、結果を返します。
     """
     try:
+        # サンドボックス実行の判定
+        use_sandbox = os.environ.get("MOCO_SANDBOX") == "1"
+        sandbox_image = os.environ.get("MOCO_SANDBOX_IMAGE", "python:3.12-slim")
+
         # 危険なコマンドのチェック
-        if not allow_dangerous:
+        if not allow_dangerous and not use_sandbox:
             is_dangerous, reason = is_dangerous_command(command)
             if is_dangerous:
                 return f"Error: Command blocked for security reasons. {reason}"
 
         # パスを作業ディレクトリを基準に解決
         working_dir = get_working_directory()
+
+        if use_sandbox:
+            from .sandbox import execute_bash_in_sandbox
+            return execute_bash_in_sandbox(
+                command,
+                image=sandbox_image,
+                working_dir=working_dir,
+                network_disabled=True,  # デフォルトで制限
+                timeout=60
+            )
 
         # タイムアウトを設けて実行
         result = subprocess.run(

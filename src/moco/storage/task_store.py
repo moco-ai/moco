@@ -88,9 +88,20 @@ class TaskStore:
             conn.commit()
 
     def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """タスクを取得（短縮ID対応）"""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
+            # 完全一致を試す
             cur = conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,))
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+            
+            # 短縮ID（前方一致）で検索
+            cur = conn.execute(
+                "SELECT * FROM tasks WHERE task_id LIKE ? LIMIT 1",
+                (f"{task_id}%",)
+            )
             row = cur.fetchone()
             if row:
                 return dict(row)

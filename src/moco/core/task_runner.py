@@ -2,6 +2,7 @@ import subprocess
 import os
 import sys
 import signal
+import re
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
@@ -17,7 +18,7 @@ class TaskRunner:
         self.log_dir = Path.home() / ".moco" / "logs"
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
-    def run_task(self, task_id: str, profile: str, description: str, working_dir: Optional[str] = None):
+    def run_task(self, task_id: str, profile: str, description: str, working_dir: Optional[str] = None, provider: Optional[str] = None):
         """
         タスクをバックグラウンドで実行する。
         実際には、自分自身を別のプロセスとして起動し、そこでタスクを実行させる。
@@ -37,6 +38,10 @@ class TaskRunner:
         # 作業ディレクトリが指定されている場合は引数として追加
         if working_dir:
             cmd.extend(["--working-dir", working_dir])
+        
+        # プロバイダーが指定されている場合は引数として追加
+        if provider:
+            cmd.extend(["--provider", provider])
         
         # PYTHONPATH を確実に引き継ぐ (開発環境用)
         env = os.environ.copy()
@@ -169,3 +174,62 @@ class TaskRunner:
             except KeyboardInterrupt:
                 print("\nStopped.")
 
+    def get_last_action(self, task_id: str) -> Optional[str]:
+        """
+        タスクのログから最後のツールコールを抽出する。
+        例: "editing cli.py", "reading base.py", "delegating to @code-reviewer"
+        """
+        log_file = self._find_log_file(task_id)
+        if log_file is None:
+            return None
+
+        try:
+            # 最後の10KBを読む
+            file_size = log_file.stat().st_size
+            read_size = min(file_size, 10000)
+            
+            with open(log_file, "r", errors="ignore") as f:
+                if file_size > read_size:
+                    f.seek(file_size - read_size)
+                content = f.read()
+
+            # ツールコールのパターン
+            patterns = [
+                (r'👤 delegate_to_agent\s*→\s*@?(\S+)', lambda m: f"delegating to @{m.group(1)}"),
+                (r'✏️ edit_file\s*→\s*(\S+)', lambda m: f"editing {self._truncate(m.group(1))}"),
+                (r'📝 write_file\s*→\s*(\S+)', lambda m: f"writing {self._truncate(m.group(1))}"),
+                (r'📖 read_file\s*→\s*(\S+)', lambda m: f"reading {self._truncate(m.group(1))}"),
+                (r'🔎 grep\s*→', lambda m: "searching..."),
+                (r'⚡ execute_bash\s*→', lambda m: "executing..."),
+                (r'🔧 (\w+)\s*→', lambda m: f"{m.group(1)}..."),
+                (r'🔍 websearch\s*→', lambda m: "searching web..."),
+                (r'\[思考中\.\.\.\]', lambda m: "thinking..."),
+            ]
+
+            # 最後にマッチしたものを探す
+            last_match = None
+            last_pos = -1
+            
+            for pattern, formatter in patterns:
+                for match in re.finditer(pattern, content):
+                    if match.start() > last_pos:
+                        last_pos = match.start()
+                        last_match = (match, formatter)
+
+            if last_match:
+                match, formatter = last_match
+                return formatter(match)
+
+            return None
+
+        except Exception:
+            return None
+
+    def _truncate(self, text: str, max_len: int = 20) -> str:
+        """長いテキストを省略する"""
+        # パスの場合はファイル名だけ取り出す
+        if "/" in text or "\\" in text:
+            text = Path(text).name
+        if len(text) > max_len:
+            return text[:max_len - 3] + "..."
+        return text

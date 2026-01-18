@@ -45,6 +45,18 @@ _PROJECT_ROOT = os.path.dirname(_MOCO_ROOT)
 
 def _find_profiles_dir() -> str:
     """profiles ディレクトリを探索して見つける"""
+    # 作業ディレクトリが指定されている場合は最優先
+    working_dir = os.environ.get("MOCO_WORKING_DIRECTORY")
+    if working_dir:
+        wd_profiles = os.path.join(working_dir, "profiles")
+        if os.path.exists(wd_profiles) and os.path.isdir(wd_profiles):
+            return wd_profiles
+
+    # カレントディレクトリの profiles
+    cwd_profiles = os.path.join(os.getcwd(), "profiles")
+    if os.path.exists(cwd_profiles) and os.path.isdir(cwd_profiles):
+        return cwd_profiles
+
     # 現在のプロジェクトの profiles ディレクトリ
     profiles_dir = os.path.join(_PROJECT_ROOT, "profiles")
     if os.path.exists(profiles_dir) and os.path.isdir(profiles_dir):
@@ -54,11 +66,6 @@ def _find_profiles_dir() -> str:
     moco_profiles_dir = os.path.join(_MOCO_ROOT, "profiles")
     if os.path.exists(moco_profiles_dir) and os.path.isdir(moco_profiles_dir):
         return moco_profiles_dir
-
-    # カレントディレクトリの profiles
-    cwd_profiles = os.path.join(os.getcwd(), "profiles")
-    if os.path.exists(cwd_profiles) and os.path.isdir(cwd_profiles):
-        return cwd_profiles
 
     raise RuntimeError("profiles directory not found")
 
