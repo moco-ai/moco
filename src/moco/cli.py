@@ -56,17 +56,11 @@ def run(
     theme: ThemeName = typer.Option(ThemeName.DEFAULT, "--theme", help="UIカラーテーマ", case_sensitive=False),
     use_optimizer: bool = typer.Option(True, "--optimizer/--no-optimizer", help="Optimizerによるエージェント自動選択"),
     working_dir: Optional[str] = typer.Option(None, "--working-dir", "-w", help="作業ディレクトリ（subagentに自動伝達）"),
-    sandbox: bool = typer.Option(False, "--sandbox", help="Dockerコンテナ内でコマンドを実行"),
-    sandbox_image: str = typer.Option("python:3.12-slim", "--sandbox-image", help="サンドボックスで使用するDockerイメージ"),
 ):
     """タスクを実行"""
     if session and cont:
         typer.echo("Error: --session と --continue は同時に指定できません。", err=True)
         raise typer.Exit(code=1)
-
-    if sandbox:
-        os.environ["MOCO_SANDBOX"] = "1"
-        os.environ["MOCO_SANDBOX_IMAGE"] = sandbox_image
 
     from .ui.layout import ui_state
     ui_state.theme = theme
@@ -454,17 +448,11 @@ def chat(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
     theme: ThemeName = typer.Option(ThemeName.DEFAULT, "--theme", help="UIカラーテーマ", case_sensitive=False),
     use_optimizer: bool = typer.Option(True, "--optimizer/--no-optimizer", help="Optimizerによるエージェント自動選択"),
-    sandbox: bool = typer.Option(False, "--sandbox", help="Dockerコンテナ内でコマンドを実行"),
-    sandbox_image: str = typer.Option("python:3.12-slim", "--sandbox-image", help="サンドボックスで使用するDockerイメージ"),
 ):
     """対話型チャット"""
     from .ui.layout import ui_state
     ui_state.theme = theme
     theme_config = THEMES[theme]
-
-    if sandbox:
-        os.environ["MOCO_SANDBOX"] = "1"
-        os.environ["MOCO_SANDBOX_IMAGE"] = sandbox_image
 
     init_environment()
     from rich.console import Console
@@ -769,7 +757,12 @@ def skills_info():
 @app.command("version")
 def version():
     """バージョン表示"""
-    typer.echo("Moco v0.1.0")
+    from importlib.metadata import version as get_version
+    try:
+        v = get_version("moco")
+    except Exception:
+        v = "0.2.0"
+    typer.echo(f"Moco v{v}")
 
 
 # --- Tasks Subcommands ---
@@ -801,7 +794,7 @@ def tasks_run(
     task_id = store.add_task(task, profile, provider, resolved_working_dir)
 
     runner = TaskRunner(store)
-    runner.run_task(task_id, profile, task, resolved_working_dir, provider)
+    runner.run_task(task_id, profile, task, resolved_working_dir)
 
     typer.echo(f"Task started: {task_id}")
 
@@ -1113,8 +1106,8 @@ def tasks_exec(
     task_id: str,
     profile: str,
     task_description: str,
-    provider: Optional[str] = typer.Option(None, "--provider", help="プロバイダ"),
-    working_dir: Optional[str] = typer.Option(None, "--working-dir", help="作業ディレクトリ"),
+    provider: str = "openrouter",
+    working_dir: Optional[str] = None,
 ):
     """(内部用) タスクを実行し、DBを更新する"""
     init_environment()
@@ -1128,16 +1121,10 @@ def tasks_exec(
 
     # プロバイダの解決
     from .core.runtime import LLMProvider
-    from .core.llm_provider import get_available_provider
-    
-    if provider is None:
-        provider = get_available_provider()
-    
-    p_enum = provider  # 文字列をそのまま渡す
+    p_enum = LLMProvider.OPENROUTER
     if provider == "openai": p_enum = LLMProvider.OPENAI
     elif provider == "gemini": p_enum = LLMProvider.GEMINI
     elif provider == "zai": p_enum = LLMProvider.ZAI
-    elif provider == "openrouter": p_enum = LLMProvider.OPENROUTER
 
     try:
         from .core.orchestrator import Orchestrator
