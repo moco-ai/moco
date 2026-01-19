@@ -19,6 +19,7 @@ MOCO は、複数のLLMプロバイダ（Gemini, OpenAI, OpenRouter, Z.ai）に�
 - **📦 プロファイル機能**: ドメイン別（開発、セキュリティ、税務など）にエージェントとツールをYAMLで定義
 - **🤖 マルチエージェント**: 複数のエージェントが協調してタスクを実行、委譲・レビューのワークフロー
 - **🧠 セマンティックメモリ**: FAISS による類似度検索で過去の知識・インシデントを自動想起
+- **📚 学習メモリ**: 会話から知識を自動抽出・保存、次回の対話で自動想起
 - **📝 自動コンテキスト圧縮**: トークン上限に近づくと古い会話を自動要約して圧縮
 
 ### CLI & UI
@@ -271,6 +272,7 @@ graph TB
 | `OPENROUTER_MODEL` | OpenRouter モデル名 | `google/gemini-3-flash-preview` |
 | `ZAI_MODEL` | Z.ai モデル名 | `glm-4.7` |
 | `SEMANTIC_DB_PATH` | セマンティックメモリDB | `data/semantic.db` |
+| `MEMORY_DB_PATH` | 学習メモリDB | `src/moco/data/memory.db` |
 
 **プロバイダ自動選択の優先順位**: 設定されたAPIキーに基づき、`zai` → `openrouter` → `gemini` の順で自動選択されます。
 
@@ -543,6 +545,47 @@ EOF
 # 使用
 moco run "タスク" --profile my-profile
 ```
+
+## 🧠 学習メモリ機能
+
+MOCO は会話から知識を自動的に学習し、次回の対話で活用します。
+
+### 機能概要
+
+| 機能 | 説明 |
+|------|------|
+| **recall** | プロンプト前に関連記憶を検索（ハイブリッド検索: embedding + keyword） |
+| **learn** | 会話から知識を抽出して保存（重複・矛盾チェック付き） |
+| **record_task_run_event** | ツール実行をログに記録 |
+
+### 使用例
+
+```bash
+# 情報を教える
+moco run "経費精算は田中さんに聞いてね"
+
+# 後で質問すると、学習した内容を活用
+moco run "経費精算どこに聞けばいい？"
+# → 「田中さんに聞いてください」と回答
+```
+
+### データベース
+
+学習データは SQLite に保存されます（デフォルト: `src/moco/data/memory.db`）
+
+```bash
+# 記憶の確認
+sqlite3 src/moco/data/memory.db "SELECT content FROM memories"
+
+# ツール実行ログの確認
+sqlite3 src/moco/data/memory.db "SELECT tool_name, success FROM task_run_events"
+```
+
+### テーブル構造
+
+- **memories**: 学習した知識（content, type, keywords, embedding）
+- **task_run_events**: ツール実行ログ（run_id, tool_name, params, result, success）
+- **relations**: エンティティ間の関係性（NetworkX 連携用、オプション）
 
 ## 📄 ライセンス
 
