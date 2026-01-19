@@ -1,0 +1,3 @@
+name: development
+description: マルチエージェント開発支援プロファイル
+include_base_tools: true

@@ -1,0 +1,3 @@
+name: code
+description: 汎用コーディングエージェント
+include_base_tools: true
