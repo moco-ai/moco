@@ -1276,9 +1276,32 @@ class Orchestrator:
         """
         session_id, history = self._prepare_session(user_input, session_id)
 
-        # シンプルに asyncio.run を使用
+        # 手動でループを管理して KeyboardInterrupt を適切に処理
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         try:
-            return asyncio.run(self.process_message(user_input, session_id, history))
+            return loop.run_until_complete(self.process_message(user_input, session_id, history))
+        except KeyboardInterrupt:
+            # ペンディングタスクをキャンセル
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            # キャンセル完了を待つ（エラーを無視）
+            if pending:
+                try:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                except Exception:
+                    pass
+            # asyncio の内部リソースをクリーンアップ
+            try:
+                loop.run_until_complete(loop.shutdown_asyncgens())
+            except Exception:
+                pass
+            try:
+                loop.run_until_complete(loop.shutdown_default_executor())
+            except Exception:
+                pass
+            raise
         except RuntimeError as e:
             # 既にイベントループが実行中の場合
             if "cannot be called from a running event loop" in str(e):
@@ -1317,3 +1340,8 @@ class Orchestrator:
             if self.verbose:
                 print(f"[Orchestrator] run_sync error: {e}")
             return f"Error: {e}"
+        finally:
+            try:
+                loop.close()
+            except Exception:
+                pass
