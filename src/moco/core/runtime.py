@@ -3,7 +3,7 @@ import os
 import json
 import inspect
 import hashlib
-from ..cancellation import check_cancelled
+from ..cancellation import check_cancelled, OperationCancelled
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Callable, Union, get_type_hints
 import sys
@@ -1342,6 +1342,8 @@ class AgentRuntime:
                             "completion_tokens": int(response.usage.completion_tokens or 0),
                             "total_tokens": int(response.usage.total_tokens or 0)
                         }
+            except OperationCancelled:
+                raise  # Re-raise to be handled by api.py
             except Exception as e:
                 return f"Error calling OpenAI API: {e}"
 
@@ -1613,6 +1615,8 @@ class AgentRuntime:
                         full_text = "".join(p.text for p in message.parts if p.text)
                         return full_text
 
+            except OperationCancelled:
+                raise  # Re-raise to be handled by api.py
             except Exception as e:
                 import traceback
                 traceback.print_exc()
