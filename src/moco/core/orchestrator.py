@@ -310,8 +310,6 @@ class Orchestrator:
                 agents=[name for name in self.agents.keys() if name != "orchestrator"],
                 reason="Optimizer disabled"
             )
-            if self.verbose:
-                print("[Optimizer] Disabled - using all agents")
 
         # Orchestratorの履歴を取得（渡されていない場合）
         if history is None and session_id:
