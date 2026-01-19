@@ -1257,9 +1257,13 @@ class Orchestrator:
         # シンプルに asyncio.run を使用
         try:
             return asyncio.run(self.process_message(user_input, session_id, history))
-        except RuntimeError as e:
-            # 既にイベントループが実行中の場合
-            if "cannot be called from a running event loop" in str(e):
+        except (RuntimeError, KeyboardInterrupt) as e:
+            # "Event loop is closed" エラーまたは Ctrl+C 時のクリーンアップ
+            if isinstance(e, RuntimeError) and "Event loop is closed" in str(e):
+                return ""
+            
+            # 既にイベントループが実行中の場合（既存のロジック）
+            if isinstance(e, RuntimeError) and "cannot be called from a running event loop" in str(e):
                 # nest_asyncio を試みる
                 try:
                     import nest_asyncio
@@ -1290,6 +1294,10 @@ class Orchestrator:
                 if result[1]:
                     raise result[1]
                 return result[0] or ""
+            
+            if isinstance(e, KeyboardInterrupt):
+                raise
+            
             raise
         except Exception as e:
             if self.verbose:
