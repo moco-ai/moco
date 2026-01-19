@@ -854,7 +854,7 @@ def tasks_run(
         resolved_working_dir = os.path.abspath(working_dir)
 
     store = TaskStore()
-    task_id = store.add_task(task, profile, resolved_provider, resolved_working_dir, session)
+    task_id = store.add_task(task, profile, resolved_provider, resolved_working_dir)
 
     runner = TaskRunner(store)
     runner.run_task(task_id, profile, task, resolved_working_dir, resolved_provider, resolved_model, session)
