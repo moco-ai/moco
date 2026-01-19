@@ -213,10 +213,9 @@ graph TB
     end
 
     subgraph "Profiles"
-        DEFAULT[default]
-        DEV[development]
-        SEC[security]
-        TAX[tax]
+        DEFAULT[default<br/>最小構成]
+        CODE[code<br/>汎用コーディング]
+        DEV[development<br/>マルチエージェント]
     end
 
     CLI --> ORCH
@@ -291,6 +290,42 @@ moco/profiles/my-profile/
 └── skills/           # スキル定義（Claude Skills互換）
     └── my-skill/
         └── skill.md
+```
+
+### 組み込みプロファイル
+
+| プロファイル | エージェント数 | 説明 |
+|-------------|:--------------:|------|
+| **default** | 1 | 最小構成。シンプルなタスク向け |
+| **code** | 2 | 汎用コーディング。orchestrator + code-reviewer |
+| **development** | 14 | マルチエージェント開発チーム（下表参照） |
+
+#### development プロファイルのエージェント
+
+| エージェント | 役割 |
+|-------------|------|
+| orchestrator | タスクの振り分け、全体管理 |
+| backend-coder | バックエンド実装（Python, Node.js, Go等） |
+| frontend-coder | フロントエンド実装（React, Vue, Angular等） |
+| code-reviewer | コードレビュー、品質チェック |
+| architect | アーキテクチャ設計 |
+| api-designer | API設計（REST, GraphQL） |
+| schema-designer | データベーススキーマ設計 |
+| unit-tester | ユニットテスト作成 |
+| integration-tester | 統合テスト作成 |
+| test-strategist | テスト戦略策定 |
+| security-reviewer | セキュリティレビュー |
+| performance-reviewer | パフォーマンスレビュー |
+| refactorer | リファクタリング |
+| doc-writer | ドキュメント作成 |
+
+```bash
+# プロファイル一覧表示
+moco list-profiles
+
+# 使用例
+moco run "APIを実装して" --profile development
+moco chat --profile code
 ```
 
 #### profile.yaml
@@ -489,10 +524,9 @@ moco/
 │   ├── web.py             # Web関連ツール
 │   └── discovery.py       # ツール/エージェント検出
 ├── profiles/
-│   ├── default/           # デフォルトプロファイル
-│   ├── development/       # 開発プロファイル
-│   ├── security/          # セキュリティプロファイル
-│   └── tax/               # 税務プロファイル
+│   ├── default/           # 最小構成（1エージェント）
+│   ├── code/              # 汎用コーディング（2エージェント）
+│   └── development/       # マルチエージェント開発チーム（14エージェント）
 └── ui/
     ├── console.py         # コンソールUI
     └── theme.py           # テーマ設定
