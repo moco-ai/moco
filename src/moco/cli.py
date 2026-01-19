@@ -857,7 +857,7 @@ def tasks_run(
     task_id = store.add_task(task, profile, resolved_provider, resolved_working_dir)
 
     runner = TaskRunner(store)
-    runner.run_task(task_id, profile, task, resolved_working_dir, resolved_provider, resolved_model, session)
+    runner.run_task(task_id, profile, task, resolved_working_dir, resolved_provider, resolved_model)
 
     typer.echo(f"Task started: {task_id}")
     if session:
