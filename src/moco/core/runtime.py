@@ -1119,9 +1119,9 @@ class AgentRuntime:
                         # usage情報の取得（最後のチャンクに含まれる）
                         if hasattr(chunk, "usage") and chunk.usage:
                             self.last_usage = {
-                                "prompt_tokens": chunk.usage.prompt_tokens,
-                                "completion_tokens": chunk.usage.completion_tokens,
-                                "total_tokens": chunk.usage.total_tokens
+                                "prompt_tokens": int(chunk.usage.prompt_tokens or 0),
+                                "completion_tokens": int(chunk.usage.completion_tokens or 0),
+                                "total_tokens": int(chunk.usage.total_tokens or 0)
                             }
 
                         delta = chunk.choices[0].delta if chunk.choices else None
@@ -1308,9 +1308,9 @@ class AgentRuntime:
                     # usage記録
                     if hasattr(response, "usage") and response.usage:
                         self.last_usage = {
-                            "prompt_tokens": response.usage.prompt_tokens,
-                            "completion_tokens": response.usage.completion_tokens,
-                            "total_tokens": response.usage.total_tokens
+                            "prompt_tokens": int(response.usage.prompt_tokens or 0),
+                            "completion_tokens": int(response.usage.completion_tokens or 0),
+                            "total_tokens": int(response.usage.total_tokens or 0)
                         }
             except Exception as e:
                 return f"Error calling OpenAI API: {e}"
@@ -1446,9 +1446,9 @@ class AgentRuntime:
                         # usage情報の取得
                         if chunk.usage_metadata:
                             self.last_usage = {
-                                "prompt_tokens": chunk.usage_metadata.prompt_token_count,
-                                "completion_tokens": chunk.usage_metadata.candidates_token_count,
-                                "total_tokens": chunk.usage_metadata.total_token_count
+                                "prompt_tokens": int(chunk.usage_metadata.prompt_token_count or 0),
+                                "completion_tokens": int(chunk.usage_metadata.candidates_token_count or 0),
+                                "total_tokens": int(chunk.usage_metadata.total_token_count or 0)
                             }
 
                         if not chunk.candidates:
@@ -1528,9 +1528,9 @@ class AgentRuntime:
                     
                     if response.usage_metadata:
                         self.last_usage = {
-                            "prompt_tokens": response.usage_metadata.prompt_token_count,
-                            "completion_tokens": response.usage_metadata.candidates_token_count,
-                            "total_tokens": response.usage_metadata.total_token_count
+                            "prompt_tokens": int(response.usage_metadata.prompt_token_count or 0),
+                            "completion_tokens": int(response.usage_metadata.candidates_token_count or 0),
+                            "total_tokens": int(response.usage_metadata.total_token_count or 0)
                         }
 
                     if not response.candidates:
