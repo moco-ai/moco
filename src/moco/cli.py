@@ -119,7 +119,7 @@ def run(
     retry_delay: int = typer.Option(3, "--retry-delay", help="リトライ間隔（秒）"),
     show_metrics: bool = typer.Option(False, "--show-metrics", "-M", help="メトリクス表示"),
     theme: ThemeName = typer.Option(ThemeName.DEFAULT, "--theme", help="UIカラーテーマ", case_sensitive=False),
-    use_optimizer: bool = typer.Option(True, "--optimizer/--no-optimizer", help="Optimizerによるエージェント自動選択"),
+    use_optimizer: bool = typer.Option(False, "--optimizer/--no-optimizer", help="Optimizerによるエージェント自動選択"),
     working_dir: Optional[str] = typer.Option(None, "--working-dir", "-w", help="作業ディレクトリ（subagentに自動伝達）"),
 ):
     """タスクを実行"""
@@ -509,7 +509,7 @@ def chat(
     session: Optional[str] = typer.Option(None, "--session", "-s", help="セッション名（継続 or 新規）"),
     new_session: bool = typer.Option(False, "--new", help="新規セッションを強制開始"),
     theme: ThemeName = typer.Option(ThemeName.DEFAULT, "--theme", help="UIカラーテーマ", case_sensitive=False),
-    use_optimizer: bool = typer.Option(True, "--optimizer/--no-optimizer", help="Optimizerによるエージェント自動選択"),
+    use_optimizer: bool = typer.Option(False, "--optimizer/--no-optimizer", help="Optimizerによるエージェント自動選択"),
 ):
     """対話型チャット"""
     from .ui.layout import ui_state

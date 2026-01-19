@@ -63,7 +63,7 @@ class Orchestrator:
         stream: bool = True,
         verbose: bool = False,
         progress_callback: Optional[callable] = None,
-        use_optimizer: bool = True,
+        use_optimizer: bool = False,
         working_directory: Optional[str] = None
     ):
         self.profile = profile
