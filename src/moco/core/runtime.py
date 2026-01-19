@@ -1204,23 +1204,28 @@ class AgentRuntime:
                         # ツール呼び出しの収集
                         if delta.tool_calls:
                             for tc_delta in delta.tool_calls:
-                                if tc_delta.index is not None:
-                                    # 新しいツール呼び出しまたは既存の更新
-                                    while len(collected_tool_calls) <= tc_delta.index:
-                                        collected_tool_calls.append({
-                                            "id": "",
-                                            "type": "function",
-                                            "function": {"name": "", "arguments": ""}
-                                        })
+                                # OpenAI SDK/モデルによっては index が入らないことがある
+                                # その場合は単一呼び出しとして index=0 扱いにする
+                                idx = getattr(tc_delta, "index", None)
+                                if idx is None:
+                                    idx = 0
 
-                                    tc = collected_tool_calls[tc_delta.index]
-                                    if tc_delta.id:
-                                        tc["id"] = tc_delta.id
-                                    if tc_delta.function:
-                                        if tc_delta.function.name:
-                                            tc["function"]["name"] = tc_delta.function.name
-                                        if tc_delta.function.arguments:
-                                            tc["function"]["arguments"] += tc_delta.function.arguments
+                                # 新しいツール呼び出しまたは既存の更新
+                                while len(collected_tool_calls) <= idx:
+                                    collected_tool_calls.append({
+                                        "id": "",
+                                        "type": "function",
+                                        "function": {"name": "", "arguments": ""}
+                                    })
+
+                                tc = collected_tool_calls[idx]
+                                if getattr(tc_delta, "id", None):
+                                    tc["id"] = tc_delta.id
+                                if getattr(tc_delta, "function", None):
+                                    if getattr(tc_delta.function, "name", None):
+                                        tc["function"]["name"] = tc_delta.function.name
+                                    if getattr(tc_delta.function, "arguments", None):
+                                        tc["function"]["arguments"] += tc_delta.function.arguments
 
                     # 残りの思考バッファをフラッシュ（verbose のときだけ）
                     if reasoning_buffer and self.verbose and not self.progress_callback:
@@ -1233,7 +1238,9 @@ class AgentRuntime:
                         _safe_stream_print("\n")  # 改行
 
                     # ツール呼び出しがあるか確認
-                    if collected_tool_calls and collected_tool_calls[0]["id"]:
+                    # OpenAI のストリーミングでは tool_call_id が欠落するケースがあるため、
+                    # id の有無ではなく function.name の有無で判定する
+                    if collected_tool_calls and any(tc.get("function", {}).get("name") for tc in collected_tool_calls):
                         # ツール呼び出しを処理
                         messages.append({
                             "role": "assistant",
@@ -1241,7 +1248,7 @@ class AgentRuntime:
                             "tool_calls": collected_tool_calls
                         })
 
-                        for tc in collected_tool_calls:
+                        for idx, tc in enumerate(collected_tool_calls):
                             func_name = tc["function"]["name"]
                             try:
                                 args_dict = json.loads(tc["function"]["arguments"])
@@ -1249,6 +1256,10 @@ class AgentRuntime:
                                 args_dict = {}
 
                             result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
+
+                            # tool_call_id が空の場合でも進められるように補完
+                            if not tc.get("id"):
+                                tc["id"] = f"call_{idx}"
 
                             messages.append({
                                 "role": "tool",
