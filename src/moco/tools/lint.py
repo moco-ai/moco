@@ -121,11 +121,20 @@ def _run_python_linter(target: str) -> List[str]:
 
 def _run_javascript_linter(target: str) -> List[str]:
     """JavaScript/TypeScriptのリンター (eslint) を実行する"""
+    # 1. ローカルインストールを優先
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    local_eslint = os.path.join(base_dir, "node_modules", ".bin", "eslint")
+    
+    if os.path.isfile(local_eslint) and os.access(local_eslint, os.X_OK):
+        cmd = [local_eslint, "--format", "unix", "--", target]
+    else:
+        cmd = ["npx", "eslint", "--format", "unix", "--", target]
+
     try:
         # v9以降でも --format unix は標準搭載
         # オプションインジェクション対策で "--" を使用
         result = subprocess.run(
-            ["npx", "eslint", "--format", "unix", "--", target],
+            cmd,
             capture_output=True,
             text=True,
             check=False

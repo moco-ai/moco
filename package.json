@@ -1,0 +1,10 @@
+{
+  "name": "moco-agent-node-tools",
+  "version": "1.0.0",
+  "description": "Node.js tools for moco-agent",
+  "private": true,
+  "dependencies": {
+    "agent-browser": "latest",
+    "eslint": "latest"
+  }
+}

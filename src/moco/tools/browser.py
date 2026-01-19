@@ -79,18 +79,31 @@ def _run_agent_browser(*args: str, timeout: int = 60) -> str:
     Returns:
         コマンドの出力
     """
-    # node/npx の bin ディレクトリを検出
-    node_bin_dir = _find_node_bin_dir()
-    if not node_bin_dir:
-        return "Error: npx not found. Please install Node.js and npm, or check your nvm setup."
+    # 1. ワークスペース内のローカルインストールを優先
+    # このファイルは moco-agent/src/moco/tools/ にあると仮定
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    local_bin = os.path.join(base_dir, "node_modules", ".bin", "agent-browser")
     
-    npx_path = os.path.join(node_bin_dir, "npx")
-    cmd = [npx_path, "agent-browser"] + list(args)
-    
-    # 環境変数を設定（node が見つかるように PATH を追加）
-    env = os.environ.copy()
-    current_path = env.get("PATH", "")
-    env["PATH"] = f"{node_bin_dir}:{current_path}"
+    if os.path.isfile(local_bin) and os.access(local_bin, os.X_OK):
+        cmd = [local_bin] + list(args)
+        # local_bin のディレクトリを PATH に追加（依存する node などが見つかるように）
+        env = os.environ.copy()
+        node_bin_dir = _find_node_bin_dir()
+        if node_bin_dir:
+            env["PATH"] = f"{node_bin_dir}:{env.get('PATH', '')}"
+    else:
+        # 2. node/npx の bin ディレクトリを検出して npx 経由で実行
+        node_bin_dir = _find_node_bin_dir()
+        if not node_bin_dir:
+            return "Error: npx not found. Please install Node.js and npm, or check your nvm setup."
+        
+        npx_path = os.path.join(node_bin_dir, "npx")
+        cmd = [npx_path, "agent-browser"] + list(args)
+        
+        # 環境変数を設定（node が見つかるように PATH を追加）
+        env = os.environ.copy()
+        current_path = env.get("PATH", "")
+        env["PATH"] = f"{node_bin_dir}:{current_path}"
     
     try:
         result = subprocess.run(

@@ -1087,8 +1087,10 @@ class AgentRuntime:
                             "tools": tools,
                             "stream": True,
                             "stream_options": {"include_usage": True},
-                            "parallel_tool_calls": True,
                         }
+                        # OpenRouter以外の場合のみ parallel_tool_calls を設定
+                        if self.provider != LLMProvider.OPENROUTER:
+                            create_kwargs["parallel_tool_calls"] = True
                         
                         # OpenAI o1/o3 の場合は reasoning_effort を使用
                         if self.provider != LLMProvider.OPENROUTER:
@@ -1099,15 +1101,19 @@ class AgentRuntime:
                         
                         response = await self.openai_client.chat.completions.create(**create_kwargs)
                     else:
-                        response = await self.openai_client.chat.completions.create(
-                            model=self.model_name,
-                            messages=messages,
-                            tools=tools,
-                            temperature=0.7,
-                            stream=True,
-                            stream_options={"include_usage": True},
-                            parallel_tool_calls=True,
-                        )
+                        # OpenRouter/Bedrockでは parallel_tool_calls がサポートされない場合がある
+                        create_kwargs = {
+                            "model": self.model_name,
+                            "messages": messages,
+                            "tools": tools,
+                            "temperature": 0.7,
+                            "stream": True,
+                            "stream_options": {"include_usage": True},
+                        }
+                        # OpenRouter以外の場合のみ parallel_tool_calls を設定
+                        if self.provider != LLMProvider.OPENROUTER:
+                            create_kwargs["parallel_tool_calls"] = True
+                        response = await self.openai_client.chat.completions.create(**create_kwargs)
 
                     # ストリーミングレスポンスを処理
                     collected_content = ""
@@ -1292,21 +1298,25 @@ class AgentRuntime:
                     # 非ストリーミングモード
                     # reasoning モデル (o1/o3) の場合は reasoning_effort を使用
                     if _is_reasoning_model(self.model_name):
-                        response = await self.openai_client.chat.completions.create(
-                            model=self.model_name,
-                            messages=messages,
-                            tools=tools,
-                            reasoning_effort="medium",  # thinking mode ON
-                            parallel_tool_calls=True,
-                        )
+                        create_kwargs = {
+                            "model": self.model_name,
+                            "messages": messages,
+                            "tools": tools,
+                        }
+                        if self.provider != LLMProvider.OPENROUTER:
+                            create_kwargs["reasoning_effort"] = "medium"
+                            create_kwargs["parallel_tool_calls"] = True
+                        response = await self.openai_client.chat.completions.create(**create_kwargs)
                     else:
-                        response = await self.openai_client.chat.completions.create(
-                            model=self.model_name,
-                            messages=messages,
-                            tools=tools,
-                            temperature=0.7,
-                            parallel_tool_calls=True,
-                        )
+                        create_kwargs = {
+                            "model": self.model_name,
+                            "messages": messages,
+                            "tools": tools,
+                            "temperature": 0.7,
+                        }
+                        if self.provider != LLMProvider.OPENROUTER:
+                            create_kwargs["parallel_tool_calls"] = True
+                        response = await self.openai_client.chat.completions.create(**create_kwargs)
                     # usage記録
                     if hasattr(response, "usage") and response.usage:
                         self.last_usage = {
