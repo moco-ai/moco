@@ -30,12 +30,12 @@ class ToolCallTracker:
         """ツール呼び出しのユニークキーを生成（引数が大きい場合はハッシュ化）"""
         try:
             args_str = json.dumps(args, sort_keys=True, default=str)
-            # 引数が100文字を超える場合はMD5ハッシュを使用
+            # 引数が100文字を超える場合はSHA-256ハッシュを使用
             if len(args_str) > 100:
-                args_hash = hashlib.md5(args_str.encode()).hexdigest()
+                args_hash = hashlib.sha256(args_str.encode()).hexdigest()
                 return f"{tool_name}:hash:{args_hash}"
             return f"{tool_name}:{args_str}"
-        except Exception:
+        except (TypeError, ValueError):
             return f"{tool_name}:{str(args)}"
     
     def check_and_record(self, tool_name: str, args: dict) -> tuple[bool, str]:
@@ -158,8 +158,8 @@ def _format_tool_log(tool_name: str, args: dict) -> tuple:
         offset = args.get("offset")
         limit = args.get("limit")
         if offset or limit:
-            start = offset or 1
-            end = start + (limit or 0) - 1 if limit else "end"
+            start = int(offset) if offset else 1
+            end = start + (int(limit) if limit else 0) - 1 if limit else "end"
             arg_str += f" [L{start}-{end}]"
 
     elif tool_name == "execute_bash":
@@ -244,7 +244,7 @@ def _validate_arguments(func: Callable, args: Dict[str, Any]) -> Dict[str, Any]:
     sig = inspect.signature(func)
     try:
         hints = get_type_hints(func)
-    except Exception:
+    except (TypeError, NameError, ValueError):
         hints = {}
 
     validated_args = {}
@@ -455,7 +455,7 @@ def _ensure_jsonable(value: Any) -> Any:
     try:
         json.dumps(value)
         return value
-    except Exception:
+    except (TypeError, ValueError):
         return str(value)
 
 
@@ -508,7 +508,7 @@ def _func_to_openai_tool(func: Callable, tool_name: str) -> Dict[str, Any]:
 
     try:
         hints = get_type_hints(func)
-    except Exception:
+    except (TypeError, NameError, ValueError):
         hints = {}
 
     for param_name, param in sig.parameters.items():
@@ -559,7 +559,7 @@ def _func_to_declaration(func: Callable, tool_name: str) -> types.FunctionDeclar
 
     try:
         hints = get_type_hints(func)
-    except Exception:
+    except (TypeError, NameError, ValueError):
         hints = {}
 
     for param_name, param in sig.parameters.items():
