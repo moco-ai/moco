@@ -916,7 +916,8 @@ class AgentRuntime:
         if self.memory_service and session_id:
             try:
                 is_error = result.startswith("Error") if isinstance(result, str) else False
-                self.memory_service.record_task_run_event(
+                await asyncio.to_thread(
+                    self.memory_service.record_task_run_event,
                     run_id=session_id,
                     tool_name=func_name,
                     params=args_dict,

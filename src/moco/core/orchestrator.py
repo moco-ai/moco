@@ -309,7 +309,7 @@ class Orchestrator:
         memory_context = ""
         if self.memory:
             try:
-                memories = self.memory.recall(user_input, top_k=5)
+                memories = await asyncio.to_thread(self.memory.recall, user_input, 5)
                 if memories:
                     memory_items = [m.get("content", "") for m in memories if m.get("content")]
                     if memory_items:
@@ -418,15 +418,17 @@ class Orchestrator:
         # Memory: 会話から学習
         if self.memory:
             try:
-                analysis = self.memory.analyze(user_input, response)
+                analysis = await asyncio.to_thread(self.memory.analyze, user_input, response)
                 if analysis.get("should_learn") and analysis.get("content"):
-                    self.memory.learn(
-                        content=analysis["content"],
-                        memory_type=analysis.get("type", "knowledge"),
-                        keywords=analysis.get("keywords", []),
-                        questions=analysis.get("questions", []),
-                        relations=analysis.get("relations"),
-                        run_id=session_id
+                    await asyncio.to_thread(
+                        lambda: self.memory.learn(
+                            content=analysis["content"],
+                            memory_type=analysis.get("type", "knowledge"),
+                            keywords=analysis.get("keywords", []),
+                            questions=analysis.get("questions", []),
+                            relations=analysis.get("relations"),
+                            run_id=session_id
+                        )
                     )
                     if self.verbose:
                         print(f"[Memory] Learned: {analysis['content'][:50]}...")
