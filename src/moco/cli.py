@@ -1142,6 +1142,7 @@ def tasks_status():
 def tasks_logs(
     task_id: str = typer.Argument(..., help="タスクID"),
     follow: bool = typer.Option(False, "--follow", "-f", help="ログを継続的に表示"),
+    all_logs: bool = typer.Option(False, "--all", "-a", help="全ログを表示（切り詰めなし）"),
 ):
     """タスクのログを表示"""
     from .core.task_runner import TaskRunner
@@ -1149,7 +1150,8 @@ def tasks_logs(
     if follow:
         runner.tail_logs(task_id)
     else:
-        logs = runner.get_logs(task_id)
+        max_bytes = 0 if all_logs else 10000  # 0 = 無制限
+        logs = runner.get_logs(task_id, max_bytes=max_bytes)
         typer.echo(logs)
 
 
