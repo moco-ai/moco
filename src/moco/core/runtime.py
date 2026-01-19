@@ -616,7 +616,8 @@ class AgentRuntime:
         progress_callback: Optional[Callable] = None,
         parent_agent: Optional[str] = None,
         semantic_memory: Optional[SemanticMemory] = None,
-        skills: Optional[List[SkillConfig]] = None
+        skills: Optional[List[SkillConfig]] = None,
+        memory_service = None
     ):
         self.config = config
         self.tool_map = tool_map
@@ -626,6 +627,7 @@ class AgentRuntime:
         self.progress_callback = progress_callback
         self.parent_agent = parent_agent
         self.skills: List[SkillConfig] = skills or []
+        self.memory_service = memory_service
         
         # ツール呼び出しループ検出
         self.tool_tracker = ToolCallTracker(max_repeats=3, window_size=10)
@@ -909,6 +911,21 @@ class AgentRuntime:
 
         # コンテキスト上限チェック
         result = self._update_context_usage(result)
+        
+        # Memory: ツール実行イベントを記録
+        if self.memory_service and session_id:
+            try:
+                is_error = result.startswith("Error") if isinstance(result, str) else False
+                self.memory_service.record_task_run_event(
+                    run_id=session_id,
+                    tool_name=func_name,
+                    params=args_dict,
+                    result={"output": result[:500] if isinstance(result, str) else str(result)[:500]},
+                    success=not is_error,
+                    error_type="tool_error" if is_error else None,
+                )
+            except Exception:
+                pass  # Don't fail on memory errors
 
         # 終了通知
         if self.progress_callback:
