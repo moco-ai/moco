@@ -274,16 +274,32 @@ class Orchestrator:
         
         # Optimizer: タスク分析（use_optimizer=True の場合のみ）
         if self.use_optimizer:
-            self._current_scores = await self.task_analyzer.analyze(user_input)
-            available_agents = [name for name in self.agents.keys()]
-            self._current_selection = self.agent_selector.select(
-                self._current_scores, 
-                available_agents
-            )
-            
-            if self.verbose:
-                print(f"[Optimizer] Scores: {self._current_scores}")
-                print(f"[Optimizer] Selection: {self._current_selection.depth} -> {self._current_selection.agents}")
+            status_ctx = None
+            if not self.verbose:
+                try:
+                    from rich.console import Console
+                    status_ctx = Console().status("[bold magenta]Optimizer: 分析中...[/]")
+                    status_ctx.start()
+                except ImportError:
+                    pass
+
+            try:
+                self._current_scores = await self.task_analyzer.analyze(user_input)
+                available_agents = [name for name in self.agents.keys()]
+                self._current_selection = self.agent_selector.select(
+                    self._current_scores, 
+                    available_agents
+                )
+                
+                if self.verbose:
+                    print(f"[Optimizer] Scores: {self._current_scores}")
+                    print(f"[Optimizer] Selection: {self._current_selection.depth} -> {self._current_selection.agents}")
+                elif status_ctx:
+                    status_ctx.update(f"[bold magenta]Optimizer: {self._current_selection.depth} モードを選択[/]")
+                    await asyncio.sleep(0.5)  # 選択結果を一瞬見せる
+            finally:
+                if status_ctx:
+                    status_ctx.stop()
         else:
             # Optimizer無効時は全エージェント使用
             self._current_scores = None

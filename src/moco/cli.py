@@ -531,14 +531,15 @@ def chat(
 
     provider_enum, model = resolve_provider(provider, model)
 
-    o = Orchestrator(
-        profile=profile,
-        provider=provider_enum,
-        model=model,
-        stream=stream,
-        verbose=verbose,
-        use_optimizer=use_optimizer,
-    )
+    with console.status(f"[bold cyan]Initializing Orchestrator ({profile})...[/]"):
+        o = Orchestrator(
+            profile=profile,
+            provider=provider_enum,
+            model=model,
+            stream=stream,
+            verbose=verbose,
+            use_optimizer=use_optimizer,
+        )
 
     # Context for slash commands
     command_context = {
