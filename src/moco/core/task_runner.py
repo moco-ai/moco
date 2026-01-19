@@ -144,7 +144,8 @@ class TaskRunner:
         
         file_size = log_file.stat().st_size
         with open(log_file, "r") as f:
-            if file_size > max_bytes:
+            # max_bytes <= 0 は無制限
+            if max_bytes > 0 and file_size > max_bytes:
                 f.seek(file_size - max_bytes)
                 return "...(truncated)...\n" + f.read()
             return f.read()
