@@ -1,24 +1,39 @@
 #!/usr/bin/env python3
 """Moco CLI"""
 
+# ========================================
+# 重要: .env の読み込みは最初に行う必要がある
+# 他のモジュールがインポート時に環境変数を参照するため
+# ========================================
 import os
+from pathlib import Path
+from dotenv import load_dotenv, find_dotenv
+
+def _early_load_dotenv():
+    """モジュールインポート前に .env を読み込む"""
+    env_path = find_dotenv(usecwd=True) or (Path(__file__).parent.parent.parent / ".env")
+    if env_path:
+        load_dotenv(env_path)
+
+# 他のモジュールをインポートする前に環境変数を読み込む
+_early_load_dotenv()
+
+# ここから通常のインポート
 import typer
 import time
 import sys
 import threading
 from datetime import datetime
-from pathlib import Path
 from typing import Optional, List
-from dotenv import load_dotenv, find_dotenv
 from .ui.theme import ThemeName, THEMES
 
 def init_environment():
-    """環境変数の初期化"""
-    # 1. find_dotenv() で自動検索（カレントディレクトリから親方向に .env を探索）
-    # 2. フォールバックとして従来のパス（__file__ 基準で3階層上）
-    env_path = find_dotenv() or (Path(__file__).parent.parent.parent / ".env")
+    """環境変数の初期化（後方互換性のために残す）"""
+    # 既に _early_load_dotenv() で読み込み済みだが、
+    # 明示的に呼ばれた場合は再読み込み
+    env_path = find_dotenv(usecwd=True) or (Path(__file__).parent.parent.parent / ".env")
     if env_path:
-        load_dotenv(env_path)
+        load_dotenv(env_path, override=True)
 
 
 app = typer.Typer(

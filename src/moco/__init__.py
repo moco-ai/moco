@@ -1,3 +1,20 @@
+# ========================================
+# 重要: .env の読み込みは最初に行う必要がある
+# 他のモジュールがインポート時に環境変数を参照するため
+# ========================================
+import os
+from pathlib import Path
+from dotenv import load_dotenv, find_dotenv
+
+def _early_load_dotenv():
+    """モジュールインポート前に .env を読み込む"""
+    env_path = find_dotenv(usecwd=True) or (Path(__file__).parent.parent.parent / ".env")
+    if env_path:
+        load_dotenv(env_path)
+
+_early_load_dotenv()
+
+# ここから通常のインポート
 from .core.orchestrator import Orchestrator
 from .tools.discovery import AgentLoader, AgentConfig
 from .core.runtime import AgentRuntime, LLMProvider

@@ -6,9 +6,23 @@ LLM プロバイダー統一管理
 
 import os
 import logging
+from pathlib import Path
+from dotenv import load_dotenv, find_dotenv
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
+_DOTENV_LOADED = False
+
+
+def _ensure_dotenv_loaded() -> None:
+    """必要に応じて .env を読み込む（多重読み込みを避ける）。"""
+    global _DOTENV_LOADED
+    if _DOTENV_LOADED:
+        return
+    env_path = find_dotenv(usecwd=True) or (Path(__file__).parent.parent.parent / ".env")
+    if env_path:
+        load_dotenv(env_path)
+    _DOTENV_LOADED = True
 
 # プロバイダー定数
 PROVIDER_ZAI = "zai"
@@ -38,6 +52,7 @@ ANALYZER_MODELS = {
 
 def _check_api_key(provider: str) -> bool:
     """指定プロバイダーの API キーが設定されているか確認"""
+    _ensure_dotenv_loaded()
     if provider == PROVIDER_ZAI:
         return bool(os.environ.get("ZAI_API_KEY"))
     elif provider == PROVIDER_OPENROUTER:

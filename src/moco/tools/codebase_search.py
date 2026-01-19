@@ -12,8 +12,21 @@ import tiktoken
 from typing import List, Dict, Any, Optional, Set
 from pathlib import Path
 from datetime import datetime
+from dotenv import load_dotenv, find_dotenv
 
 logger = logging.getLogger(__name__)
+_DOTENV_LOADED = False
+
+
+def _ensure_dotenv_loaded() -> None:
+    """必要に応じて .env を読み込む（多重読み込みを避ける）。"""
+    global _DOTENV_LOADED
+    if _DOTENV_LOADED:
+        return
+    env_path = find_dotenv(usecwd=True) or (Path(__file__).parent.parent.parent / ".env")
+    if env_path:
+        load_dotenv(env_path)
+    _DOTENV_LOADED = True
 
 # OpenAI client (optional)
 try:
@@ -31,35 +44,34 @@ except ImportError:
     genai = None
     GENAI_AVAILABLE = False
 
-# 環境変数の確認
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-GEMINI_API_KEY = (
-    os.environ.get("GENAI_API_KEY") or
-    os.environ.get("GEMINI_API_KEY") or
-    os.environ.get("GOOGLE_API_KEY")
-)
 INDEX_DIR = ".code_index"
 OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 GEMINI_EMBEDDING_MODEL = "text-embedding-004"
 TOKEN_LIMIT = 8000  # 安全のため少し低めに設定
 
-# 利用可能なプロバイダーを判定
+def _get_openai_api_key() -> Optional[str]:
+    """OpenAI API キーを環境変数から取得する。"""
+    _ensure_dotenv_loaded()
+    return os.environ.get("OPENAI_API_KEY")
+
+
+def _get_gemini_api_key() -> Optional[str]:
+    """Gemini API キーを環境変数から取得する。"""
+    _ensure_dotenv_loaded()
+    return (
+        os.environ.get("GENAI_API_KEY") or
+        os.environ.get("GEMINI_API_KEY") or
+        os.environ.get("GOOGLE_API_KEY")
+    )
+
+
 def _get_embedding_provider() -> Optional[str]:
     """利用可能な埋め込みプロバイダーを返す。なければ None。"""
-    if OPENAI_AVAILABLE and OPENAI_API_KEY:
+    if OPENAI_AVAILABLE and _get_openai_api_key():
         return "openai"
-    if GENAI_AVAILABLE and GEMINI_API_KEY:
+    if GENAI_AVAILABLE and _get_gemini_api_key():
         return "gemini"
     return None
-
-EMBEDDING_PROVIDER = _get_embedding_provider()
-
-# モジュールインポート時にプロバイダーがない場合はエラーを発生させる
-if EMBEDDING_PROVIDER is None:
-    raise ValueError(
-        "No embedding provider available for codebase_search. "
-        "Set OPENAI_API_KEY or GEMINI_API_KEY environment variable."
-    )
 
 
 class CodeChunker:
@@ -159,7 +171,7 @@ class CodebaseSearcher:
     """コードベース検索を管理するクラス（インクリメンタル更新対応）"""
 
     def __init__(self, provider: Optional[str] = None):
-        self.provider = provider or EMBEDDING_PROVIDER
+        self.provider = provider or _get_embedding_provider()
         if not self.provider:
             raise ValueError(
                 "No embedding provider available. "
@@ -170,10 +182,10 @@ class CodebaseSearcher:
         self._gemini_client = None
 
         if self.provider == "openai":
-            self._openai_client = OpenAI(api_key=OPENAI_API_KEY)
+            self._openai_client = OpenAI(api_key=_get_openai_api_key())
             self.dimension = 1536
         elif self.provider == "gemini":
-            self._gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+            self._gemini_client = genai.Client(api_key=_get_gemini_api_key())
             self.dimension = 768
         else:
             raise ValueError(f"Unknown provider: {self.provider}")
