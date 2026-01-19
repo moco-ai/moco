@@ -260,7 +260,7 @@ graph TB
 | `ZAI_API_KEY` | Z.ai API キー | - |
 | `LLM_PROVIDER` | デフォルトプロバイダ | `gemini` |
 | `GEMINI_MODEL` | Gemini モデル名 | `gemini-3-flash-preview` |
-| `OPENAI_MODEL` | OpenAI モデル名 | `gpt-5.1` |
+| `OPENAI_MODEL` | OpenAI モデル名 | `gpt-5.2-codex` |
 | `OPENROUTER_MODEL` | OpenRouter モデル名 | `google/gemini-3-flash-preview` |
 | `ZAI_MODEL` | Z.ai モデル名 | `glm-4.7` |
 | `SEMANTIC_DB_PATH` | セマンティックメモリDB | `data/semantic.db` |

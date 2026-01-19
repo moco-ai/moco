@@ -1139,7 +1139,7 @@ class Orchestrator:
                 from openai import OpenAI
                 
                 client = OpenAI(api_key=openai_key)
-                model_name = os.environ.get("OPENAI_MODEL", "gpt-5.1")
+                model_name = os.environ.get("OPENAI_MODEL", "gpt-5.2-codex")
                 # gpt-5系は max_completion_tokens を使用
                 if "gpt-5" in model_name or "o1" in model_name or "o3" in model_name:
                     response = client.chat.completions.create(
