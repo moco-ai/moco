@@ -13,6 +13,7 @@ from ..cancellation import check_cancelled, clear_cancel_event, OperationCancell
 from .runtime import AgentRuntime, LLMProvider
 from ..storage.session_logger import SessionLogger
 from ..storage.semantic_memory import SemanticMemory
+from ..memory import MemoryService
 
 # Optimizer components
 from .optimizer import (
@@ -105,6 +106,18 @@ class Orchestrator:
         self._all_skills: Dict[str, SkillConfig] = {}  # ローカルスキルキャッシュ
         self._session_skills: List[SkillConfig] = []   # セッション中にロードしたスキル（プール）
         
+        # Memory Service for learning and recall
+        try:
+            self.memory = MemoryService(
+                channel_id=f"moco_{profile}",
+                db_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "memory.db"),
+                graph_enabled=False  # Disable graph for now
+            )
+        except Exception as e:
+            if self.verbose:
+                print(f"[Orchestrator] Memory service init failed: {e}")
+            self.memory = None
+        
         # Optimizer コンポーネント
         self.optimizer_config = OptimizerConfig(profile=profile)
         self.task_analyzer = TaskAnalyzer(
@@ -178,7 +191,8 @@ class Orchestrator:
                     verbose=self.verbose,
                     progress_callback=self.progress_callback,
                     parent_agent=None if name == "orchestrator" else "orchestrator",
-                    semantic_memory=self.semantic_memory
+                    semantic_memory=self.semantic_memory,
+                    memory_service=self.memory
                 )
             else:
                 self.runtimes[name] = AgentRuntime(
@@ -192,7 +206,8 @@ class Orchestrator:
                     verbose=self.verbose,
                     progress_callback=self.progress_callback,
                     parent_agent="orchestrator",  # サブエージェントの親はorchestrator
-                    semantic_memory=self.semantic_memory
+                    semantic_memory=self.semantic_memory,
+                    memory_service=self.memory
                 )
 
     def _create_delegate_tool(self, available_agents: list):
@@ -289,6 +304,21 @@ class Orchestrator:
         # キャンセルチェック
         if session_id:
             check_cancelled(session_id)
+        
+        # Memory recall: 関連記憶を取得してコンテキストに追加
+        memory_context = ""
+        if self.memory:
+            try:
+                memories = self.memory.recall(user_input, top_k=5)
+                if memories:
+                    memory_items = [m.get("content", "") for m in memories if m.get("content")]
+                    if memory_items:
+                        memory_context = "【過去の学習】\n" + "\n".join(f"- {item}" for item in memory_items[:3]) + "\n\n"
+                        if self.verbose:
+                            print(f"[Memory] Recalled {len(memory_items)} items")
+            except Exception as e:
+                if self.verbose:
+                    print(f"[Memory] Recall failed: {e}")
 
         # TodoツールにセッションIDを設定
         if session_id:
@@ -384,6 +414,25 @@ class Orchestrator:
         
         # Optimizer: メトリクス記録
         await self._record_execution_metrics(session_id, user_input, response)
+        
+        # Memory: 会話から学習
+        if self.memory:
+            try:
+                analysis = self.memory.analyze(user_input, response)
+                if analysis.get("should_learn") and analysis.get("content"):
+                    self.memory.learn(
+                        content=analysis["content"],
+                        memory_type=analysis.get("type", "knowledge"),
+                        keywords=analysis.get("keywords", []),
+                        questions=analysis.get("questions", []),
+                        relations=analysis.get("relations"),
+                        run_id=session_id
+                    )
+                    if self.verbose:
+                        print(f"[Memory] Learned: {analysis['content'][:50]}...")
+            except Exception as e:
+                if self.verbose:
+                    print(f"[Memory] Learning failed: {e}")
 
         return response
     
