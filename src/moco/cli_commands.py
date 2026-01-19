@@ -252,7 +252,7 @@ def handle_agents(args: List[str], context: Dict[str, Any]) -> bool:
     
     if hasattr(orchestrator, 'agents'):
         for name, config in orchestrator.agents.items():
-            desc = config.instructions[:50] + "..." if config.instructions else ""
+            desc = config.description[:50] + "..." if len(config.description) > 50 else config.description
             table.add_row(name, desc)
     
     console.print(table)
