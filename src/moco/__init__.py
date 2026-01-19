@@ -1,3 +1,15 @@
+import warnings
+# ========================================
+# 警告の抑制 (インポート前に設定)
+# ========================================
+# Python 3.9 EOL や SSL 関連の不要な警告を非表示にする
+warnings.filterwarnings("ignore", category=FutureWarning)
+try:
+    # urllib3 の NotOpenSSLWarning はインポート時に発生するため、先にフィルターを設定
+    warnings.filterwarnings("ignore", message=".*urllib3 v2 only supports OpenSSL 1.1.1+.*")
+except Exception:
+    pass
+
 # ========================================
 # 重要: .env の読み込みは最初に行う必要がある
 # 他のモジュールがインポート時に環境変数を参照するため

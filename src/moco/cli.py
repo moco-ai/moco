@@ -1,6 +1,19 @@
 #!/usr/bin/env python3
 """Moco CLI"""
 
+import warnings
+# ========================================
+# 警告の抑制 (インポート前に設定)
+# ========================================
+# Python 3.9 EOL や SSL 関連の不要な警告を非表示にする
+warnings.filterwarnings("ignore", category=FutureWarning)
+try:
+    # urllib3 の NotOpenSSLWarning はインポート時に発生するため、
+    # 警告フィルターを先に設定しておく必要がある
+    warnings.filterwarnings("ignore", message=".*urllib3 v2 only supports OpenSSL 1.1.1+.*")
+except Exception:
+    pass
+
 # ========================================
 # 重要: .env の読み込みは最初に行う必要がある
 # 他のモジュールがインポート時に環境変数を参照するため
@@ -36,6 +49,42 @@ def init_environment():
         load_dotenv(env_path, override=True)
 
 
+def resolve_provider(provider_str: str, model: Optional[str] = None) -> tuple:
+    """プロバイダ文字列を解決してLLMProviderとモデル名を返す
+    
+    Args:
+        provider_str: プロバイダ文字列 (例: "gemini", "zai/glm-4.7")
+        model: モデル名（既に指定されている場合）
+    
+    Returns:
+        tuple: (LLMProvider, model_name) - 無効なプロバイダの場合は typer.Exit を発生
+    """
+    from .core.runtime import LLMProvider
+    
+    # "zai/glm-4.7" のような形式をパース
+    provider_name = provider_str
+    resolved_model = model
+    if "/" in provider_str and model is None:
+        parts = provider_str.split("/", 1)
+        provider_name = parts[0]
+        resolved_model = parts[1]
+    
+    # プロバイダ名のバリデーションとマッピング
+    VALID_PROVIDERS = {
+        "openai": LLMProvider.OPENAI,
+        "openrouter": LLMProvider.OPENROUTER,
+        "zai": LLMProvider.ZAI,
+        "gemini": LLMProvider.GEMINI,
+    }
+    
+    if provider_name not in VALID_PROVIDERS:
+        valid_list = ", ".join(sorted(VALID_PROVIDERS.keys()))
+        typer.echo(f"Error: Unknown provider '{provider_name}'. Valid options: {valid_list}", err=True)
+        raise typer.Exit(code=1)
+    
+    return VALID_PROVIDERS[provider_name], resolved_model
+
+
 app = typer.Typer(
     name="Moco",
     help="Lightweight AI agent orchestration framework",
@@ -59,7 +108,7 @@ app.add_typer(tasks_app, name="tasks")
 def run(
     task: str = typer.Argument(..., help="実行するタスク"),
     profile: str = typer.Option("default", "--profile", "-p", help="使用するプロファイル"),
-    provider: Optional[str] = typer.Option(None, "--provider", help="LLMプロバイダ (gemini/openai/openrouter/zai) - 省略時は自動選択"),
+    provider: Optional[str] = typer.Option(None, "--provider", "-P", help="LLMプロバイダ (gemini/openai/openrouter/zai) - 省略時は自動選択"),
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名 (例: gpt-4o, gemini-2.5-pro, claude-sonnet-4)"),
     stream: bool = typer.Option(False, "--stream/--no-stream", help="ストリーミング出力（デフォルト: オフ）"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
@@ -93,28 +142,13 @@ def run(
         os.environ['MOCO_WORKING_DIRECTORY'] = os.path.abspath(working_dir)
 
     from .core.orchestrator import Orchestrator
-    from .core.runtime import LLMProvider
     from .core.llm_provider import get_available_provider
 
     # プロバイダーの解決（指定なしの場合は優先順位で自動選択）
     if provider is None:
         provider = get_available_provider()
 
-    # "zai/glm-4.7" のような形式をパース
-    provider_name = provider
-    if "/" in provider and model is None:
-        parts = provider.split("/", 1)
-        provider_name = parts[0]
-        model = parts[1]
-
-    if provider_name == "openai":
-        provider_enum = LLMProvider.OPENAI
-    elif provider_name == "openrouter":
-        provider_enum = LLMProvider.OPENROUTER
-    elif provider_name == "zai":
-        provider_enum = LLMProvider.ZAI
-    else:
-        provider_enum = LLMProvider.GEMINI
+    provider_enum, model = resolve_provider(provider, model)
 
     if rich_output:
         from rich.console import Console
@@ -468,7 +502,7 @@ def list_profiles():
 @app.command()
 def chat(
     profile: str = typer.Option("default", "--profile", "-p", help="使用するプロファイル"),
-    provider: Optional[str] = typer.Option(None, "--provider", help="LLMプロバイダ (gemini/openai/openrouter/zai) - 省略時は自動選択"),
+    provider: Optional[str] = typer.Option(None, "--provider", "-P", help="LLMプロバイダ (gemini/openai/openrouter/zai) - 省略時は自動選択"),
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
     theme: ThemeName = typer.Option(ThemeName.DEFAULT, "--theme", help="UIカラーテーマ", case_sensitive=False),
@@ -483,9 +517,7 @@ def chat(
     from rich.console import Console
     from rich.panel import Panel
 
-
     from .core.orchestrator import Orchestrator
-    from .core.runtime import LLMProvider
     from .core.llm_provider import get_available_provider
 
     console = Console()
@@ -494,21 +526,7 @@ def chat(
     if provider is None:
         provider = get_available_provider()
 
-    # "zai/glm-4.7" のような形式をパース
-    provider_name = provider
-    if "/" in provider and model is None:
-        parts = provider.split("/", 1)
-        provider_name = parts[0]
-        model = parts[1]
-
-    if provider_name == "openai":
-        provider_enum = LLMProvider.OPENAI
-    elif provider_name == "openrouter":
-        provider_enum = LLMProvider.OPENROUTER
-    elif provider_name == "zai":
-        provider_enum = LLMProvider.ZAI
-    else:
-        provider_enum = LLMProvider.GEMINI
+    provider_enum, model = resolve_provider(provider, model)
 
     o = Orchestrator(
         profile=profile,
@@ -804,7 +822,7 @@ def version():
 def tasks_run(
     task: str = typer.Argument(..., help="実行するタスク内容"),
     profile: str = typer.Option("default", "--profile", "-p", help="プロファイル"),
-    provider: Optional[str] = typer.Option(None, "--provider", help="プロバイダ - 省略時は自動選択"),
+    provider: Optional[str] = typer.Option(None, "--provider", "-P", help="プロバイダ - 省略時は自動選択"),
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
     working_dir: Optional[str] = typer.Option(None, "--working-dir", "-w", help="作業ディレクトリ"),
 ):
@@ -1155,6 +1173,7 @@ def tasks_exec(
     """(内部用) タスクを実行し、DBを更新する"""
     init_environment()
     from .storage.task_store import TaskStore, TaskStatus
+    from .core.llm_provider import get_available_provider
 
     # 作業ディレクトリを環境変数に設定
     if working_dir:
@@ -1163,28 +1182,14 @@ def tasks_exec(
     store = TaskStore()
 
     # プロバイダの解決
-    from .core.runtime import LLMProvider
-    from .core.llm_provider import get_available_provider
-    
     if provider is None:
         provider = get_available_provider()
     
-    # "zai/glm-4.7" のような形式をパース
-    provider_name = provider
-    if "/" in provider and model is None:
-        parts = provider.split("/", 1)
-        provider_name = parts[0]
-        model = parts[1]
-    
-    p_enum = provider_name
-    if provider_name == "openai": p_enum = LLMProvider.OPENAI
-    elif provider_name == "gemini": p_enum = LLMProvider.GEMINI
-    elif provider_name == "zai": p_enum = LLMProvider.ZAI
-    elif provider_name == "openrouter": p_enum = LLMProvider.OPENROUTER
+    provider_enum, model = resolve_provider(provider, model)
 
     try:
         from .core.orchestrator import Orchestrator
-        orchestrator = Orchestrator(profile=profile, provider=p_enum, model=model, working_directory=working_dir)
+        orchestrator = Orchestrator(profile=profile, provider=provider_enum, model=model, working_directory=working_dir)
         # run_sync を使用してタスクを実行
         result = orchestrator.run_sync(task_description)
 
