@@ -15,6 +15,8 @@ from ..tools.skill_loader import SkillConfig
 class ToolCallTracker:
     """同じツール呼び出しのループを検出・防止するトラッカー"""
     
+    HASH_THRESHOLD = 100  # 引数文字列がこの長さを超える場合はハッシュ化する
+    
     def __init__(self, max_repeats: int = 3, window_size: int = 10):
         """
         Args:
@@ -30,8 +32,8 @@ class ToolCallTracker:
         """ツール呼び出しのユニークキーを生成（引数が大きい場合はハッシュ化）"""
         try:
             args_str = json.dumps(args, sort_keys=True, default=str)
-            # 引数が100文字を超える場合はSHA-256ハッシュを使用
-            if len(args_str) > 100:
+            # 引数がしきい値を超える場合はSHA-256ハッシュを使用
+            if len(args_str) > self.HASH_THRESHOLD:
                 args_hash = hashlib.sha256(args_str.encode()).hexdigest()
                 return f"{tool_name}:hash:{args_hash}"
             return f"{tool_name}:{args_str}"
