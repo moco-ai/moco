@@ -1139,20 +1139,8 @@ class AgentRuntime:
                     # 思考テキストのバッファリング（GLM等の細かいチャンク対策）
                     reasoning_buffer = ""
                     reasoning_header_shown = False
-                    
-                    # async generator を確実にクローズするためのヘルパー
-                    async def _iter_and_close():
-                        try:
-                            async for chunk in response:
-                                yield chunk
-                        finally:
-                            # async generator が途中で中断されても確実にクローズ
-                            if hasattr(response, 'close'):
-                                await response.close()
-                            elif hasattr(response, 'aclose'):
-                                await response.aclose()
 
-                    async for chunk in _iter_and_close():
+                    async for chunk in response:
                         # usage情報の取得（最後のチャンクに含まれる）
                         if hasattr(chunk, "usage") and chunk.usage:
                             self.last_usage = {
