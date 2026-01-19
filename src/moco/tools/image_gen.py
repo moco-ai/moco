@@ -110,7 +110,7 @@ def generate_image(
             raise RuntimeError(error_msg)
 
         timestamp = time.time_ns()
-        prompt_hash = hashlib.md5(prompt.encode()).hexdigest()[:8]
+        prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:8]
         filename = f"gen_{timestamp}_{prompt_hash}.png"
         file_path = output_path / filename
 
