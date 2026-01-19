@@ -139,11 +139,7 @@ def run(
     # ツール側で MOCO_WORKING_DIRECTORY を使って絶対パスに変換する
     original_cwd = os.getcwd()
     if working_dir:
-        abs_working_dir = os.path.abspath(working_dir)
-        if not os.path.isdir(abs_working_dir):
-            typer.echo(f"Error: Working directory does not exist: {abs_working_dir}", err=True)
-            raise typer.Exit(code=1)
-        os.environ['MOCO_WORKING_DIRECTORY'] = abs_working_dir
+        os.environ['MOCO_WORKING_DIRECTORY'] = os.path.abspath(working_dir)
 
     from .core.orchestrator import Orchestrator
     from .core.llm_provider import get_available_provider
@@ -210,15 +206,41 @@ def run(
     from .cancellation import create_cancel_event, request_cancel, clear_cancel_event, OperationCancelled
     cancel_event = create_cancel_event(session_id)
 
-    # シグナルハンドラでキャンセルを捕捉（stdinを読み取らないため入力消失なし）
-    import signal
-    original_sigint_handler = signal.getsignal(signal.SIGINT)
-    
-    def sigint_handler(signum, frame):
-        request_cancel(session_id)
-        # 元のハンドラは呼ばない（KeyboardInterruptを発生させない）
-    
-    signal.signal(signal.SIGINT, sigint_handler)
+    def listen_for_cancel():
+        """キー入力を監視してキャンセルをリクエストする"""
+        if sys.platform == "win32":
+            import msvcrt
+            while not cancel_event.is_set():
+                if msvcrt.kbhit():
+                    ch = msvcrt.getch()
+                    if ch in (b'\x1b', b'\x03'):  # ESC or Ctrl+C
+                        request_cancel(session_id)
+                        break
+                time.sleep(0.1)
+        else:
+            import tty
+            import termios
+            import select
+            fd = sys.stdin.fileno()
+            if not os.isatty(fd):
+                return
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setcbreak(fd)
+                while not cancel_event.is_set():
+                    # select で入力を待機 (100ms)
+                    rlist, _, _ = select.select([fd], [], [], 0.1)
+                    if rlist:
+                        ch = sys.stdin.read(1)
+                        if ch in ('\x1b', '\x03'):  # ESC or Ctrl+C
+                            request_cancel(session_id)
+                            break
+                        # 注意: ツール等がユーザー入力を求めた場合、ここで読み取った文字は消失する
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+    cancel_thread = threading.Thread(target=listen_for_cancel, daemon=True)
+    cancel_thread.start()
 
     try:
         for attempt in range(auto_retry + 1):
@@ -243,8 +265,11 @@ def run(
                         _print_error_hints(console, e)
                     raise typer.Exit(code=1)
     finally:
-        # シグナルハンドラを元に戻す
-        signal.signal(signal.SIGINT, original_sigint_handler)
+        # スレッドに停止を通知
+        cancel_event.set()
+        if sys.platform != "win32":
+            # 端末プロパティ復元を確実にするため、スレッドの終了を待つ
+            cancel_thread.join(timeout=0.2)
         clear_cancel_event(session_id)
 
     elapsed = time.time() - start_time
@@ -292,14 +317,13 @@ def _print_error_hints(console, error: Exception):
 
 
 def _print_result(console, result: str, theme_name: ThemeName = ThemeName.DEFAULT, verbose: bool = False):
-    """結果を整形して表示
+    """結果を整形して表示（シンプルテキスト出力）
 
     Args:
         console: Rich console
         result: 結果文字列
         verbose: True なら全エージェント出力を表示、False なら最後だけ
     """
-    from rich.panel import Panel
     import re
 
     theme = THEMES[theme_name]
@@ -330,11 +354,8 @@ def _print_result(console, result: str, theme_name: ThemeName = ThemeName.DEFAUL
                     lines = content.split('\n')
                     if len(lines) > 30:
                         content = '\n'.join(lines[:30]) + f"\n... ({len(lines) - 30} lines omitted)"
-                    console.print(Panel(
-                        content,
-                        title=f"[bold {theme.thoughts}]{agent}[/]",
-                        border_style="dim",
-                    ))
+                    console.print(f"\n[bold {theme.thoughts}]{agent}[/]")
+                    console.print(content)
                 i += 2
         else:
             # 最後のエージェントの結果だけ表示
@@ -343,38 +364,26 @@ def _print_result(console, result: str, theme_name: ThemeName = ThemeName.DEFAUL
 
             # orchestrator の最終回答は省略しない、他は短縮
             if last_agent == "@orchestrator":
-                # 最終回答は全文表示
                 display = last_content
             else:
-                # 中間エージェントは省略可
                 lines = last_content.split('\n')
                 if len(lines) > 20:
                     display = '\n'.join(lines[:20]) + f"\n\n[dim]... ({len(lines) - 20} lines omitted, use -v for full output)[/dim]"
                 else:
                     display = last_content
 
-            console.print(Panel(
-                display,
-                title=f"[bold {theme.thoughts}]{last_agent}[/]",
-                border_style="dim" if last_agent != "@orchestrator" else theme.result,
-            ))
+            console.print(f"\n[bold {theme.thoughts}]{last_agent}[/]")
+            console.print(display)
 
     # 最終サマリーを表示
     if final_summary:
-        console.print(Panel(
-            final_summary,
-            title=f"[bold {theme.result}]✅ まとめ[/]",
-            border_style=theme.result,
-        ))
+        console.print(f"\n[bold {theme.result}]✅ まとめ[/]")
+        console.print(final_summary)
     elif len(sections) > 1:
         console.print(f"\n[bold {theme.result}]✅ 完了[/]")
     else:
         # 単一の応答
-        console.print(Panel(
-            result,
-            title="📋 Result",
-            border_style=theme.result,
-        ))
+        console.print(result)
 
 
 @sessions_app.command("list")
@@ -548,12 +557,10 @@ def chat(
 
     command_context['session_id'] = session_id
 
-    console.print(Panel(
-        f"[bold {theme_config.status}]Profile:[/] {profile}  [bold {theme_config.status}]Provider:[/] {provider}\n"
-        f"[dim]Type 'exit' to quit, '/help' for commands[/dim]",
-        title="🤖 Moco chat",
-        border_style=theme_config.tools
-    ))
+    console.print(f"[bold cyan]🤖 Moco chat[/]")
+    console.print(f"[bold {theme_config.status}]Profile:[/] {profile}  [bold {theme_config.status}]Provider:[/] {provider}")
+    console.print(f"[dim]Type 'exit' to quit, '/help' for commands[/dim]")
+    console.print()
 
     # --- スラッシュコマンド対応 ---
     from .cli_commands import handle_slash_command
@@ -593,56 +600,8 @@ def chat(
 
             try:
                 cancel_event = create_cancel_event(session_id)
-                # --stream の場合は、直接 print せず Live パネルで表示（重複表示を防ぐ）
-                if stream:
-                    from rich.live import Live
-                    from rich.markdown import Markdown
-                    from rich.markup import escape
-                    from rich.panel import Panel as RichPanel
-
-                    buf: List[str] = []
-                    live = None
-
-                    def _render_panel() -> RichPanel:
-                        raw = "".join(buf)
-                        s = raw.lstrip()
-                        if s.startswith("@orchestrator:"):
-                            s = s[len("@orchestrator:"):].lstrip()
-                        return RichPanel(
-                            Markdown(escape(s)),
-                            title="@orchestrator",
-                            border_style=theme_config.tools,
-                        )
-
-                    def _on_event(event_type: str, **kwargs):
-                        nonlocal live
-                        if event_type == "chunk":
-                            chunk = kwargs.get("content") or ""
-                            if chunk:
-                                buf.append(chunk)
-                                if live:
-                                    live.update(_render_panel())
-                        elif event_type == "thinking" and verbose:
-                            t = (kwargs.get("content") or "").strip()
-                            if t:
-                                ui_state.add_verbose_log(t)
-
-                    def _set_callback(cb):
-                        o.progress_callback = cb
-                        for rt in o.runtimes.values():
-                            rt.progress_callback = cb
-
-                    _set_callback(_on_event)
-                    try:
-                        with Live(_render_panel(), console=console, refresh_per_second=16) as _live:
-                            live = _live
-                            reply = o.run_sync(text, session_id)
-                            live.update(_render_panel())
-                    finally:
-                        _set_callback(None)
-                        live = None
-                else:
-                    reply = o.run_sync(text, session_id)
+                # シンプルにrun_syncを呼ぶだけ（streaming時はruntimeが直接出力）
+                reply = o.run_sync(text, session_id)
             except KeyboardInterrupt:
                 request_cancel(session_id)
                 console.print("\n[yellow]Interrupted. Type 'exit' to quit or continue with a new prompt.[/yellow]")
@@ -656,6 +615,7 @@ def chat(
             finally:
                 clear_cancel_event(session_id)
 
+            # stream 時は Live または runtime の標準出力で表示済み（ここで二重表示しない）
             if reply and not stream:
                 console.print()
                 _print_result(console, reply, theme_name=ui_state.theme, verbose=verbose)
@@ -867,6 +827,7 @@ def tasks_run(
     provider: Optional[str] = typer.Option(None, "--provider", "-P", help="プロバイダ - 省略時は自動選択"),
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
     working_dir: Optional[str] = typer.Option(None, "--working-dir", "-w", help="作業ディレクトリ"),
+    session: Optional[str] = typer.Option(None, "--session", "-s", help="継続するセッションID"),
 ):
     """タスクをバックグラウンドで実行"""
     init_environment()
@@ -887,21 +848,20 @@ def tasks_run(
         resolved_provider = parts[0]
         resolved_model = parts[1]
 
-    # 作業ディレクトリを絶対パスに解決（存在チェック付き）
+    # 作業ディレクトリを絶対パスに解決
     resolved_working_dir = None
     if working_dir:
         resolved_working_dir = os.path.abspath(working_dir)
-        if not os.path.isdir(resolved_working_dir):
-            typer.echo(f"Error: Working directory does not exist: {resolved_working_dir}", err=True)
-            raise typer.Exit(code=1)
 
     store = TaskStore()
-    task_id = store.add_task(task, profile, resolved_provider, resolved_working_dir)
+    task_id = store.add_task(task, profile, resolved_provider, resolved_working_dir, session)
 
     runner = TaskRunner(store)
-    runner.run_task(task_id, profile, task, resolved_working_dir, resolved_provider, resolved_model)
+    runner.run_task(task_id, profile, task, resolved_working_dir, resolved_provider, resolved_model, session)
 
     typer.echo(f"Task started: {task_id}")
+    if session:
+        typer.echo(f"Continuing session: {session}")
 
 
 @tasks_app.command("list")
@@ -1214,6 +1174,7 @@ def tasks_exec(
     provider: Optional[str] = typer.Option(None, "--provider", help="プロバイダ"),
     model: Optional[str] = typer.Option(None, "--model", help="モデル名"),
     working_dir: Optional[str] = typer.Option(None, "--working-dir", help="作業ディレクトリ"),
+    session: Optional[str] = typer.Option(None, "--session", help="継続するセッションID"),
 ):
     """(内部用) タスクを実行し、DBを更新する"""
     init_environment()
@@ -1235,6 +1196,13 @@ def tasks_exec(
     try:
         from .core.orchestrator import Orchestrator
         orchestrator = Orchestrator(profile=profile, provider=provider_enum, model=model, working_directory=working_dir)
+        
+        # セッションIDが指定されている場合は継続、なければ新規作成
+        if session:
+            orchestrator.session_id = session
+        else:
+            orchestrator.create_session(title=f"Task: {task_description[:50]}")
+        
         # run_sync を使用してタスクを実行
         result = orchestrator.run_sync(task_description)
 
