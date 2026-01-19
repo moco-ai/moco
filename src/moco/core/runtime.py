@@ -1162,31 +1162,36 @@ class AgentRuntime:
                                     agent_name=self.name
                                 )
                             else:
-                                # CLI直接実行: バッファリングして句点/改行/一定文字数でフラッシュ
-                                reasoning_buffer += reasoning_text
-                                # ヘッダーを1回だけ表示
-                                if not reasoning_header_shown:
-                                    _safe_stream_print("\n💭 [思考中...]\n")
-                                    reasoning_header_shown = True
-                                # フラッシュ条件: 句点、改行、または80文字以上
-                                while len(reasoning_buffer) >= 80 or any(c in reasoning_buffer for c in '。\n'):
-                                    # 句点か改行があればそこまで出力
-                                    flush_pos = -1
-                                    for i, c in enumerate(reasoning_buffer):
-                                        if c in '。\n':
-                                            flush_pos = i + 1
+                                # CLI直接実行: verbose のときだけ思考過程を表示する
+                                if self.verbose and not self.progress_callback:
+                                    # バッファリングして句点/改行/一定文字数でフラッシュ
+                                    reasoning_buffer += reasoning_text
+                                    # ヘッダーを1回だけ表示
+                                    if not reasoning_header_shown:
+                                        _safe_stream_print("\n💭 [思考中...]\n")
+                                        reasoning_header_shown = True
+                                    # フラッシュ条件: 句点、改行、または80文字以上
+                                    while len(reasoning_buffer) >= 80 or any(c in reasoning_buffer for c in '。\n'):
+                                        # 句点か改行があればそこまで出力
+                                        flush_pos = -1
+                                        for i, c in enumerate(reasoning_buffer):
+                                            if c in '。\n':
+                                                flush_pos = i + 1
+                                                break
+                                        if flush_pos == -1 and len(reasoning_buffer) >= 80:
+                                            flush_pos = 80
+                                        if flush_pos > 0:
+                                            _safe_stream_print(reasoning_buffer[:flush_pos])
+                                            reasoning_buffer = reasoning_buffer[flush_pos:]
+                                        else:
                                             break
-                                    if flush_pos == -1 and len(reasoning_buffer) >= 80:
-                                        flush_pos = 80
-                                    if flush_pos > 0:
-                                        _safe_stream_print(reasoning_buffer[:flush_pos])
-                                        reasoning_buffer = reasoning_buffer[flush_pos:]
-                                    else:
-                                        break
-                        
+                                else:
+                                    # verbose でない場合は思考バッファを使わない
+                                    reasoning_buffer = ""
                         # テキストコンテンツをストリーム出力
                         if delta.content:
-                            _safe_stream_print(delta.content)
+                            if not self.progress_callback:
+                                _safe_stream_print(delta.content)
                             collected_content += delta.content
                             self._partial_response = collected_content  # エラー時の復旧用
                             if self.progress_callback:
@@ -1217,14 +1222,14 @@ class AgentRuntime:
                                         if tc_delta.function.arguments:
                                             tc["function"]["arguments"] += tc_delta.function.arguments
 
-                    # 残りの思考バッファをフラッシュ
-                    if reasoning_buffer:
+                    # 残りの思考バッファをフラッシュ（verbose のときだけ）
+                    if reasoning_buffer and self.verbose and not self.progress_callback:
                         _safe_stream_print(reasoning_buffer)
                         reasoning_buffer = ""
-                    if reasoning_header_shown:
+                    if reasoning_header_shown and self.verbose and not self.progress_callback:
                         _safe_stream_print("\n[/思考]\n")
 
-                    if collected_content:
+                    if collected_content and not self.progress_callback:
                         _safe_stream_print("\n")  # 改行
 
                     # ツール呼び出しがあるか確認
@@ -1443,7 +1448,7 @@ class AgentRuntime:
                             continue
 
                         for part in candidate.content.parts or []:
-                            # 思考プロセスの表示
+                            # 思考プロセスの表示 (verbose モードのみ)
                             if hasattr(part, 'thought') and part.thought and part.text:
                                 if self.progress_callback:
                                     self.progress_callback(
@@ -1451,12 +1456,13 @@ class AgentRuntime:
                                         content=part.text,
                                         agent_name=self.name
                                     )
-                                else:
+                                elif self.verbose:
                                     thought_text = f"\n💭 [思考中...]\n{part.text}\n[/思考]\n"
                                     _safe_stream_print(thought_text)
                                 continue
                             if part.text:
-                                _safe_stream_print(part.text)
+                                if not self.progress_callback:
+                                    _safe_stream_print(part.text)
                                 collected_text += part.text
                                 self._partial_response = collected_text
                                 collected_parts.append(part)
@@ -1470,7 +1476,7 @@ class AgentRuntime:
                                 function_calls.append(part.function_call)
                                 collected_parts.append(part)
 
-                    if collected_text:
+                    if collected_text and not self.progress_callback:
                         _safe_stream_print("\n")
 
                     if function_calls:
@@ -1534,7 +1540,7 @@ class AgentRuntime:
                                     content=part.text,
                                     agent_name=self.name
                                 )
-                            else:
+                            elif self.verbose:
                                 print(f"\n💭 [思考中...]\n{part.text}\n[/思考]")
 
                     function_calls = [p.function_call for p in message.parts if p.function_call]

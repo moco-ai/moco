@@ -139,7 +139,11 @@ def run(
     # ツール側で MOCO_WORKING_DIRECTORY を使って絶対パスに変換する
     original_cwd = os.getcwd()
     if working_dir:
-        os.environ['MOCO_WORKING_DIRECTORY'] = os.path.abspath(working_dir)
+        abs_working_dir = os.path.abspath(working_dir)
+        if not os.path.isdir(abs_working_dir):
+            typer.echo(f"Error: Working directory does not exist: {abs_working_dir}", err=True)
+            raise typer.Exit(code=1)
+        os.environ['MOCO_WORKING_DIRECTORY'] = abs_working_dir
 
     from .core.orchestrator import Orchestrator
     from .core.llm_provider import get_available_provider
@@ -206,41 +210,15 @@ def run(
     from .cancellation import create_cancel_event, request_cancel, clear_cancel_event, OperationCancelled
     cancel_event = create_cancel_event(session_id)
 
-    def listen_for_cancel():
-        """キー入力を監視してキャンセルをリクエストする"""
-        if sys.platform == "win32":
-            import msvcrt
-            while not cancel_event.is_set():
-                if msvcrt.kbhit():
-                    ch = msvcrt.getch()
-                    if ch in (b'\x1b', b'\x03'):  # ESC or Ctrl+C
-                        request_cancel(session_id)
-                        break
-                time.sleep(0.1)
-        else:
-            import tty
-            import termios
-            import select
-            fd = sys.stdin.fileno()
-            if not os.isatty(fd):
-                return
-            old_settings = termios.tcgetattr(fd)
-            try:
-                tty.setcbreak(fd)
-                while not cancel_event.is_set():
-                    # select で入力を待機 (100ms)
-                    rlist, _, _ = select.select([fd], [], [], 0.1)
-                    if rlist:
-                        ch = sys.stdin.read(1)
-                        if ch in ('\x1b', '\x03'):  # ESC or Ctrl+C
-                            request_cancel(session_id)
-                            break
-                        # 注意: ツール等がユーザー入力を求めた場合、ここで読み取った文字は消失する
-            finally:
-                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-
-    cancel_thread = threading.Thread(target=listen_for_cancel, daemon=True)
-    cancel_thread.start()
+    # シグナルハンドラでキャンセルを捕捉（stdinを読み取らないため入力消失なし）
+    import signal
+    original_sigint_handler = signal.getsignal(signal.SIGINT)
+    
+    def sigint_handler(signum, frame):
+        request_cancel(session_id)
+        # 元のハンドラは呼ばない（KeyboardInterruptを発生させない）
+    
+    signal.signal(signal.SIGINT, sigint_handler)
 
     try:
         for attempt in range(auto_retry + 1):
@@ -265,11 +243,8 @@ def run(
                         _print_error_hints(console, e)
                     raise typer.Exit(code=1)
     finally:
-        # スレッドに停止を通知
-        cancel_event.set()
-        if sys.platform != "win32":
-            # 端末プロパティ復元を確実にするため、スレッドの終了を待つ
-            cancel_thread.join(timeout=0.2)
+        # シグナルハンドラを元に戻す
+        signal.signal(signal.SIGINT, original_sigint_handler)
         clear_cancel_event(session_id)
 
     elapsed = time.time() - start_time
@@ -618,7 +593,56 @@ def chat(
 
             try:
                 cancel_event = create_cancel_event(session_id)
-                reply = o.run_sync(text, session_id)
+                # --stream の場合は、直接 print せず Live パネルで表示（重複表示を防ぐ）
+                if stream:
+                    from rich.live import Live
+                    from rich.markdown import Markdown
+                    from rich.markup import escape
+                    from rich.panel import Panel as RichPanel
+
+                    buf: List[str] = []
+                    live = None
+
+                    def _render_panel() -> RichPanel:
+                        raw = "".join(buf)
+                        s = raw.lstrip()
+                        if s.startswith("@orchestrator:"):
+                            s = s[len("@orchestrator:"):].lstrip()
+                        return RichPanel(
+                            Markdown(escape(s)),
+                            title="@orchestrator",
+                            border_style=theme_config.tools,
+                        )
+
+                    def _on_event(event_type: str, **kwargs):
+                        nonlocal live
+                        if event_type == "chunk":
+                            chunk = kwargs.get("content") or ""
+                            if chunk:
+                                buf.append(chunk)
+                                if live:
+                                    live.update(_render_panel())
+                        elif event_type == "thinking" and verbose:
+                            t = (kwargs.get("content") or "").strip()
+                            if t:
+                                ui_state.add_verbose_log(t)
+
+                    def _set_callback(cb):
+                        o.progress_callback = cb
+                        for rt in o.runtimes.values():
+                            rt.progress_callback = cb
+
+                    _set_callback(_on_event)
+                    try:
+                        with Live(_render_panel(), console=console, refresh_per_second=16) as _live:
+                            live = _live
+                            reply = o.run_sync(text, session_id)
+                            live.update(_render_panel())
+                    finally:
+                        _set_callback(None)
+                        live = None
+                else:
+                    reply = o.run_sync(text, session_id)
             except KeyboardInterrupt:
                 request_cancel(session_id)
                 console.print("\n[yellow]Interrupted. Type 'exit' to quit or continue with a new prompt.[/yellow]")
@@ -632,7 +656,7 @@ def chat(
             finally:
                 clear_cancel_event(session_id)
 
-            if reply:
+            if reply and not stream:
                 console.print()
                 _print_result(console, reply, theme_name=ui_state.theme, verbose=verbose)
                 console.print()
@@ -863,10 +887,13 @@ def tasks_run(
         resolved_provider = parts[0]
         resolved_model = parts[1]
 
-    # 作業ディレクトリを絶対パスに解決
+    # 作業ディレクトリを絶対パスに解決（存在チェック付き）
     resolved_working_dir = None
     if working_dir:
         resolved_working_dir = os.path.abspath(working_dir)
+        if not os.path.isdir(resolved_working_dir):
+            typer.echo(f"Error: Working directory does not exist: {resolved_working_dir}", err=True)
+            raise typer.Exit(code=1)
 
     store = TaskStore()
     task_id = store.add_task(task, profile, resolved_provider, resolved_working_dir)

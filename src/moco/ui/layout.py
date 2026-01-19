@@ -26,6 +26,22 @@ class UIState:
         self.thoughts: List[str] = []
         self.result: Optional[str] = None
         self.theme: ThemeName = ThemeName.DEFAULT
+        self.verbose_logs: List[str] = []  # 直近の詳細ログ
+        self.max_verbose_logs: int = 3    # 表示する最大行数
+
+    def add_verbose_log(self, message: str) -> None:
+        """詳細ログを追加（古いものは削除）"""
+        # 改行で分割して追加
+        for line in message.strip().split('\n'):
+            if line.strip():
+                self.verbose_logs.append(line.strip())
+        
+        # 最大行数に制限
+        if len(self.verbose_logs) > self.max_verbose_logs:
+            self.verbose_logs = self.verbose_logs[-self.max_verbose_logs:]
+        
+        # UIを更新
+        refresh()
 
     def render(self) -> RenderableType:
         theme = THEMES.get(self.theme, THEMES[ThemeName.DEFAULT])
@@ -36,6 +52,7 @@ class UIState:
             Layout(name="top", ratio=1, minimum_size=10),
             Layout(name="middle", ratio=2),
             Layout(name="bottom", ratio=1),
+            Layout(name="logs", size=5), # 詳細ログウィンドウを追加
         )
 
         # --- 上部: ステータス + ツール一覧 + ツール詳細 ---
@@ -134,6 +151,20 @@ class UIState:
             border_style=result_border,
         )
         layout["bottom"].update(result_panel)
+
+        # --- 最下部: 詳細ログ (verbose) ---
+        if self.verbose_logs:
+            # 最後の数行を逆順に（最新が下）またはそのまま表示
+            log_content = "\n".join([f"[dim]{escape(l)}[/dim]" for l in self.verbose_logs])
+        else:
+            log_content = f"[{theme.muted}]詳細ログはありません[/]"
+
+        log_panel = Panel(
+            log_content,
+            title="[dim]詳細ログ (verbose)[/dim]",
+            border_style="dim",
+        )
+        layout["logs"].update(log_panel)
 
         return layout
 

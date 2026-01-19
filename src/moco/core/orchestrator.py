@@ -38,11 +38,36 @@ try:
             summary += "..."
         _console.print(f"  [dim]→[/dim] [cyan]@{agent_name}[/cyan] [dim]{summary}[/dim]")
 except ImportError:
+    _console = None
     def _log_delegation(agent_name: str, task_summary: str = ""):
         summary = task_summary[:60].replace('\n', ' ').strip()
         if len(task_summary) > 60:
             summary += "..."
         print(f"  → @{agent_name} {summary}")
+
+
+def moco_log(message: str, verbose: bool = False):
+    """
+    詳細ログを出力。
+    UIが利用可能ならUIの詳細ログウィンドウに表示、
+    そうでなければコンソールにdim表示。
+    """
+    if not verbose:
+        return
+    
+    clean_msg = str(message).strip().replace('\n', ' ')
+    if len(clean_msg) > 100:
+        clean_msg = clean_msg[:97] + "..."
+
+    try:
+        from ..ui.layout import ui_state
+        ui_state.add_verbose_log(clean_msg)
+    except (ImportError, Exception):
+        # UI未使用時はコンソール出力
+        if _console:
+            _console.print(f"[dim]{clean_msg}[/dim]")
+        else:
+            print(clean_msg)
 
 
 class Orchestrator:
@@ -73,8 +98,6 @@ class Orchestrator:
         self.verbose = verbose    # 詳細ログ出力
         self.progress_callback = progress_callback  # 進捗コールバック
         self.use_optimizer = use_optimizer  # Optimizer使用フラグ
-        if self.verbose:
-            print(f"[Orchestrator] Optimizer: {'ENABLED' if self.use_optimizer else 'DISABLED'}")
         self.working_directory = working_directory or os.getcwd()  # 作業ディレクトリ
         self.name = "orchestrator"
         self.loader = AgentLoader(profile=self.profile)
@@ -276,32 +299,15 @@ class Orchestrator:
         
         # Optimizer: タスク分析（use_optimizer=True の場合のみ）
         if self.use_optimizer:
-            status_ctx = None
-            if not self.verbose:
-                try:
-                    from rich.console import Console
-                    status_ctx = Console().status("[bold magenta]Optimizer: 分析中...[/]")
-                    status_ctx.start()
-                except ImportError:
-                    pass
-
-            try:
-                self._current_scores = await self.task_analyzer.analyze(user_input)
-                available_agents = [name for name in self.agents.keys()]
-                self._current_selection = self.agent_selector.select(
-                    self._current_scores, 
-                    available_agents
-                )
-                
-                if self.verbose:
-                    print(f"[Optimizer] Scores: {self._current_scores}")
-                    print(f"[Optimizer] Selection: {self._current_selection.depth} -> {self._current_selection.agents}")
-                elif status_ctx:
-                    status_ctx.update(f"[bold magenta]Optimizer: {self._current_selection.depth} モードを選択[/]")
-                    await asyncio.sleep(0.5)  # 選択結果を一瞬見せる
-            finally:
-                if status_ctx:
-                    status_ctx.stop()
+            self._current_scores = await self.task_analyzer.analyze(user_input)
+            available_agents = [name for name in self.agents.keys()]
+            self._current_selection = self.agent_selector.select(
+                self._current_scores, 
+                available_agents
+            )
+            
+            moco_log(f"[Optimizer] Scores: {self._current_scores}", self.verbose)
+            moco_log(f"[Optimizer] Selection: {self._current_selection.depth} -> {self._current_selection.agents}", self.verbose)
         else:
             # Optimizer無効時は全エージェント使用
             self._current_scores = None
@@ -377,8 +383,7 @@ class Orchestrator:
             self.session_logger.log_agent_message(session_id, "assistant", response)
         
         # Optimizer: メトリクス記録
-        if self.use_optimizer:
-            await self._record_execution_metrics(session_id, user_input, response)
+        await self._record_execution_metrics(session_id, user_input, response)
 
         return response
     
@@ -1274,13 +1279,9 @@ class Orchestrator:
         # シンプルに asyncio.run を使用
         try:
             return asyncio.run(self.process_message(user_input, session_id, history))
-        except (RuntimeError, KeyboardInterrupt) as e:
-            # "Event loop is closed" エラーまたは Ctrl+C 時のクリーンアップ
-            if isinstance(e, RuntimeError) and "Event loop is closed" in str(e):
-                return ""
-            
-            # 既にイベントループが実行中の場合（既存のロジック）
-            if isinstance(e, RuntimeError) and "cannot be called from a running event loop" in str(e):
+        except RuntimeError as e:
+            # 既にイベントループが実行中の場合
+            if "cannot be called from a running event loop" in str(e):
                 # nest_asyncio を試みる
                 try:
                     import nest_asyncio
@@ -1311,10 +1312,6 @@ class Orchestrator:
                 if result[1]:
                     raise result[1]
                 return result[0] or ""
-            
-            if isinstance(e, KeyboardInterrupt):
-                raise
-            
             raise
         except Exception as e:
             if self.verbose:
