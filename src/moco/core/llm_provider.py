@@ -142,3 +142,28 @@ def get_provider_and_model() -> Tuple[str, str]:
     provider = get_available_provider()
     model = get_default_model(provider)
     return provider, model
+
+
+def resolve_provider_and_model(provider_str: Optional[str], model_str: Optional[str]) -> Tuple[str, Optional[str]]:
+    """
+    "zai/glm-4.7" のような形式をパースし、provider と model を返す。
+    
+    Args:
+        provider_str: プロバイダー文字列（例: "zai/glm-4.7", "openai"）
+        model_str: 明示的に指定されたモデル名
+        
+    Returns:
+        (provider_name, model_name) のタプル
+    """
+    if provider_str is None:
+        provider_str = get_available_provider()
+
+    provider_name = provider_str
+    model_name = model_str
+    
+    if "/" in provider_str and model_name is None:
+        parts = provider_str.split("/", 1)
+        provider_name = parts[0]
+        model_name = parts[1]
+        
+    return provider_name, model_name

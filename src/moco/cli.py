@@ -134,12 +134,13 @@ def run(
 
     init_environment()
 
-    # 作業ディレクトリを環境変数に設定（ツールから参照可能にする）
-    # 注意: os.chdir() はプロファイル読み込みに影響するため、ここでは行わない
-    # ツール側で MOCO_WORKING_DIRECTORY を使って絶対パスに変換する
-    original_cwd = os.getcwd()
+    # 作業ディレクトリのバリデーションと設定
     if working_dir:
-        os.environ['MOCO_WORKING_DIRECTORY'] = os.path.abspath(working_dir)
+        path = Path(working_dir).resolve()
+        if not path.is_dir():
+            typer.echo(f"Error: Directory does not exist: {working_dir}", err=True)
+            raise typer.Exit(code=1)
+        os.environ['MOCO_WORKING_DIRECTORY'] = str(path)
 
     from .core.orchestrator import Orchestrator
     from .core.llm_provider import get_available_provider
@@ -202,52 +203,16 @@ def run(
     result = None
     last_error = None
 
-    # キャンセルイベントの作成
     from .cancellation import create_cancel_event, request_cancel, clear_cancel_event, OperationCancelled
-    cancel_event = create_cancel_event(session_id)
-
-    def listen_for_cancel():
-        """キー入力を監視してキャンセルをリクエストする"""
-        if sys.platform == "win32":
-            import msvcrt
-            while not cancel_event.is_set():
-                if msvcrt.kbhit():
-                    ch = msvcrt.getch()
-                    if ch in (b'\x1b', b'\x03'):  # ESC or Ctrl+C
-                        request_cancel(session_id)
-                        break
-                time.sleep(0.1)
-        else:
-            import tty
-            import termios
-            import select
-            fd = sys.stdin.fileno()
-            if not os.isatty(fd):
-                return
-            old_settings = termios.tcgetattr(fd)
-            try:
-                tty.setcbreak(fd)
-                while not cancel_event.is_set():
-                    # select で入力を待機 (100ms)
-                    rlist, _, _ = select.select([fd], [], [], 0.1)
-                    if rlist:
-                        ch = sys.stdin.read(1)
-                        if ch in ('\x1b', '\x03'):  # ESC or Ctrl+C
-                            request_cancel(session_id)
-                            break
-                        # 注意: ツール等がユーザー入力を求めた場合、ここで読み取った文字は消失する
-            finally:
-                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-
-    cancel_thread = threading.Thread(target=listen_for_cancel, daemon=True)
-    cancel_thread.start()
+    create_cancel_event(session_id)
 
     try:
         for attempt in range(auto_retry + 1):
             try:
                 result = o.run_sync(task, session_id)
                 break
-            except OperationCancelled:
+            except (KeyboardInterrupt, OperationCancelled):
+                request_cancel(session_id)
                 if rich_output:
                     console.print(f"\n[bold red]Cancelled[/bold red] (Session: {session_id[:8]}...)")
                 else:
@@ -265,11 +230,6 @@ def run(
                         _print_error_hints(console, e)
                     raise typer.Exit(code=1)
     finally:
-        # スレッドに停止を通知
-        cancel_event.set()
-        if sys.platform != "win32":
-            # 端末プロパティ復元を確実にするため、スレッドの終了を待つ
-            cancel_thread.join(timeout=0.2)
         clear_cancel_event(session_id)
 
     elapsed = time.time() - start_time
@@ -1215,6 +1175,8 @@ def tasks_exec(
             completed_at=datetime.now().isoformat()
         )
     except Exception as e:
+        import sys
+        print(f"Error in background task {task_id}: {e}", file=sys.stderr)
         store.update_task(
             task_id,
             status=TaskStatus.FAILED,
