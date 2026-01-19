@@ -71,8 +71,10 @@ Thumbs.db
 
 # Project specific
 data/
-profiles/
+/profiles/
 knowledge_base/
+# Keep package profiles
+!src/moco/profiles/
 runbooks/
 
 # Code index cache

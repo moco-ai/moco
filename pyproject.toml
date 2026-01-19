@@ -43,7 +43,7 @@ moco = "moco.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-moco = ["*.md", "core/prompts/*.yaml", "ui/static/**/*", "ui/templates/**/*", "dashboard/templates/**/*"]
+moco = ["*.md", "core/prompts/*.yaml", "ui/static/**/*", "ui/templates/**/*", "dashboard/templates/**/*", "profiles/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
