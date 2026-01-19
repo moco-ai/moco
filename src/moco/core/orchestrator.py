@@ -73,6 +73,8 @@ class Orchestrator:
         self.verbose = verbose    # 詳細ログ出力
         self.progress_callback = progress_callback  # 進捗コールバック
         self.use_optimizer = use_optimizer  # Optimizer使用フラグ
+        if self.verbose:
+            print(f"[Orchestrator] Optimizer: {'ENABLED' if self.use_optimizer else 'DISABLED'}")
         self.working_directory = working_directory or os.getcwd()  # 作業ディレクトリ
         self.name = "orchestrator"
         self.loader = AgentLoader(profile=self.profile)
@@ -377,7 +379,8 @@ class Orchestrator:
             self.session_logger.log_agent_message(session_id, "assistant", response)
         
         # Optimizer: メトリクス記録
-        await self._record_execution_metrics(session_id, user_input, response)
+        if self.use_optimizer:
+            await self._record_execution_metrics(session_id, user_input, response)
 
         return response
     
