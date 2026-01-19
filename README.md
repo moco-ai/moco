@@ -45,7 +45,9 @@ MOCO は、複数のLLMプロバイダ（Gemini, OpenAI, OpenRouter, Z.ai）に�
 
 ```bash
 moco run "タスク"              # タスクを実行
-moco chat                      # 対話型チャット
+moco chat                      # 対話型チャット（ストリーミング）
+moco chat -s my-session        # 名前付きセッションで対話
+moco chat --new                # 新規セッションを強制開始
 moco ui                        # Web UI を起動
 moco version                   # バージョン表示
 moco list-profiles             # プロファイル一覧
@@ -63,10 +65,11 @@ moco ui -r                     # 開発モード（自動リロード）
 ### タスク管理（バックグラウンド実行）
 
 ```bash
-moco tasks run "タスク" --provider zai -w /path/to/project  # バックグラウンド実行
+moco tasks run "タスク" -P zai -w /path/to/project  # バックグラウンド実行
 moco tasks list                # タスク一覧
 moco tasks status              # リアルタイムダッシュボード
-moco tasks logs <task_id>      # ログ表示
+moco tasks logs <task_id>      # ログ表示（最大10KB）
+moco tasks logs <task_id> -a   # フルログ表示（--all）
 moco tasks cancel <task_id>    # キャンセル
 ```
 
@@ -95,13 +98,17 @@ moco skills uninstall <name>   # アンインストール
 
 ```bash
 --profile, -p <name>           # プロファイル指定
---provider <name>              # プロバイダ指定 (gemini/openai/openrouter/zai)
---provider <name/model>        # プロバイダ+モデル一括指定 (例: zai/glm-4.7)
+--provider, -P <name>          # プロバイダ指定 (gemini/openai/openrouter/zai)
+--provider, -P <name/model>    # プロバイダ+モデル一括指定 (例: zai/glm-4.7)
 --model, -m <name>             # モデル指定 (例: gpt-4o, gemini-2.5-pro, glm-4.7)
 --working-dir, -w <path>       # 作業ディレクトリ
+--session, -s <name>           # 名前付きセッション指定
+--continue, -c                 # 直前のセッションを継続
+--new                          # 新規セッションを強制開始
 --sandbox                      # Dockerコンテナ内で隔離実行
 --sandbox-image <image>        # サンドボックスイメージ (default: python:3.12-slim)
---stream/--no-stream           # ストリーミング出力
+--stream/--no-stream           # ストリーミング出力（chatはデフォルトON）
+--optimizer/--no-optimizer     # Optimizerによるエージェント自動選択（デフォルトOFF）
 --verbose, -v                  # 詳細ログ
 ```
 
@@ -258,12 +265,14 @@ graph TB
 | `OPENAI_API_KEY` | OpenAI API キー | - |
 | `OPENROUTER_API_KEY` | OpenRouter API キー | - |
 | `ZAI_API_KEY` | Z.ai API キー | - |
-| `LLM_PROVIDER` | デフォルトプロバイダ | `gemini` |
-| `GEMINI_MODEL` | Gemini モデル名 | `gemini-3-flash-preview` |
+| `MOCO_DEFAULT_PROVIDER` | デフォルトプロバイダを強制指定 | 自動選択 |
+| `GEMINI_MODEL` | Gemini モデル名 | `gemini-2.0-flash` |
 | `OPENAI_MODEL` | OpenAI モデル名 | `gpt-5.2-codex` |
 | `OPENROUTER_MODEL` | OpenRouter モデル名 | `google/gemini-3-flash-preview` |
 | `ZAI_MODEL` | Z.ai モデル名 | `glm-4.7` |
 | `SEMANTIC_DB_PATH` | セマンティックメモリDB | `data/semantic.db` |
+
+**プロバイダ自動選択の優先順位**: 設定されたAPIキーに基づき、`zai` → `openrouter` → `gemini` の順で自動選択されます。
 
 ### プロファイル設定
 
