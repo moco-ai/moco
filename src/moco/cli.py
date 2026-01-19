@@ -504,6 +504,7 @@ def chat(
     profile: str = typer.Option("default", "--profile", "-p", help="使用するプロファイル"),
     provider: Optional[str] = typer.Option(None, "--provider", "-P", help="LLMプロバイダ (gemini/openai/openrouter/zai) - 省略時は自動選択"),
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
+    stream: bool = typer.Option(True, "--stream/--no-stream", help="ストリーミング出力（デフォルト: オン）"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
     theme: ThemeName = typer.Option(ThemeName.DEFAULT, "--theme", help="UIカラーテーマ", case_sensitive=False),
     use_optimizer: bool = typer.Option(True, "--optimizer/--no-optimizer", help="Optimizerによるエージェント自動選択"),
@@ -532,7 +533,7 @@ def chat(
         profile=profile,
         provider=provider_enum,
         model=model,
-        stream=False,
+        stream=stream,
         verbose=verbose,
         use_optimizer=use_optimizer,
     )
