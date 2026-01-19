@@ -506,6 +506,8 @@ def chat(
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
     stream: bool = typer.Option(True, "--stream/--no-stream", help="ストリーミング出力（デフォルト: オン）"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
+    session: Optional[str] = typer.Option(None, "--session", "-s", help="セッション名（継続 or 新規）"),
+    new_session: bool = typer.Option(False, "--new", help="新規セッションを強制開始"),
     theme: ThemeName = typer.Option(ThemeName.DEFAULT, "--theme", help="UIカラーテーマ", case_sensitive=False),
     use_optimizer: bool = typer.Option(True, "--optimizer/--no-optimizer", help="Optimizerによるエージェント自動選択"),
 ):
@@ -545,13 +547,27 @@ def chat(
         'verbose': verbose,
     }
 
-    # セッション自動継続または新規作成
-    sessions = o.session_logger.list_sessions(limit=1)
-    if sessions:
-        session_id = sessions[0].get("session_id")
-        console.print(f"[dim]Using session: {session_id[:8]}...[/dim]")
-    else:
-        session_id = o.create_session(title="CLI Chat")
+    # セッション管理
+    session_id = None
+    if not new_session:
+        if session:
+            # 名前付きセッションを検索
+            sessions = o.session_logger.list_sessions(limit=50)
+            for s in sessions:
+                if s.get("title", "").endswith(f"[{session}]"):
+                    session_id = s.get("session_id")
+                    console.print(f"[dim]Resuming session: {session}[/dim]")
+                    break
+        else:
+            # 最新のセッションを取得（デフォルトの挙動）
+            sessions = o.session_logger.list_sessions(limit=1)
+            if sessions:
+                session_id = sessions[0].get("session_id")
+                console.print(f"[dim]Using latest session: {session_id[:8]}...[/dim]")
+
+    if not session_id:
+        title = "CLI Chat" + (f" [{session}]" if session else "")
+        session_id = o.create_session(title=title)
         console.print(f"[dim]New session: {session_id[:8]}...[/dim]")
 
     command_context['session_id'] = session_id
