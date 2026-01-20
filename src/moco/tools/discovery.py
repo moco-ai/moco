@@ -166,6 +166,10 @@ class AgentLoader:
         self.agents_dir = os.path.join(profiles_dir, self.profile, "agents")
 
     def load_agents(self) -> Dict[str, AgentConfig]:
+        # プロファイル変更に対応するため、毎回再計算
+        profiles_dir = _find_profiles_dir()
+        self.agents_dir = os.path.join(profiles_dir, self.profile, "agents")
+        
         agents = {}
         # Support both .md and .yaml files
         for ext in ["*.md", "*.yaml", "*.yml"]:

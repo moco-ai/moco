@@ -4,6 +4,7 @@ import json
 import inspect
 import hashlib
 from ..cancellation import check_cancelled, OperationCancelled
+from ..utils.json_parser import SmartJSONParser
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Callable, Union, get_type_hints
 import sys
@@ -1276,10 +1277,7 @@ class AgentRuntime:
 
                         for idx, tc in enumerate(collected_tool_calls):
                             func_name = tc["function"]["name"]
-                            try:
-                                args_dict = json.loads(tc["function"]["arguments"])
-                            except json.JSONDecodeError:
-                                args_dict = {}
+                            args_dict = SmartJSONParser.parse(tc["function"]["arguments"], default={})
 
                             result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
 
@@ -1375,10 +1373,7 @@ class AgentRuntime:
                 # ツール実行（並列化）
                 async def execute_one(tc):
                     func_name = tc.function.name
-                    try:
-                        args_dict = json.loads(tc.function.arguments)
-                    except json.JSONDecodeError:
-                        args_dict = {}
+                    args_dict = SmartJSONParser.parse(tc.function.arguments, default={})
                     
                     result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
                     return {
