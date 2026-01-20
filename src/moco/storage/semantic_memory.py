@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import json
-from ..utils.json_parser import SmartJSONParser
 import logging
 import numpy as np
 import faiss
@@ -162,10 +161,7 @@ class SemanticMemory:
                 if row:
                     res = dict(row)
                     res['score'] = float(distances[0][i])
-                    try:
-                        res['metadata'] = SmartJSONParser.parse(res['metadata']) or {}
-                    except Exception:
-                        res['metadata'] = {}
+                    res['metadata'] = json.loads(res['metadata'])
                     results.append(res)
             
             conn.close()

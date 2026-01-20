@@ -242,7 +242,7 @@ async def get_session(session_id: str):
         try:
             content = ev["content"]
             if isinstance(content, str) and (content.startswith("{") or content.startswith("[")):
-                ev["content"] = SmartJSONParser.parse(content)
+                ev["content"] = json.loads(content)
         except Exception:
             pass
         processed_events.append(ev)
@@ -564,7 +564,7 @@ async def get_stats(session_id: Optional[str] = None, scope: str = "all"):
 
             for agents_json, score, complexity, delegation, todo in rows:
                 try:
-                    agents = SmartJSONParser.parse(agents_json)
+                    agents = json.loads(agents_json)
                     if isinstance(agents, list):
                         for agent in agents:
                             agent_counts[agent] += 1
