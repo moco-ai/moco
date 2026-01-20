@@ -1,0 +1,189 @@
+# Analysis Tasks Configuration
+# These tasks cover data analysis, financial modeling, and risk assessment
+
+tasks:
+  data_analysis_task:
+    name: analyze_data_and_identify_insights
+    description: |
+      Analyze the collected data to identify key insights and patterns for {topic}.
+      Your analysis should include:
+
+      1. Descriptive Analysis
+         - Summary statistics (mean, median, mode, standard deviation)
+         - Distribution analysis
+         - Trend analysis over time
+         - Segmentation analysis
+
+      2. Diagnostic Analysis
+         - Identify key drivers of performance
+         - Correlation analysis between variables
+         - Identify patterns and anomalies
+         - Explain "why" behind the numbers
+
+      3. Comparative Analysis
+         - Benchmark against industry standards
+         - Compare competitors
+         - Identify outliers and exceptions
+         - Assess relative performance
+
+      4. Predictive Elements
+         - Identify trends and potential future scenarios
+         - Assess sustainability of current performance
+         - Identify early warning indicators
+
+      5. Visual Storytelling
+         - Create appropriate visualizations for key findings
+         - Use charts to support the narrative
+         - Highlight insights visually
+
+      Requirements:
+      - Use appropriate statistical methods
+      - Clearly distinguish between correlation and causation
+      - Provide context for all findings
+      - Focus on actionable insights
+      - Include limitations and uncertainties
+
+    expected_output: |
+      A data analysis report in Markdown format with:
+      - Executive summary of 3-5 key insights
+      - Descriptive statistics and summaries
+      - Diagnostic analysis with drivers identified
+      - Comparative benchmarks
+      - Supporting visualizations (as mermaid diagrams or text-based representations)
+      - Implications and next steps
+
+    agent: data_analyst
+    context:
+      - data_collection_task
+    tools:
+      - crewai.tools.CalculatorTool
+      - crewai.tools.CodeInterpreter
+      - crewai.tools.RAGTool
+
+  financial_modeling_task:
+    name: build_financial_model
+    description: |
+      Build a comprehensive financial model for {strategic_initiative} in {industry}.
+      Your model should include:
+
+      1. Revenue Model
+         - Revenue drivers and assumptions
+         - Growth rates and scenarios
+         - Market share assumptions
+         - Pricing assumptions
+         - Revenue projections (3-5 years)
+
+      2. Cost Model
+         - Fixed costs (infrastructure, personnel, overhead)
+         - Variable costs (cost of goods sold, sales commission)
+         - Semi-variable costs
+         - Cost structure analysis
+         - Cost optimization opportunities
+
+      3. Cash Flow Analysis
+         - Operating cash flow projections
+         - Free cash flow projections
+         - Working capital requirements
+         - Capital expenditure requirements
+
+      4. Investment Metrics
+         - Net Present Value (NPV) with appropriate discount rate
+         - Internal Rate of Return (IRR)
+         - Payback period
+         - Return on Investment (ROI)
+         - Return on Invested Capital (ROIC)
+         - Compare to cost of capital (WACC)
+
+      5. Scenario Analysis
+         - Base case (most likely)
+         - Best case (optimistic)
+         - Worst case (pessimistic)
+         - Sensitivity analysis on top 3-5 drivers
+
+      6. Breakeven Analysis
+         - Breakeven point in units and revenue
+         - Contribution margin
+         - Time to breakeven
+
+      Requirements:
+      - Document all assumptions with rationale
+      - Justify discount rate (WACC)
+      - Use multiple scenarios
+      - Include sensitivity analysis
+      - Perform sanity checks on outputs
+      - Explicitly state limitations
+
+    expected_output: |
+      A comprehensive financial analysis in Markdown format with:
+      - Executive summary with key metrics (NPV, IRR, ROI, payback)
+      - Investment recommendation (Go/No-Go/Conditional)
+      - Detailed financial projections table
+      - Scenario analysis summary
+      - Sensitivity analysis table
+      - Breakeven analysis
+      - Complete assumptions documentation
+
+    agent: financial_modeler
+    context:
+      - data_analysis_task
+    tools:
+      - crewai.tools.CalculatorTool
+      - crewai.tools.CodeInterpreter
+      - crewai.tools.FileWriteTool
+
+  domain_validation_task:
+    name: validate_with_domain_expertise
+    description: |
+      Apply domain expertise in {industry} to validate the strategic analysis.
+      Your validation should cover:
+
+      1. Industry Alignment
+         - Does this strategy fit industry dynamics?
+         - Are success factors properly understood?
+         - Is the timing appropriate for this industry?
+
+      2. Competitive Reality Check
+         - How will competitors realistically respond?
+         - Are we underestimating any competitors?
+         - Is the competitive moat sustainable?
+
+      3. Regulatory and Compliance
+         - Are there regulatory barriers to consider?
+         - Are we compliant with current requirements?
+         - How might regulations change?
+
+      4. Implementation Feasibility
+         - Is the industry ready for this initiative?
+         - What are technical barriers?
+         - What are cultural barriers?
+         - Are required capabilities available?
+
+      5. Industry Benchmarks
+         - How does this compare to industry best practices?
+         - Are there case studies to learn from?
+         - What are common pitfalls to avoid?
+
+      Requirements:
+      - Provide honest assessment of challenges
+      - Reference industry-specific examples
+      - Be specific about timing and resource requirements
+      - Identify industry-specific risks
+
+    expected_output: |
+      A domain expertise validation report in Markdown format with:
+      - Assessment of strategic assumptions validity
+      - Industry-specific considerations and constraints
+      - Competitive dynamics reality check
+      - Regulatory/compliance considerations
+      - Implementation feasibility assessment
+      - Recommended adaptations for industry fit
+      - Industry benchmarks and best practices
+
+    agent: domain_expert
+    context:
+      - market_research_task
+      - data_analysis_task
+      - financial_modeling_task
+    tools:
+      - crewai.tools.RAGTool
+      - crewai.tools.SerperDevTool

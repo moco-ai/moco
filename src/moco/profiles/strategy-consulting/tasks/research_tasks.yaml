@@ -1,0 +1,168 @@
+# Research Tasks Configuration
+# These tasks cover market research and competitive intelligence gathering
+
+tasks:
+  market_research_task:
+    name: conduct_market_research
+    description: |
+      Conduct comprehensive market research on {topic} in {industry}.
+      Your research should cover:
+
+      1. Market Overview
+         - Total addressable market (TAM), serviceable addressable market (SAM), serviceable obtainable market (SOM)
+         - Market growth rate and CAGR projections (3-5 years)
+         - Market segmentation and sub-segments
+
+      2. Competitive Landscape
+         - Identify and profile top 5-10 competitors
+         - Market share distribution (if available)
+         - Key competitive differentiators
+         - Recent competitive moves and strategic shifts
+
+      3. Industry Trends
+         - Technology trends and disruptions
+         - Regulatory changes and implications
+         - Consumer behavior shifts
+         - Emerging opportunities and threats
+
+      4. Key Success Factors
+         - Critical success factors in the market
+         - Required capabilities to compete effectively
+         - Barriers to entry and exit
+
+      5. Customer Insights
+         - Customer segments and profiles
+         - Pain points and unmet needs
+         - Decision criteria and purchasing behavior
+
+      Requirements:
+      - Use multiple data sources and triangulate findings
+      - Prioritize primary sources (company filings, industry reports)
+      - Cite all sources with dates and credibility assessments
+      - Quantify findings where possible
+      - Note data limitations and uncertainties
+    expected_output: |
+      A comprehensive market research report in Markdown format with:
+      - Executive summary with 3-5 key findings
+      - Market size and growth analysis
+      - Competitive landscape analysis
+      - Industry trends assessment
+      - Customer insights
+      - Data sources and methodology section
+
+    agent: market_researcher
+    tools:
+      - crewai.tools.SerperDevTool
+      - crewai.tools.ScrapeWebsiteTool
+      - crewai.tools.RAGTool
+
+  competitor_intelligence_task:
+    name: gather_competitive_intelligence
+    description: |
+      Conduct in-depth competitive intelligence on {competitors} in {industry}.
+      Your analysis should include:
+
+      1. Competitor Profiles
+         - For each key competitor:
+           - Strategic positioning and value proposition
+           - Financial performance (revenue, growth, profitability)
+           - Market share and customer base
+           - Product/service offerings
+           - Key strengths and weaknesses
+
+      2. Competitive Dynamics
+         - How do competitors compete on:
+           - Price
+           - Product/features
+           - Service
+           - Innovation
+           - Brand
+         - Competitive moats and sustainability
+
+      3. Recent Strategic Moves
+         - Product launches and updates
+         - M&A activity and partnerships
+         - Market entry/exit moves
+         - Pricing changes
+         - Marketing campaigns
+
+      4. Predictive Analysis
+         - Likely future moves based on patterns
+         - Response scenarios to client actions
+         - Vulnerabilities that can be exploited
+
+      5. Competitive Benchmarking
+         - Feature/functionality comparison
+         - Pricing comparison
+         - Performance metrics comparison
+         - Customer satisfaction comparison
+
+      Requirements:
+      - Monitor multiple channels (filings, news, social media, job postings)
+      - Analyze patterns, not just isolated events
+      - Differentiate between fact and inference
+      - Provide actionable intelligence, not just data
+
+    expected_output: |
+      A competitive intelligence report in Markdown format with:
+      - Executive summary of top 3 threats and 3 opportunities
+      - Detailed competitor profiles
+      - Competitive benchmarking tables
+      - Predictive analysis of likely competitive moves
+      - Recommended competitive strategies
+
+    agent: competitor_intel_specialist
+    context:
+      - market_research_task
+    tools:
+      - crewai.tools.SerperDevTool
+      - crewai.tools.ScrapeWebsiteTool
+      - crewai.tools.RAGTool
+
+  data_collection_task:
+    name: collect_and_clean_data
+    description: |
+      Collect relevant data for {industry} analysis from the research findings.
+      Your tasks include:
+
+      1. Data Extraction
+         - Extract quantitative data from research reports
+         - Identify key metrics and indicators
+         - Ensure data completeness
+
+      2. Data Cleaning
+         - Handle missing values appropriately
+         - Standardize formats (currency, dates, units)
+         - Identify and address outliers
+         - Document all data transformations
+
+      3. Data Organization
+         - Structure data for analysis
+         - Create appropriate groupings and categorizations
+         - Ensure consistency across data sources
+
+      4. Data Quality Assessment
+         - Assess data reliability and completeness
+         - Note data limitations
+         - Flag areas needing additional data
+
+      Requirements:
+      - Maintain clear documentation of all data transformations
+      - Use appropriate statistical methods for handling missing data
+      - Ensure data is analysis-ready
+      - Flag quality issues
+
+    expected_output: |
+      A clean, organized dataset in JSON or CSV format with:
+      - Structured quantitative data
+      - Metadata including sources and quality notes
+      - Documentation of transformations
+      - Quality assessment summary
+
+    agent: data_analyst
+    context:
+      - market_research_task
+      - competitor_intelligence_task
+    tools:
+      - crewai.tools.CodeInterpreter
+      - crewai.tools.RAGTool

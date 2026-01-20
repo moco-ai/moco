@@ -1,0 +1,163 @@
+# Full Enterprise Strategy Consulting Crew Configuration
+# This is the complete crew for end-to-end strategic analysis
+
+crew:
+  name: enterprise_strategy_crew
+  version: 1.0
+  description: |
+    Complete multi-agent system for enterprise strategy consulting,
+    covering research, analysis, financial modeling, risk assessment,
+    domain validation, and reporting.
+
+  process: sequential  # Options: sequential, hierarchical
+
+  memory: true
+
+  verbose: true
+
+  # Crew-level settings
+  share_crew: true
+  max_rpm: 100  # Rate limiting for API calls
+
+  agents:
+    - name: market_researcher
+      config_file: agents/market_researcher.yaml
+      role_in_crew: Conduct comprehensive market research and competitor analysis
+
+    - name: competitor_intel_specialist
+      config_file: agents/competitor_intel.yaml
+      role_in_crew: Gather and analyze competitive intelligence
+
+    - name: data_analyst
+      config_file: agents/data_analyst.yaml
+      role_in_crew: Clean, analyze, and interpret data
+
+    - name: financial_modeler
+      config_file: agents/financial_modeler.yaml
+      role_in_crew: Build financial models and ROI analysis
+
+    - name: domain_expert
+      config_file: agents/domain_expert.yaml
+      role_in_crew: Validate strategy against industry expertise
+
+    - name: risk_advisor
+      config_file: agents/risk_advisor.yaml
+      role_in_crew: Assess and mitigate strategic and operational risks
+
+    - name: compliance_officer
+      config_file: agents/compliance.yaml
+      role_in_crew: Review regulatory and legal considerations
+
+    - name: senior_strategy_consultant
+      config_file: agents/orchestrator.yaml
+      role_in_crew: Synthesize all inputs into strategic recommendations
+      is_manager: true
+
+    - name: report_writer
+      config_file: agents/report_writer.yaml
+      role_in_crew: Transform analysis into professional deliverables
+
+    - name: qa_reviewer
+      config_file: agents/qa_reviewer.yaml
+      role_in_crew: Ensure quality standards are met before delivery
+
+  tasks:
+    - name: market_research_task
+      config_file: tasks/research_tasks.yaml
+      task_name: conduct_market_research
+      agent: market_researcher
+      context: []
+      output_json: true
+
+    - name: competitor_intelligence_task
+      config_file: tasks/research_tasks.yaml
+      task_name: gather_competitive_intelligence
+      agent: competitor_intel_specialist
+      context: [market_research_task]
+      output_json: true
+
+    - name: data_collection_task
+      config_file: tasks/research_tasks.yaml
+      task_name: collect_and_clean_data
+      agent: data_analyst
+      context: [market_research_task, competitor_intelligence_task]
+      output_json: true
+
+    - name: data_analysis_task
+      config_file: tasks/analysis_tasks.yaml
+      task_name: analyze_data_and_identify_insights
+      agent: data_analyst
+      context: [data_collection_task]
+      output_json: true
+
+    - name: financial_modeling_task
+      config_file: tasks/analysis_tasks.yaml
+      task_name: build_financial_model
+      agent: financial_modeler
+      context: [data_analysis_task]
+      output_json: true
+
+    - name: domain_validation_task
+      config_file: tasks/analysis_tasks.yaml
+      task_name: validate_with_domain_expertise
+      agent: domain_expert
+      context: [market_research_task, data_analysis_task, financial_modeling_task]
+      output_json: true
+
+    - name: risk_assessment_task
+      config_file: tasks/risk_reporting_tasks.yaml
+      task_name: assess_risks
+      agent: risk_advisor
+      context: [market_research_task, data_analysis_task, financial_modeling_task, domain_validation_task]
+      output_json: true
+
+    - name: compliance_review_task
+      config_file: tasks/risk_reporting_tasks.yaml
+      task_name: review_compliance_considerations
+      agent: compliance_officer
+      context: [risk_assessment_task]
+      output_json: true
+
+    - name: strategy_synthesis_task
+      config_file: tasks/risk_reporting_tasks.yaml
+      task_name: synthesize_strategic_recommendations
+      agent: senior_strategy_consultant
+      context: [market_research_task, data_analysis_task, financial_modeling_task, domain_validation_task, risk_assessment_task, compliance_review_task]
+      output_json: false
+
+    - name: report_generation_task
+      config_file: tasks/risk_reporting_tasks.yaml
+      task_name: generate_final_report
+      agent: report_writer
+      context: [strategy_synthesis_task]
+      output_json: false
+
+    - name: quality_assurance_task
+      config_file: tasks/risk_reporting_tasks.yaml
+      task_name: quality_assurance_review
+      agent: qa_reviewer
+      context: [report_generation_task]
+      output_json: false
+
+  # Workflow execution settings
+  execution_settings:
+    allow_code_execution: false  # Managed at agent level
+    respect_context_window: true
+    timeout_seconds: 3600  # 1 hour max per crew run
+    max_execution_time_seconds: 7200  # 2 hours total max
+
+  # Output settings
+  output_settings:
+    save_to_file: true
+    output_directory: ./output
+    output_format: markdown
+    include_metadata: true
+    include_agent_outputs: false  # Only final output
+    include_intermediate_steps: true
+
+  # Logging and monitoring
+  logging:
+    log_level: INFO  # Options: DEBUG, INFO, WARNING, ERROR
+    log_file: ./logs/strategy_crew.log
+    log_agent_communication: true
+    log_task_execution: true

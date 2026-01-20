@@ -1,0 +1,383 @@
+# Risk and Reporting Tasks Configuration
+# These tasks cover risk assessment, compliance review, report writing, and QA
+
+tasks:
+  risk_assessment_task:
+    name: assess_risks
+    description: |
+      Conduct a comprehensive risk assessment for {strategic_initiative}.
+      Use a MECE framework to identify and assess risks across:
+
+      1. Strategic Risks
+         - Market dynamics and competitive threats
+         - Technology disruption
+         - Customer behavior changes
+         - Strategic misalignment with business objectives
+
+      2. Financial Risks
+         - Market volatility and currency exposure
+         - Liquidity constraints
+         - Credit risks
+         - Cost overruns or revenue shortfalls
+
+      3. Operational Risks
+         - Supply chain disruptions
+         - Operational inefficiencies
+         - Quality issues or service failures
+         - Technology failures or cybersecurity
+         - Human capital and talent risks
+
+      4. Compliance and Legal Risks
+         - Regulatory changes
+         - Compliance violations
+         - Legal liabilities
+         - Data privacy and security breaches
+         - Intellectual property risks
+
+      5. Reputational Risks
+         - Brand damage from negative publicity
+         - Social media backlash
+         - Stakeholder concerns
+         - Customer dissatisfaction
+
+      6. External Risks
+         - Geopolitical events
+         - Natural disasters
+         - Pandemic or health crises
+         - Macroeconomic shifts
+
+      For each risk:
+      - Assess likelihood (1-5 scale)
+      - Assess impact (1-5 scale)
+      - Calculate risk score (Likelihood × Impact)
+      - Prioritize by risk score
+      - Develop mitigation strategies
+      - Identify early warning indicators
+
+      Requirements:
+      - Use MECE framework (no overlaps, no gaps)
+      - Quantify where possible
+      - Provide practical mitigation strategies
+      - Identify owners and timelines for mitigation
+      - Define trigger conditions and escalation protocols
+
+    expected_output: |
+      A comprehensive risk assessment in Markdown format with:
+      - Executive summary of top 5 risks
+      - Complete risk register table (Category, Risk, Likelihood, Impact, Risk Score, Priority)
+      - Risk heat map (high/medium/low priority)
+      - Detailed analysis of top 10 risks with mitigation strategies
+      - Early warning indicators for critical risks
+      - Contingency plans for high-priority risks
+      - Overall risk appetite statement
+
+    agent: risk_advisor
+    context:
+      - market_research_task
+      - data_analysis_task
+      - financial_modeling_task
+      - domain_validation_task
+    tools:
+      - crewai.tools.CalculatorTool
+      - crewai.tools.RAGTool
+
+  compliance_review_task:
+    name: review_compliance_considerations
+    description: |
+      Review {strategic_initiative} for compliance and legal considerations.
+      Your review should cover:
+
+      1. Regulatory Compliance
+         - Identify all applicable regulations by jurisdiction
+         - Assess current compliance status
+         - Identify gaps and remediation requirements
+
+      2. Licensing and Permits
+         - Identify required licenses and permits
+         - Outline application processes
+         - Assess approval likelihood and timeline
+
+      3. Data Privacy and Security
+         - GDPR, CCPA, and other privacy law considerations
+         - Data security requirements
+         - Consent and disclosure requirements
+
+      4. Employment Law
+         - Labor law considerations
+         - Worker classification requirements
+         - Benefits and compensation regulations
+
+      5. Intellectual Property
+         - Patent, trademark, copyright considerations
+         - Trade secret protection needs
+         - IP ownership and licensing
+
+      6. Antitrust and Competition
+         - Market share limitations
+         - Collusion concerns
+         - M&A regulatory approval requirements
+
+      7. Environmental Regulations
+         - Environmental impact assessment
+         - Sustainability reporting requirements
+         - Emissions and waste management
+
+      8. Financial Regulations
+         - SEC requirements (if applicable)
+         - Tax considerations
+         - Foreign exchange regulations
+
+      For each area:
+      - Assess legal risk level (Critical/High/Medium/Low)
+      - Identify specific requirements
+      - Recommend mitigation strategies
+
+      Requirements:
+      - Include standard legal disclaimer
+      - Recommend specialized legal counsel for specific matters
+      - Provide practical, actionable guidance
+      - Acknowledge limitations (not a substitute for legal counsel)
+
+    expected_output: |
+      A compliance and legal review in Markdown format with:
+      - Executive summary of critical compliance issues
+      - Table of applicable regulations by category
+      - Legal risk assessment table (Area, Likelihood, Impact, Severity, Mitigation)
+      - Licensing and permitting requirements
+      - Critical compliance considerations that could impact strategy
+      - Ongoing compliance obligations
+      - Standard legal disclaimer
+
+    agent: compliance_officer
+    context:
+      - risk_assessment_task
+    tools:
+      - crewai.tools.RAGTool
+      - crewai.tools.SerperDevTool
+
+  strategy_synthesis_task:
+    name: synthesize_strategic_recommendations
+    description: |
+      Synthesize all analyses into a comprehensive strategic recommendation for {topic}.
+      Your synthesis should:
+
+      1. Executive Summary
+         - One-sentence conclusion
+         - 3 key findings with quantitative backing
+         - Strategic recommendation (Go/No-Go/Conditional)
+
+      2. Strategic Context
+         - Clear problem/opportunity statement
+         - Strategic question being addressed
+         - Alignment with business objectives
+
+      3. Analysis Summary
+         - Market opportunity assessment
+         - Competitive positioning
+         - Financial implications (NPV, IRR, ROI)
+         - Risk profile assessment
+         - Industry-specific considerations
+
+      4. Strategic Alternatives
+         - Present 2-3 strategic options
+         - Evaluate each against criteria:
+           * Strategic fit
+           * Financial return
+           * Risk level
+           * Implementation complexity
+           * Time to value
+
+      5. Recommendation
+         - Clearly stated recommendation
+         - Rationale for recommendation
+         - Trade-offs acknowledged
+
+      6. Implementation Plan
+         - Prioritized action items (High/Medium/Low)
+         - Timeline with milestones
+         - Resource requirements (budget, headcount, capabilities)
+         - Critical path items
+
+      7. Success Metrics
+         - Lead indicators (what to monitor)
+         - Lag indicators (outcome measures)
+         - Measurement frequency
+         - Targets
+
+      Requirements:
+      - Follow pyramid principle (main message first)
+      - Every claim supported by data
+      - Clear "so what?" for each insight
+      - Actionable and specific recommendations
+      - Realistic timelines and resource requirements
+
+    expected_output: |
+      A comprehensive strategic recommendation in Markdown format structured as:
+      1. Executive Summary (1-page)
+      2. Strategic Context
+      3. Analysis Summary
+      4. Strategic Options Evaluation
+      5. Primary Recommendation with Rationale
+      6. Implementation Roadmap with Prioritized Action Items Table
+      7. Risk Management Plan
+      8. Success Metrics (KPIs)
+
+    agent: senior_strategy_consultant
+    context:
+      - market_research_task
+      - data_analysis_task
+      - financial_modeling_task
+      - domain_validation_task
+      - risk_assessment_task
+      - compliance_review_task
+    tools:
+      - crewai.tools.DelegateToAgent
+
+  report_generation_task:
+    name: generate_final_report
+    description: |
+      Transform the strategic recommendation into a polished, professional
+      client-ready report for {stakeholder_type} audience.
+
+      Report structure should include:
+
+      1. Cover Section
+         - Title with clear message
+         - Subtitle with key value proposition
+         - Date and prepared by
+
+      2. Executive Summary (1-2 pages)
+         - Problem statement
+         - Key findings
+         - Recommendation
+         - Expected impact
+
+      3. Background and Context
+         - Situation overview
+         - Strategic question
+         - Scope and approach
+
+      4. Analysis and Insights
+         - Market analysis summary
+         - Competitive landscape
+         - Financial analysis
+         - Risk assessment
+
+      5. Strategic Options
+         - Alternative approaches
+         - Evaluation criteria
+         - Comparative analysis
+
+      6. Recommendation
+         - Primary recommendation
+         - Rationale and supporting evidence
+         - Expected outcomes
+
+      7. Implementation Plan
+         - Action items with priorities
+         - Timeline and milestones
+         - Resource requirements
+         - Risk mitigation
+
+      8. Next Steps
+         - Immediate actions required
+         - Decision points
+         - Stakeholder responsibilities
+
+      9. Appendices
+         - Detailed data tables
+         - Methodology
+         - Additional analysis
+
+      Requirements:
+      - Appropriate level of detail for {stakeholder_type}
+      - Clear, compelling narrative flow
+      - Professional formatting
+      - All claims supported by data
+      - No typos or grammatical errors
+      - Clear, actionable recommendations
+
+    expected_output: |
+      A professional client-ready report in Markdown format with:
+      - Compelling headline and executive summary
+      - Clear logical structure following pyramid principle
+      - Data-driven insights with supporting tables/visualizations
+      - Specific, actionable recommendations
+      - Implementation plan with timeline
+      - Professional formatting ready for client delivery
+
+    agent: report_writer
+    context:
+      - strategy_synthesis_task
+    tools:
+      - crewai.tools.FileWriteTool
+      - crewai.tools.DirectoryReadTool
+
+  quality_assurance_task:
+    name: quality_assurance_review
+    description: |
+      Conduct a comprehensive quality assurance review of the strategic report.
+      Review across all dimensions:
+
+      1. Accuracy
+         - Verify all data claims have citations
+         - Check all calculations
+         - Validate assumptions are reasonable
+         - Ensure sources are credible
+
+      2. Completeness
+         - All required sections present
+         - No missing critical information
+         - Alternatives considered
+         - Counter-arguments addressed
+
+      3. Clarity
+         - Messages clear and unambiguous
+         - Language appropriate for audience
+         - Jargon explained or avoided
+         - Logical structure and flow
+
+      4. Consistency
+         - No contradictions within document
+         - Numbers consistent throughout
+         - Terminology used consistently
+         - Formatting uniform
+
+      5. Impact
+         - Clear "so what?" for each section
+         - Recommendations specific and actionable
+         - Business impact quantified
+         - Risk-adjusted view provided
+
+      6. Professionalism
+         - No typos or grammatical errors
+         - Professional formatting
+         - Clear visualizations
+         - Overall polished appearance
+
+      Categorize issues as:
+      - Critical (Must Fix): Factual errors, contradictions, missing critical info
+      - Major (Should Fix): Weak analysis, insufficient support, formatting issues
+      - Minor (Nice to Fix): Word choice, minor refinements
+
+      Requirements:
+      - Be thorough and meticulous
+      - Provide specific feedback with page/section references
+      - Be constructive in criticism
+      - Approve only when quality standards met
+
+    expected_output: |
+      A quality assurance review document in Markdown format with:
+      - Overall quality assessment (Pass/Pass with changes/Needs revision/Reject)
+      - Critical issues requiring fixes (if any)
+      - Major issues to address (if any)
+      - Minor improvements recommended (if any)
+      - Positive elements and strengths
+      - Final recommendation on client readiness
+
+    agent: qa_reviewer
+    context:
+      - report_generation_task
+    tools:
+      - crewai.tools.RAGTool
+      - crewai.tools.CalculatorTool

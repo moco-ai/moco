@@ -1,0 +1,124 @@
+# Hierarchical Strategy Crew Configuration
+# Uses a manager agent for dynamic task delegation and orchestration
+
+crew:
+  name: hierarchical_strategy_crew
+  version: 1.0
+  description: |
+    Hierarchical crew where a manager agent dynamically delegates
+    tasks based on the specific needs of each engagement.
+    Provides more flexibility than sequential execution.
+
+  process: hierarchical
+
+  memory: true
+
+  verbose: true
+
+  share_crew: true
+  max_rpm: 100
+
+  # Manager agent for hierarchical process
+  manager_agent: senior_strategy_consultant
+
+  agents:
+    - name: senior_strategy_consultant
+      config_file: agents/orchestrator.yaml
+      role_in_crew: Manager - delegate and orchestrate tasks
+      is_manager: true
+
+    - name: market_researcher
+      config_file: agents/market_researcher.yaml
+      role_in_crew: Conduct research when delegated
+
+    - name: competitor_intel_specialist
+      config_file: agents/competitor_intel.yaml
+      role_in_crew: Gather competitive intelligence when delegated
+
+    - name: data_analyst
+      config_file: agents/data_analyst.yaml
+      role_in_crew: Analyze data when delegated
+
+    - name: financial_modeler
+      config_file: agents/financial_modeler.yaml
+      role_in_crew: Build financial models when delegated
+
+    - name: domain_expert
+      config_file: agents/domain_expert.yaml
+      role_in_crew: Validate assumptions when delegated
+
+    - name: risk_advisor
+      config_file: agents/risk_advisor.yaml
+      role_in_crew: Assess risks when delegated
+
+    - name: report_writer
+      config_file: agents/report_writer.yaml
+      role_in_crew: Create deliverables when delegated
+
+    - name: qa_reviewer
+      config_file: agents/qa_reviewer.yaml
+      role_in_crew: Review quality when delegated
+
+  # Define task pool for manager to draw from
+  task_pool:
+    - name: market_research_task
+      config_file: tasks/research_tasks.yaml
+      task_name: conduct_market_research
+      preferred_agent: market_researcher
+
+    - name: competitor_intelligence_task
+      config_file: tasks/research_tasks.yaml
+      task_name: gather_competitive_intelligence
+      preferred_agent: competitor_intel_specialist
+
+    - name: data_analysis_task
+      config_file: tasks/analysis_tasks.yaml
+      task_name: analyze_data_and_identify_insights
+      preferred_agent: data_analyst
+
+    - name: financial_modeling_task
+      config_file: tasks/analysis_tasks.yaml
+      task_name: build_financial_model
+      preferred_agent: financial_modeler
+
+    - name: domain_validation_task
+      config_file: tasks/analysis_tasks.yaml
+      task_name: validate_with_domain_expertise
+      preferred_agent: domain_expert
+
+    - name: risk_assessment_task
+      config_file: tasks/risk_reporting_tasks.yaml
+      task_name: assess_risks
+      preferred_agent: risk_advisor
+
+    - name: report_generation_task
+      config_file: tasks/risk_reporting_tasks.yaml
+      task_name: generate_final_report
+      preferred_agent: report_writer
+
+    - name: quality_assurance_task
+      config_file: tasks/risk_reporting_tasks.yaml
+      task_name: quality_assurance_review
+      preferred_agent: qa_reviewer
+
+  execution_settings:
+    allow_code_execution: false
+    respect_context_window: true
+    timeout_seconds: 3600  # 1 hour per task
+    max_execution_time_seconds: 10800  # 3 hours total
+    manager_llm: gpt-4-turbo  # Manager uses most capable model
+
+  output_settings:
+    save_to_file: true
+    output_directory: ./output/hierarchical
+    output_format: markdown
+    include_metadata: true
+    include_agent_outputs: false
+    include_intermediate_steps: true
+
+  logging:
+    log_level: DEBUG  # More verbose for hierarchical
+    log_file: ./logs/hierarchical_strategy_crew.log
+    log_agent_communication: true
+    log_task_execution: true
+    log_manager_decisions: true  # Log manager's delegation decisions
