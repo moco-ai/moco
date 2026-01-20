@@ -5,6 +5,7 @@ Generic version of IncidentLogger with rolling summarization support.
 
 import sqlite3
 import json
+from ..utils.json_parser import SmartJSONParser
 import uuid
 import threading
 import os
@@ -597,7 +598,7 @@ class SessionLogger:
                     data = dict(row)
                     if data.get("metadata"):
                         try:
-                            data["metadata"] = json.loads(data["metadata"])
+                            data["metadata"] = SmartJSONParser.parse(data["metadata"]) or {}
                         except Exception:
                             pass
                     return data

@@ -1,10 +1,13 @@
 import asyncio
 import os
 import json
+import logging
+from moco.utils.json_parser import SmartJSONParser
 import inspect
 import hashlib
+
+logger = logging.getLogger(__name__)
 from ..cancellation import check_cancelled, OperationCancelled
-from ..utils.json_parser import SmartJSONParser
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Callable, Union, get_type_hints
 import sys
@@ -1231,11 +1234,37 @@ class AgentRuntime:
                         # ツール呼び出しの収集
                         if delta.tool_calls:
                             for tc_delta in delta.tool_calls:
+                                # DEBUG: Z.ai tool call の生データをファイルに出力
+                                if self.provider == LLMProvider.ZAI:
+                                    with open("/tmp/zai_debug.log", "a") as f:
+                                        f.write(f"[ZAI DEBUG] tc_delta: {tc_delta}\n")
+                                        f.write(f"[ZAI DEBUG] tc_delta attrs: {dir(tc_delta)}\n")
+                                        if hasattr(tc_delta, 'function') and tc_delta.function:
+                                            f.write(f"[ZAI DEBUG] function: {tc_delta.function}\n")
+                                            f.write(f"[ZAI DEBUG] function attrs: {dir(tc_delta.function)}\n")
+                                            f.write(f"[ZAI DEBUG] arguments raw: {repr(getattr(tc_delta.function, 'arguments', None))}\n")
+                                        f.write("---\n")
+                                
                                 # OpenAI SDK/モデルによっては index が入らないことがある
                                 # その場合は単一呼び出しとして index=0 扱いにする
                                 idx = getattr(tc_delta, "index", None)
                                 if idx is None:
                                     idx = 0
+
+                                # Z.ai対応: 新しいIDが来たら、indexに関係なく新しいツールコールとして扱う
+                                new_id = getattr(tc_delta, "id", None)
+                                if new_id:
+                                    # 既存のツールコールでこのIDがあるか確認
+                                    existing_idx = None
+                                    for i, existing_tc in enumerate(collected_tool_calls):
+                                        if existing_tc.get("id") == new_id:
+                                            existing_idx = i
+                                            break
+                                    if existing_idx is not None:
+                                        idx = existing_idx
+                                    else:
+                                        # 新しいIDなので、新しいツールコールとして追加
+                                        idx = len(collected_tool_calls)
 
                                 # 新しいツール呼び出しまたは既存の更新
                                 while len(collected_tool_calls) <= idx:
@@ -1252,7 +1281,18 @@ class AgentRuntime:
                                     if getattr(tc_delta.function, "name", None):
                                         tc["function"]["name"] = tc_delta.function.name
                                     if getattr(tc_delta.function, "arguments", None):
-                                        tc["function"]["arguments"] += tc_delta.function.arguments
+                                        new_args = tc_delta.function.arguments
+                                        # Z.ai対応: 累積ではなく上書きが必要なケース（すでに完全なJSONの場合）
+                                        # ただし通常は累積すべきなので、新しい引数が { で始まり } で終わる完全な形式なら
+                                        # かつ既存の引数と重複（または包含）しているなら検討する
+                                        # ここでは単純に SmartJSONParser 側で対応させたので、蓄積は維持するが、
+                                        # あまりにも巨大になるのを防ぐため、重複検知を入れる
+                                        current_args = tc["function"]["arguments"]
+                                        if current_args.endswith(new_args):
+                                            # すでに含まれている（重複送信）
+                                            pass
+                                        else:
+                                            tc["function"]["arguments"] += new_args
 
                     # 残りの思考バッファをフラッシュ（verbose のときだけ）
                     if reasoning_buffer and self.verbose and not self.progress_callback:
@@ -1277,7 +1317,14 @@ class AgentRuntime:
 
                         for idx, tc in enumerate(collected_tool_calls):
                             func_name = tc["function"]["name"]
-                            args_dict = SmartJSONParser.parse(tc["function"]["arguments"], default={})
+                            # DEBUG: パース前の引数をログ
+                            if self.provider == LLMProvider.ZAI:
+                                with open("/tmp/zai_debug.log", "a") as f:
+                                    f.write(f"[ZAI PARSE] idx={idx}, name={func_name}, args={repr(tc['function']['arguments'])}\n")
+                            try:
+                                args_dict = SmartJSONParser.parse(tc["function"]["arguments"]) or {}
+                            except Exception:
+                                args_dict = {}
 
                             result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
 
@@ -1373,7 +1420,10 @@ class AgentRuntime:
                 # ツール実行（並列化）
                 async def execute_one(tc):
                     func_name = tc.function.name
-                    args_dict = SmartJSONParser.parse(tc.function.arguments, default={})
+                    try:
+                        args_dict = SmartJSONParser.parse(tc.function.arguments) or {}
+                    except Exception:
+                        args_dict = {}
                     
                     result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
                     return {

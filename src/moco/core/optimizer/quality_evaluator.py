@@ -7,10 +7,10 @@ TaskAnalyzerと同様に、AIによる多角的な評価を行う。
 
 import json
 import re
+from ...utils.json_parser import SmartJSONParser
 import asyncio
 import concurrent.futures
 from typing import TypedDict, Optional, Any, Callable
-from ...utils.json_parser import SmartJSONParser
 
 
 class QualityScores(TypedDict):
@@ -154,11 +154,12 @@ JSON形式で回答（説明不要）:
 
     def _parse_response(self, response: str) -> QualityScores:
         """LLMの応答をパース"""
+        json_match = re.search(r'(\{.*\})', response, re.DOTALL)
+        if not json_match:
+            return self.DEFAULT_SCORES.copy()
+
         try:
-            data = SmartJSONParser.parse(response, default=None)
-            if data is None:
-                return self.DEFAULT_SCORES.copy()
-            
+            data = SmartJSONParser.parse(json_match.group()) or {}
             return {
                 "completion": self._clamp_int(data.get("completion", 0), 0, 10),
                 "quality": self._clamp_int(data.get("quality", 0), 0, 10),
@@ -167,7 +168,7 @@ JSON形式で回答（説明不要）:
                 "prompt_specificity": self._clamp_int(data.get("prompt_specificity", 5), 0, 10),
                 "reason": str(data.get("reason", "No reason provided."))[:200]
             }
-        except Exception:
+        except (json.JSONDecodeError, TypeError):
             return self.DEFAULT_SCORES.copy()
 
     def _heuristic_evaluate(self, task: str, result: str) -> QualityScores:

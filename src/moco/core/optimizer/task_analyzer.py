@@ -7,9 +7,9 @@ TaskAnalyzer - LLMベースのタスク分析
 
 import json
 import re
+from ...utils.json_parser import SmartJSONParser
 import asyncio
 from typing import TypedDict, Optional, Any, Callable
-from ...utils.json_parser import SmartJSONParser
 
 
 class TaskScores(TypedDict):
@@ -170,10 +170,13 @@ JSON形式で回答（説明不要）:
     
     def _parse_response(self, response: str) -> TaskScores:
         """LLMの応答をパースしてスコアを抽出"""
+        # JSON部分を抽出（ネスト対応）
+        json_match = re.search(r'(\{.*\})', response, re.DOTALL)
+        if not json_match:
+            return self.DEFAULT_SCORES.copy()
+        
         try:
-            data = SmartJSONParser.parse(response, default=None)
-            if data is None:
-                return self.DEFAULT_SCORES.copy()
+            data = SmartJSONParser.parse(json_match.group()) or {}
             
             # バリデーションと正規化
             return {
@@ -184,7 +187,7 @@ JSON形式で回答（説明不要）:
                 "dependencies": self._clamp(data.get("dependencies", 3), 0, 10),
                 "task_type": self._validate_task_type(data.get("task_type", "other"))
             }
-        except Exception:
+        except json.JSONDecodeError:
             return self.DEFAULT_SCORES.copy()
     
     def _heuristic_analyze(self, task: str) -> TaskScores:
