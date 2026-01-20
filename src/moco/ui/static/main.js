@@ -161,17 +161,32 @@ async function initApp() {
 
     AgentMonitor.init();
 
-    // プロファイル変更時にセッション一覧を更新
-    document.getElementById('profile-select').addEventListener('change', () => {
+    // プロファイル変更時にセッション一覧を更新 & 保存
+    document.getElementById('profile-select').addEventListener('change', (e) => {
+        localStorage.setItem('mocoProfile', e.target.value);
         loadSessions();
         createNewSession();
     });
 
-    // Provider変更時にモデル選択を表示/非表示
+    // Provider変更時にモデル選択を表示/非表示 & 保存
     const providerSelect = document.getElementById('provider-select');
     const openrouterModelGroup = document.getElementById('openrouter-model-group');
     const zaiModelGroup = document.getElementById('zai-model-group');
+    
+    // Restore saved provider
+    const savedProvider = localStorage.getItem('mocoProvider');
+    if (savedProvider) {
+        providerSelect.value = savedProvider;
+        // Trigger display update
+        if (savedProvider === 'openrouter') {
+            openrouterModelGroup.style.display = 'block';
+        } else if (savedProvider === 'zai' && zaiModelGroup) {
+            zaiModelGroup.style.display = 'block';
+        }
+    }
+    
     providerSelect.addEventListener('change', () => {
+        localStorage.setItem('mocoProvider', providerSelect.value);
         openrouterModelGroup.style.display = 'none';
         if (zaiModelGroup) zaiModelGroup.style.display = 'none';
         
@@ -302,6 +317,12 @@ async function loadProfiles() {
         select.innerHTML = data.profiles.map(p =>
             `<option value="${p}">${p}</option>`
         ).join('');
+        
+        // Restore saved profile
+        const savedProfile = localStorage.getItem('mocoProfile');
+        if (savedProfile && data.profiles.includes(savedProfile)) {
+            select.value = savedProfile;
+        }
     } catch (e) {
         console.error('Failed to load profiles:', e);
     }
