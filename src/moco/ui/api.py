@@ -13,6 +13,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
+from moco.common.schemas import ChatRequest, SessionCreate, FileResponse
+from moco.common.errors import setup_exception_handlers
 import json
 import sqlite3
 import logging
@@ -29,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from moco.core.orchestrator import Orchestrator
 from moco.storage.session_logger import SessionLogger
 from moco.tools.discovery import _find_profiles_dir
+from moco.utils.json_parser import SmartJSONParser
 from moco.cancellation import (
     create_cancel_event,
     request_cancel,
@@ -62,6 +65,7 @@ def filter_response_for_display(response: str, verbose: bool = False) -> str:
     return response
 
 app = FastAPI(title="Moco", version="1.0.0")
+setup_exception_handlers(app)
 
 # 静的ファイルのマウント
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -84,30 +88,6 @@ def get_orchestrator(profile: str, provider: str = "gemini", verbose: bool = Fal
         working_directory=work_dir
     )
 
-
-# === Models ===
-
-class ChatRequest(BaseModel):
-    message: str
-    session_id: Optional[str] = None
-    profile: str = "development"
-    provider: str = "gemini"
-    model: Optional[str] = None  # OpenRouter用モデル名
-    verbose: bool = False
-    working_directory: Optional[str] = None  # 作業ディレクトリ（セッションごとに設定可能）
-
-
-class SessionCreate(BaseModel):
-    title: str = "New Chat"
-    profile: str = "development"
-    working_directory: Optional[str] = None  # 作業ディレクトリ
-
-
-class FileResponse(BaseModel):
-    content: str
-    line_count: int
-    size: int
-    path: str
 
 
 # === Routes ===
@@ -824,6 +804,17 @@ async def chat_stream(req: ChatRequest):
             "X-Accel-Buffering": "no"  # Nginxなどのバッファリングを無効化
         }
     )
+
+@app.post("/api/debug/parse-json")
+async def debug_parse_json(req: dict):
+    """
+    汚れた JSON 文字列をクリーンアップしてパースするデバッグ用エンドポイント
+    """
+    text = req.get("text", "")
+    result = SmartJSONParser.parse(text)
+    if result is None:
+        raise HTTPException(status_code=400, detail="Failed to parse JSON")
+    return {"result": result}
 
 
 if __name__ == "__main__":
