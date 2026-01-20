@@ -1443,18 +1443,22 @@ body {
     outline: none;
 }
 
-.send-btn {
+.send-btn, .stop-btn {
     width: 42px;
     height: 42px;
     border-radius: 14px;
     border: none;
-    background-color: var(--bg-hover);
-    color: var(--text-muted);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    flex-shrink: 0;
+}
+
+.send-btn {
+    background-color: var(--bg-hover);
+    color: var(--text-muted);
 }
 
 .send-btn:hover:not(:disabled) {
@@ -1470,18 +1474,8 @@ body {
 }
 
 .stop-btn {
-    width: 42px;
-    height: 42px;
-    border-radius: 14px;
-    border: none;
-    background-color: color-mix(in srgb, var(--color-error) 10%, transparent);
-    color: var(--color-error);
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    flex-shrink: 0;
+    background-color: color-mix(in srgb, var(--color-error, #f43f5e) 15%, transparent);
+    color: var(--color-error, #f43f5e);
 }
 
 .stop-btn.hidden {
@@ -1489,10 +1483,10 @@ body {
 }
 
 .stop-btn:hover:not(:disabled) {
-    background-color: var(--color-error);
+    background-color: var(--color-error, #f43f5e);
     color: white;
     transform: scale(1.05);
-    box-shadow: 0 4px 12px color-mix(in srgb, var(--color-error) 30%, transparent);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--color-error, #f43f5e) 40%, transparent);
 }
 
 .input-hint {
@@ -2900,4 +2894,116 @@ body {
     background: var(--bg-hover);
     color: var(--text-primary);
 }
+
+/* 停止ボタンのスタイル */
+.stop-btn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--glass-border);
+    color: var(--color-error, #f43f5e);
+    border-radius: 0.75rem;
+    padding: 0 16px;
+    height: 44px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.stop-btn:hover {
+    background: color-mix(in srgb, var(--color-error, #f43f5e) 15%, var(--bg-hover));
+    border-color: var(--color-error, #f43f5e);
+    box-shadow: 0 0 15px rgba(244, 63, 94, 0.2);
+    transform: translateY(-1px);
+}
+
+.stop-btn:active {
+    transform: translateY(0);
+}
+
+.stop-btn.hidden {
+    display: none;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Toast Notifications */
+.toast-container {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    pointer-events: none;
+}
+
+.toast {
+    pointer-events: auto;
+    min-width: 300px;
+    max-width: 450px;
+    padding: 16px 20px;
+    background: var(--bg-secondary);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-left: 4px solid var(--accent-teal);
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    color: var(--text-primary);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    animation: toastSlideIn 0.3s cubic-bezier(0, 0, 0.2, 1) forwards;
+    transition: all 0.3s ease;
+}
+
+.toast.toast-error {
+    border-left-color: var(--color-error, #f43f5e);
+}
+
+.toast.toast-success {
+    border-left-color: #10b981;
+}
+
+.toast.toast-info {
+    border-left-color: var(--accent-teal);
+}
+
+.toast.fade-out {
+    opacity: 0;
+    transform: translateX(30px) scale(0.95);
+}
+
+.toast-content {
+    flex: 1;
+}
+
+.toast-title {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.toast-message {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+@keyframes toastSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
 

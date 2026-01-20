@@ -1372,22 +1372,24 @@ class AgentRuntime:
                     ]
                 })
 
-                # ツール実行
-                for tc in message.tool_calls:
+                # ツール実行（並列化）
+                async def execute_one(tc):
                     func_name = tc.function.name
                     try:
                         args_dict = json.loads(tc.function.arguments)
                     except json.JSONDecodeError:
                         args_dict = {}
-
+                    
                     result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
-
-                    # ツール結果を追加
-                    messages.append({
+                    return {
                         "role": "tool",
                         "tool_call_id": tc.id,
                         "content": str(result)
-                    })
+                    }
+
+                tasks = [execute_one(tc) for tc in message.tool_calls]
+                tool_results = await asyncio.gather(*tasks)
+                messages.extend(tool_results)
                 
                 # 80%超過時にコンテキスト圧縮
                 usage_ratio = self._accumulated_tokens / MAX_CONTEXT_TOKENS
@@ -1524,8 +1526,8 @@ class AgentRuntime:
 
                     if function_calls:
                         messages.append(types.Content(role="model", parts=collected_parts))
-                        tool_responses = []
-                        for fc in function_calls:
+                        # ツール実行（並列化）
+                        async def execute_one(fc):
                             func_name = fc.name
                             args = fc.args
                             args_dict = {}
@@ -1534,17 +1536,17 @@ class AgentRuntime:
                                     args_dict = {k: v for k, v in args.items()}
                                 elif isinstance(args, dict):
                                     args_dict = args
-
+                            
                             result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
-
-                            tool_responses.append(
-                                types.Part(
-                                    function_response=types.FunctionResponse(
-                                        name=func_name,
-                                        response={"result": _ensure_jsonable(result)}
-                                    )
+                            return types.Part(
+                                function_response=types.FunctionResponse(
+                                    name=func_name,
+                                    response={"result": _ensure_jsonable(result)}
                                 )
                             )
+
+                        tasks = [execute_one(fc) for fc in function_calls]
+                        tool_responses = await asyncio.gather(*tasks)
                         messages.append(types.Content(role="tool", parts=tool_responses))
                         continue
                     else:
@@ -1588,8 +1590,8 @@ class AgentRuntime:
 
                     function_calls = [p.function_call for p in message.parts if p.function_call]
                     if function_calls:
-                        tool_responses = []
-                        for fc in function_calls:
+                        # ツール実行（並列化）
+                        async def execute_one(fc):
                             func_name = fc.name
                             args = fc.args
                             args_dict = {}
@@ -1598,17 +1600,17 @@ class AgentRuntime:
                                     args_dict = {k: v for k, v in args.items()}
                                 elif isinstance(args, dict):
                                     args_dict = args
-
+                            
                             result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
-
-                            tool_responses.append(
-                                types.Part(
-                                    function_response=types.FunctionResponse(
-                                        name=func_name,
-                                        response={"result": _ensure_jsonable(result)}
-                                    )
+                            return types.Part(
+                                function_response=types.FunctionResponse(
+                                    name=func_name,
+                                    response={"result": _ensure_jsonable(result)}
                                 )
                             )
+
+                        tasks = [execute_one(fc) for fc in function_calls]
+                        tool_responses = await asyncio.gather(*tasks)
                         messages.append(types.Content(role="tool", parts=tool_responses))
                         continue
                     else:

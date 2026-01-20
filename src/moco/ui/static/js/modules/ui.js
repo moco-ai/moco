@@ -3,6 +3,38 @@
  */
 import { formatContent, escapeHtml } from './formatter.js';
 
+export function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const id = `toast-${Date.now()}`;
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.id = id;
+    
+    let icon = 'ℹ️';
+    if (type === 'error') icon = '❌';
+    if (type === 'success') icon = '✅';
+    if (type === 'warning') icon = '⚠️';
+
+    toast.innerHTML = `
+        <span class="toast-icon">${icon}</span>
+        <span class="toast-message">${escapeHtml(message)}</span>
+    `;
+
+    container.appendChild(toast);
+
+    // Auto remove
+    setTimeout(() => {
+        toast.classList.add('fade-out');
+        setTimeout(() => {
+            if (toast.parentNode) {
+                container.removeChild(toast);
+            }
+        }, 500);
+    }, 3000);
+}
+
 export function scrollToBottom() {
     const container = document.getElementById('chat-container');
     if (container) {
@@ -43,7 +75,10 @@ export function addMessage(role, content, isStreaming = false) {
         setTimeout(() => msgEl.classList.add('appear'), 10);
         if (!isStreaming) addCopyButtons(id);
     }
-    scrollToBottom();
+    // メッセージが追加されたら、特にAI応答中は常に最下部にスクロール
+    if (role === 'assistant') {
+        scrollToBottom();
+    }
     return id;
 }
 
@@ -51,6 +86,7 @@ export function updateMessage(id, content) {
     const el = document.querySelector(`#${id} .message-text`);
     if (el) {
         el.innerHTML = formatContent(content);
+        // ストリーミング中(更新中)はスクロールを維持
         scrollToBottom();
     }
 }

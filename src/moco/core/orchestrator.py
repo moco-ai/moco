@@ -601,16 +601,19 @@ class Orchestrator:
         """
         オーケストレーターの応答に含まれる @agent-name パターンを検出し、
         該当するサブエージェントに処理を委譲する。
+
+        委譲タスクは並列で実行されます。
         """
         # responseがNoneの場合は空文字列として扱う
         if response is None:
             return ""
-        
+
         # 応答内の @agent-name パターンを検出
         # 例: "@doc-writer ファイルを作成してください..."
         lines = response.split('\n')
-        processed_lines = []
-        delegated_count = 0
+        
+        # まず全ての委譲タスクを検出（第1パス）
+        delegations = []  # [(agent_name, instruction, start_line_index, end_line_index)]
         i = 0
 
         while i < len(lines):
@@ -636,6 +639,7 @@ class Orchestrator:
                     instruction_lines = [initial_instruction] if initial_instruction else []
                     i += 1
                     consecutive_empty = 0
+                    start_line_index = i - 1  # @agent-name 行のインデックス
                     while i < len(lines):
                         next_line = lines[i]
                         # 次の@エージェントパターンで終了
@@ -653,19 +657,73 @@ class Orchestrator:
 
                     instruction = '\n'.join(instruction_lines).strip()
                     if instruction:
-                        # 委譲先は常に表示（ユーザーが処理の流れを把握できるように）
-                        _log_delegation(agent_name, instruction)
-                        sub_response = await self._delegate_to_agent(agent_name, instruction, session_id)
-                        processed_lines.append(sub_response)
-                        delegated_count += 1
+                        delegations.append((agent_name, instruction, start_line_index, i))
                     continue
 
-            processed_lines.append(line)
+            i += 1
+
+        # 委譲タスクがあれば並列実行
+        delegation_results = {}  # {start_line_index: (sub_response, error)}
+        delegated_count = len(delegations)
+
+        if delegations:
+            # 各委譲タスクのコルーチンを作成
+            async def execute_delegation(agent_name: str, instruction: str, line_index: int):
+                try:
+                    # 委譲先は常に表示（ユーザーが処理の流れを把握できるように）
+                    _log_delegation(agent_name, instruction)
+                    sub_response = await self._delegate_to_agent(agent_name, instruction, session_id)
+                    return (line_index, sub_response, None)
+                except Exception as e:
+                    # エラーが発生しても他のタスクは継続
+                    error_msg = f"@{agent_name} の実行中にエラーが発生しました: {e}"
+                    logging.error(error_msg, exc_info=True)
+                    # エラー時は空の応答を返し、エラー情報は別途記録
+                    return (line_index, "", error_msg)
+
+            # 全ての委譲タスクを並列実行
+            tasks = [
+                execute_delegation(agent_name, instruction, start_idx)
+                for agent_name, instruction, start_idx, end_idx in delegations
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=False)
+
+            # 結果をインデックスでマッピング
+            for line_idx, sub_response, error in results:
+                delegation_results[line_idx] = (sub_response, error)
+
+        # 第2パス: 結果を元の位置にマージして最終的な出力を構築
+        processed_lines = []
+        successful_results = []  # サマリー生成用（エラーを除く）
+        i = 0
+        delegation_idx = 0
+
+        while i < len(lines):
+            # ループ内でのキャンセルチェック
+            if session_id:
+                check_cancelled(session_id)
+
+            # 委譲がある位置かチェック
+            if delegation_idx < len(delegations):
+                _, _, start_idx, end_idx = delegations[delegation_idx]
+                if i == start_idx:
+                    # この位置は委譲タスクの開始位置
+                    sub_response, error = delegation_results[start_idx]
+                    if error:
+                        processed_lines.append(f"### エラー\n{error}")
+                    else:
+                        processed_lines.append(sub_response)
+                        successful_results.append(sub_response)
+                    i = end_idx
+                    delegation_idx += 1
+                    continue
+
+            processed_lines.append(lines[i])
             i += 1
 
         # サブエージェントに委譲があった場合、最終まとめを生成
-        if delegated_count > 0:
-            summary = await self._generate_final_summary(processed_lines, session_id)
+        if successful_results:
+            summary = await self._generate_final_summary(successful_results, session_id)
             if summary:
                 processed_lines.append(f"\n---\n## まとめ\n{summary}")
 

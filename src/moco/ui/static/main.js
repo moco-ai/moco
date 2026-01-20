@@ -429,8 +429,10 @@ async function onStopClick() {
     if (!isStreaming || !currentSessionId) return;
     try {
         await api.cancelSession(currentSessionId);
+        ui.showToast('Cancelling request...', 'info');
     } catch (e) {
         console.error('Failed to request cancel:', e);
+        ui.showToast(`Failed to cancel: ${e.message}`, 'error');
     }
 }
 
@@ -494,15 +496,18 @@ async function sendMessage() {
     let elapsedTimerId = null;
     
     // 経過時間表示を開始
-    const updateElapsedTime = () => {
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        const mins = Math.floor(elapsed / 60);
-        const secs = elapsed % 60;
-        const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-        ui.updateElapsedTime(timeStr);
+    const startElapsedTime = () => {
+        const update = () => {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const mins = Math.floor(elapsed / 60);
+            const secs = elapsed % 60;
+            const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+            ui.updateElapsedTime(timeStr);
+        };
+        elapsedTimerId = setInterval(update, 1000);
+        update();  // 初回表示
     };
-    elapsedTimerId = setInterval(updateElapsedTime, 1000);
-    updateElapsedTime();  // 初回表示
+    startElapsedTime();
     
     try {
         const progressMsgId = ui.addProgressMessage();
@@ -542,6 +547,7 @@ async function sendMessage() {
             // approval_request は WebSocket で処理されるため削除
             else if (data.type === 'cancelled') {
                 ui.showCancelledSystemMessage();
+                ui.showToast('Generation cancelled', 'info');
                 isStreaming = false;
                 setLoading(false);
                 AgentMonitor.hide();
@@ -561,6 +567,7 @@ async function sendMessage() {
                 setLoading(false);
             } else if (data.type === 'error') {
                 ui.updateMessage(assistantMsgId, `Error: ${data.message}`);
+                ui.showToast(`Error: ${data.message}`, 'error');
                 AgentMonitor.hide();
                 clearInterval(elapsedTimerId);
                 ui.hideElapsedTime();
@@ -570,6 +577,7 @@ async function sendMessage() {
     } catch (e) {
         console.error('Failed to send message:', e);
         ui.addMessage('assistant', `Error: ${e.message}`);
+        ui.showToast(`Error: ${e.message}`, 'error');
     } finally {
         isStreaming = false;
         setLoading(false);
