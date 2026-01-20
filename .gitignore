@@ -79,3 +79,13 @@ runbooks/
 
 # Code index cache
 .code_index/
+
+# Node modules
+node_modules/
+
+# Development test scripts
+test_chat_workdir.py
+test_workdir_manual.py
+
+# Test directory
+tests/

@@ -2,6 +2,7 @@
 description: >-
   汎用コーディングエージェント。
   コードの作成・編集を直接行い、効率的な開発をサポート。
+mode: primary
 tools:
   # ファイル操作
   - read_file
