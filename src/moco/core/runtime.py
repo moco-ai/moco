@@ -10,7 +10,6 @@ import sys
 from collections import defaultdict
 
 from ..tools.skill_loader import SkillConfig
-from ..utils.json_parser import SmartJSONParser
 
 
 class ToolCallTracker:
@@ -1253,19 +1252,12 @@ class AgentRuntime:
                                         tc["function"]["name"] = tc_delta.function.name
                                     if getattr(tc_delta.function, "arguments", None):
                                         new_args = tc_delta.function.arguments
-                                        if new_args:
-                                            trimmed = new_args.strip()
-                                            looks_complete = (
-                                                (trimmed.startswith("{") and trimmed.endswith("}")) or
-                                                (trimmed.startswith("[") and trimmed.endswith("]"))
-                                            )
-                                            parsed = SmartJSONParser.parse(trimmed)
-                                            if looks_complete and parsed is not None:
-                                                # 完全なJSONが再送されるケースは上書きで最新を採用
-                                                tc["function"]["arguments"] = new_args
-                                            else:
-                                                # 断片は連結して組み立てる
-                                                tc["function"]["arguments"] += new_args
+                                        # 完全JSONなら上書き、断片なら連結
+                                        # Z.ai等は各チャンクで完全JSONを送る、OpenAI等は断片を送る
+                                        if new_args.strip().startswith("{") and new_args.strip().endswith("}"):
+                                            tc["function"]["arguments"] = new_args  # 完全JSON→上書き
+                                        else:
+                                            tc["function"]["arguments"] += new_args  # 断片→連結
 
                     # 残りの思考バッファをフラッシュ（verbose のときだけ）
                     if reasoning_buffer and self.verbose and not self.progress_callback:
@@ -1291,8 +1283,8 @@ class AgentRuntime:
                         for idx, tc in enumerate(collected_tool_calls):
                             func_name = tc["function"]["name"]
                             try:
-                                args_dict = SmartJSONParser.parse(tc["function"]["arguments"], default={})
-                            except Exception:
+                                args_dict = json.loads(tc["function"]["arguments"])
+                            except json.JSONDecodeError:
                                 args_dict = {}
 
                             result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
@@ -1390,8 +1382,8 @@ class AgentRuntime:
                 async def execute_one(tc):
                     func_name = tc.function.name
                     try:
-                        args_dict = SmartJSONParser.parse(tc.function.arguments, default={})
-                    except Exception:
+                        args_dict = json.loads(tc.function.arguments)
+                    except json.JSONDecodeError:
                         args_dict = {}
                     
                     result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
