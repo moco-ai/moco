@@ -1,0 +1,7 @@
+name: strategy-consulting
+description: |
+  戦略コンサルティング専門チーム。
+  Senior Strategy Consultantをオーケストレーターとし、
+  市場調査、データ分析、財務モデリング、リスク評価、
+  コンプライアンスを担当する専門エージェントで構成。
+include_base_tools: true
