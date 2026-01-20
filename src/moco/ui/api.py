@@ -324,20 +324,29 @@ async def delete_session(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _init_metrics_db(db_path: Path):
+    """metrics.db の初期化（テーブル作成）"""
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS metrics (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ai_score REAL, task_summary TEXT, task_complexity REAL, delegation_count INTEGER, todo_used INTEGER, history_turns INTEGER, summary_depth INTEGER, prompt_specificity REAL, profile TEXT)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS agent_executions (id INTEGER PRIMARY KEY AUTOINCREMENT, request_id INTEGER, agent_name TEXT, inline_score REAL, tokens_input INTEGER, tokens_output INTEGER, execution_time_ms INTEGER, error_message TEXT, summary_depth INTEGER, history_turns INTEGER, FOREIGN KEY (request_id) REFERENCES metrics (id))")
+    conn.commit()
+    conn.close()
+
+
 @app.get("/api/stats")
 async def get_stats(session_id: Optional[str] = None, scope: str = "all"):
     """統計データを取得"""
     try:
         from pathlib import Path
-        # DBパスの決定ロジックを強化
-        # 1. 環境変数 MOCO_WORKING_DIRECTORY
+        # DBパスの決定ロジック
         work_dir = os.getenv("MOCO_WORKING_DIRECTORY")
         db_path = None
         
         if work_dir:
             db_path = Path(work_dir) / "data" / "optimizer" / "metrics.db"
         
-        # 2. 親方向に data/optimizer/metrics.db を探す
         if not db_path or not db_path.exists():
             curr = Path.cwd()
             for _ in range(5):
@@ -348,14 +357,11 @@ async def get_stats(session_id: Optional[str] = None, scope: str = "all"):
                 if curr.parent == curr: break
                 curr = curr.parent
         
-        # 3. ファイル位置からの相対パス
         if not db_path or not db_path.exists():
-            # src/moco/ui/api.py -> プロジェクトルート/data/optimizer/metrics.db
             alternative_path = Path(__file__).resolve().parent.parent.parent.parent / "data" / "optimizer" / "metrics.db"
             if alternative_path.exists():
                 db_path = alternative_path
         
-        # 4. フォールバック
         if not db_path:
             db_path = Path.cwd() / "data" / "optimizer" / "metrics.db"
         
@@ -384,16 +390,10 @@ async def get_stats(session_id: Optional[str] = None, scope: str = "all"):
         if scope == "session" and not session_id:
             return stats
 
-        # ディレクトリ作成と初期化
-        db_path.parent.mkdir(parents=True, exist_ok=True)
+        # 初期化（存在しない場合のみ）
         if not db_path.exists():
-            # 新規作成時は空の統計を返す（テーブル作成後にデータがない状態と同じ）
-            conn = sqlite3.connect(str(db_path))
-            # ここでテーブル作成
-            cursor = conn.cursor()
-            cursor.execute("CREATE TABLE IF NOT EXISTS metrics (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ai_score REAL, task_summary TEXT, task_complexity REAL, delegation_count INTEGER, todo_used INTEGER, history_turns INTEGER, summary_depth INTEGER, prompt_specificity REAL, profile TEXT)")
-            cursor.execute("CREATE TABLE IF NOT EXISTS agent_executions (id INTEGER PRIMARY KEY AUTOINCREMENT, request_id INTEGER, agent_name TEXT, inline_score REAL, tokens_input INTEGER, tokens_output INTEGER, execution_time_ms INTEGER, error_message TEXT, summary_depth INTEGER, history_turns INTEGER, FOREIGN KEY (request_id) REFERENCES metrics (id))")
-            conn.commit()
+            _init_metrics_db(db_path)
+            # 作成直後はデータがないので空の統計を返す
             return stats
         
         conn = sqlite3.connect(str(db_path))
