@@ -8,7 +8,12 @@ import asyncio
 import queue
 import threading
 import time
+import sys
 from typing import Optional
+
+# moco imports - sys.path must be set before importing moco modules
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -23,10 +28,6 @@ from dotenv import load_dotenv, find_dotenv
 
 # .env を読み込む（親方向に自動探索）
 load_dotenv(find_dotenv())
-
-# moco imports
-import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from moco.core.orchestrator import Orchestrator
 from moco.storage.session_logger import SessionLogger
