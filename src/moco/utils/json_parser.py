@@ -36,10 +36,11 @@ class SmartJSONParser:
         Raises:
             json.JSONDecodeError: パース失敗時（default が None の場合）
         """
-        if not text or not text.strip():
+        # None または空文字列の場合
+        if text is None or not str(text).strip():
             if default is not None:
                 return default
-            raise json.JSONDecodeError("Empty input", text or "", 0)
+            raise json.JSONDecodeError("Empty input", str(text) if text else "", 0)
 
         original_text = text
         
