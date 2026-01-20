@@ -41,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2026-01-18
 
-🚀 **CLI 機能強化リリース** - Gemini CLI / Claude Code レベルの機能追加
+🚀 **CLI 機能強化リリース** - プロフェッショナルレベルのCLI機能追加
 
 ### Added
 
