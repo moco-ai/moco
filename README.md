@@ -54,6 +54,20 @@ moco version                   # バージョン表示
 moco list-profiles             # プロファイル一覧
 ```
 
+### 対話モード内コマンド (Slash Commands)
+
+チャット実行中に `/` を入力することで、様々な操作が可能です。
+
+*   `/help`: コマンドヘルプを表示
+*   `/cd <path|bookmark>`: 作業ディレクトリを変更
+*   `/workdir <add|list|remove> [name]`: ブックマーク管理
+*   `/ls [path]`: ファイル一覧を表示
+*   `/tree [depth]`: ディレクトリ構造を表示
+*   `/model [model_name]`: モデルの表示・変更
+*   `/profile [profile_name]`: プロファイルの変更
+*   `/clear`: 履歴をクリアしてセッション再開
+*   `/quit`: チャットを終了
+
 ### Web UI
 
 ```bash

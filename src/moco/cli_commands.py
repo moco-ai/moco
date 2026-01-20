@@ -33,6 +33,9 @@ def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
         'exit': handle_quit,
         'theme': handle_theme,
         'workdir': handle_workdir,
+        'cd': handle_workdir,
+        'ls': handle_ls,
+        'tree': handle_tree,
     }
     
     if command in SLASH_COMMANDS:
@@ -61,6 +64,70 @@ def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
         console.print(f"[red]Unknown command: /{command}. Type /help for available commands.[/red]")
         return True
 
+def handle_ls(args: List[str], context: Dict[str, Any]) -> bool:
+    """現在のディレクトリの内容を表示"""
+    import os
+    from rich.table import Table
+    console = context.get('console', Console())
+    orchestrator = context.get('orchestrator')
+    
+    path = args[0] if args else (orchestrator.working_directory if orchestrator else os.getcwd())
+    
+    try:
+        items = os.listdir(path)
+        table = Table(title=f"Contents of {path}", border_style="dim")
+        table.add_column("Type", width=6)
+        table.add_column("Name")
+        
+        # ディレクトリを優先
+        for item in sorted(items):
+            full_path = os.path.join(path, item)
+            is_dir = os.path.isdir(full_path)
+            if is_dir:
+                table.add_row("[bold cyan]DIR[/]", item)
+        
+        for item in sorted(items):
+            full_path = os.path.join(path, item)
+            if not os.path.isdir(full_path):
+                table.add_row("FILE", item)
+                
+        console.print(table)
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+    return True
+
+def handle_tree(args: List[str], context: Dict[str, Any]) -> bool:
+    """ディレクトリ構造をツリー表示"""
+    import os
+    from rich.tree import Tree
+    console = context.get('console', Console())
+    orchestrator = context.get('orchestrator')
+    
+    root_path = orchestrator.working_directory if orchestrator else os.getcwd()
+    max_depth = int(args[0]) if args and args[0].isdigit() else 2
+    
+    def add_tree_node(node, current_path, current_depth):
+        if current_depth > max_depth:
+            return
+        try:
+            items = sorted(os.listdir(current_path))
+            for item in items:
+                if item.startswith('.') and item not in ('.moco', '.env'):
+                    continue
+                full_path = os.path.join(current_path, item)
+                if os.path.isdir(full_path):
+                    branch = node.add(f"[bold cyan]{item}/[/]")
+                    add_tree_node(branch, full_path, current_depth + 1)
+                else:
+                    node.add(item)
+        except PermissionError:
+            pass
+
+    tree = Tree(f"[bold]{root_path}[/]")
+    add_tree_node(tree, root_path, 1)
+    console.print(tree)
+    return True
+
 def handle_help(args: List[str], context: Dict[str, Any]) -> bool:
     """利用可能なコマンド一覧を表示"""
     console = context.get('console', Console())
@@ -75,6 +142,9 @@ def handle_help(args: List[str], context: Dict[str, Any]) -> bool:
         ("/profile [name]", "Show or change current profile"),
         ("/theme [name]", "Show or change current theme"),
         ("/workdir [path]", "Show or change working directory"),
+        ("/cd [path]", "Alias for /workdir"),
+        ("/ls [path]", "List directory contents"),
+        ("/tree [depth]", "Show directory tree (default depth 2)"),
         ("/session", "Show current session info"),
         ("/save", "Save current session (Automatic)"),
         ("/cost", "Show estimated cost for this session"),
@@ -194,33 +264,103 @@ def handle_profile(args: List[str], context: Dict[str, Any]) -> bool:
     return True
 
 def handle_workdir(args: List[str], context: Dict[str, Any]) -> bool:
-    """作業ディレクトリを表示・変更"""
+    """作業ディレクトリを表示・変更、およびブックマークの管理"""
     import os
+    import json
     from pathlib import Path
     console = context.get('console', Console())
     orchestrator = context.get('orchestrator')
     if not orchestrator:
         return True
 
+    # ブックマーク保存用パス
+    moco_home = Path.home() / ".moco"
+    bookmarks_file = moco_home / "bookmarks.json"
+    
+    def load_bookmarks():
+        if bookmarks_file.exists():
+            try:
+                with open(bookmarks_file, 'r') as f:
+                    return json.load(f)
+            except:
+                return {}
+        return {}
+
+    def save_bookmarks(bookmarks):
+        moco_home.mkdir(exist_ok=True)
+        with open(bookmarks_file, 'w') as f:
+            json.dump(bookmarks, f, indent=2)
+
+    bookmarks = load_bookmarks()
+
     if not args:
         current_dir = orchestrator.working_directory
         console.print(f"[bold]Current working directory:[/bold] {current_dir}")
-        console.print(f"[dim]Usage: /workdir <path>[/dim]")
+        if bookmarks:
+            console.print("\n[bold]Bookmarks:[/bold]")
+            for name, path in sorted(bookmarks.items()):
+                console.print(f"  [cyan]{name}[/cyan] -> {path}")
+        console.print(f"\n[dim]Usage:[/dim]")
+        console.print(f"  /workdir <path or bookmark>")
+        console.print(f"  /cd <path or bookmark>")
+        console.print(f"  /workdir add <name> [path]    (path defaults to current)")
+        console.print(f"  /workdir remove <name>")
+        console.print(f"  /workdir list")
+        return True
+
+    cmd = args[0].lower()
+    
+    if cmd == "add" and len(args) >= 2:
+        name = args[1]
+        path_str = args[2] if len(args) > 2 else orchestrator.working_directory
+        abs_path = str(Path(path_str).resolve())
+        bookmarks[name] = abs_path
+        save_bookmarks(bookmarks)
+        console.print(f"[green]Bookmark added: {name} -> {abs_path}[/green]")
+        return True
+    
+    if cmd == "remove" and len(args) >= 2:
+        name = args[1]
+        if name in bookmarks:
+            del bookmarks[name]
+            save_bookmarks(bookmarks)
+            console.print(f"[green]Bookmark removed: {name}[/green]")
+        else:
+            console.print(f"[yellow]Bookmark not found: {name}[/yellow]")
+        return True
+    
+    if cmd == "list":
+        if not bookmarks:
+            console.print("[dim]No bookmarks saved.[/dim]")
+        else:
+            table = Table(title="Directory Bookmarks", border_style="cyan")
+            table.add_column("Name", style="cyan")
+            table.add_column("Path")
+            for name, path in bookmarks.items():
+                table.add_row(name, path)
+            console.print(table)
+        return True
+
+    # ブックマーク名かパスとして処理
+    target = args[0]
+    if target in bookmarks:
+        new_dir = bookmarks[target]
     else:
-        new_dir = args[0]
-        path = Path(new_dir).resolve()
-        if not path.is_dir():
-            console.print(f"[red]Error: Directory does not exist: {new_dir}[/red]")
-            return True
+        new_dir = target
 
-        orchestrator.working_directory = str(path)
-        os.environ['MOCO_WORKING_DIRECTORY'] = str(path)
-        # 各 runtime にも working_directory を反映
-        for runtime in orchestrator.runtimes.values():
-            if hasattr(runtime, 'working_directory'):
-                runtime.working_directory = str(path)
+    path = Path(new_dir).resolve()
+    if not path.is_dir():
+        console.print(f"[red]Error: Directory does not exist: {new_dir}[/red]")
+        return True
 
-        console.print(f"[green]Working directory changed to: {path}[/green]")
+    orchestrator.working_directory = str(path)
+    os.environ['MOCO_WORKING_DIRECTORY'] = str(path)
+    # 各 runtime にも working_directory を反映
+    for runtime in orchestrator.runtimes.values():
+        if hasattr(runtime, 'working_directory'):
+            runtime.working_directory = str(path)
+
+    console.print(f"[green]Working directory changed to: {path}[/green]")
     return True
 
 def handle_session(args: List[str], context: Dict[str, Any]) -> bool:
