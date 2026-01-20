@@ -26,16 +26,22 @@ class AgentConfig:
 # --- Helper Functions ---
 
 def _find_profiles_dir() -> str:
-    """プロファイルディレクトリを探す（環境変数 > cwd > パッケージ内）"""
-    # 1. 環境変数
+    """プロファイルディレクトリを探す（作業ディレクトリ > 環境変数 > cwd > パッケージ内）"""
+    # 1. 作業ディレクトリ（-w オプション）
+    working_dir = os.environ.get("MOCO_WORKING_DIRECTORY")
+    if working_dir:
+        wd_profiles = os.path.join(working_dir, "profiles")
+        if os.path.exists(wd_profiles) and os.path.isdir(wd_profiles):
+            return wd_profiles
+    # 2. 環境変数
     env_dir = os.getenv("MOCO_PROFILES_DIR")
     if env_dir and os.path.exists(env_dir):
         return env_dir
-    # 2. カレントディレクトリ
+    # 3. カレントディレクトリ
     cwd_dir = os.path.join(os.getcwd(), "profiles")
     if os.path.exists(cwd_dir):
         return cwd_dir
-    # 3. パッケージ内（フォールバック）
+    # 4. パッケージ内（フォールバック）
     return os.path.join(_MOCO_ROOT, "profiles")
 
 
@@ -171,66 +177,19 @@ class AgentLoader:
         self.agents_dir = os.path.join(profiles_dir, self.profile, "agents")
         
         agents = {}
-        # Support both .md and .yaml files
-        for ext in ["*.md", "*.yaml", "*.yml"]:
-            search_path = os.path.join(self.agents_dir, ext)
-            files = glob.glob(search_path)
-            
-            for file_path in files:
-                try:
-                    if file_path.endswith(".md"):
-                        agent = self._parse_agent_file(file_path)
-                    else:
-                        agent = self._parse_yaml_agent(file_path)
-                        
-                    if agent:
-                        agents[agent.name] = agent
-                except Exception as e:
-                    logger.warning(f"Failed to load agent from {file_path}: {e}")
+        search_path = os.path.join(self.agents_dir, "*.md")
+        files = glob.glob(search_path)
+        
+        for file_path in files:
+            try:
+                agent = self._parse_agent_file(file_path)
+                if agent:
+                    agents[agent.name] = agent
+            except Exception as e:
+                import sys
+                logger.warning(f"Failed to load agent from {file_path}: {e}")
         
         return agents
-
-    def _parse_yaml_agent(self, file_path: str) -> Optional[AgentConfig]:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f)
-        
-        if not data:
-            return None
-
-        # Extract name from file or data
-        agent_info = data.get("agent", {})
-        name = agent_info.get("name") or os.path.splitext(os.path.basename(file_path))[0]
-        
-        # Construct system prompt from components
-        prompt_parts = []
-        if data.get("role"):
-            prompt_parts.append(f"Role: {data['role']}")
-        if data.get("goal"):
-            prompt_parts.append(f"Goal: {data['goal']}")
-        if data.get("backstory"):
-            prompt_parts.append(f"Backstory:\n{data['backstory']}")
-        if data.get("delegation_instructions"):
-            prompt_parts.append(f"Delegation Instructions:\n{data['delegation_instructions']}")
-        if data.get("decision_framework"):
-            prompt_parts.append(f"Decision Framework:\n{data['decision_framework']}")
-        if data.get("output_requirements"):
-            prompt_parts.append(f"Output Requirements:\n{data['output_requirements']}")
-        if data.get("process_role"):
-            prompt_parts.append(f"Process Role:\n{data['process_role']}")
-        if data.get("quality_standards"):
-            qs = data.get("quality_standards", [])
-            if isinstance(qs, list):
-                prompt_parts.append("Quality Standards:\n- " + "\n- ".join(qs))
-        
-        system_prompt = "\n\n".join(prompt_parts)
-        
-        return AgentConfig(
-            name=name,
-            description=data.get("description", f"Strategy agent: {name}"),
-            system_prompt=system_prompt,
-            tools=data.get("tools", []),
-            mode=agent_info.get("type") or "chat"
-        )
 
     def _parse_agent_file(self, file_path: str) -> Optional[AgentConfig]:
         with open(file_path, 'r', encoding='utf-8') as f:
