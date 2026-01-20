@@ -32,6 +32,7 @@ def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
         'quit': handle_quit,
         'exit': handle_quit,
         'theme': handle_theme,
+        'workdir': handle_workdir,
     }
     
     if command in SLASH_COMMANDS:
@@ -73,6 +74,7 @@ def handle_help(args: List[str], context: Dict[str, Any]) -> bool:
         ("/model [name]", "Show or change current model"),
         ("/profile [name]", "Show or change current profile"),
         ("/theme [name]", "Show or change current theme"),
+        ("/workdir [path]", "Show or change working directory"),
         ("/session", "Show current session info"),
         ("/save", "Save current session (Automatic)"),
         ("/cost", "Show estimated cost for this session"),
@@ -189,6 +191,36 @@ def handle_profile(args: List[str], context: Dict[str, Any]) -> bool:
             orchestrator.optimizer_config.profile = new_profile
         orchestrator.reload_agents()
         console.print(f"[green]Profile changed to: {new_profile}[/green]")
+    return True
+
+def handle_workdir(args: List[str], context: Dict[str, Any]) -> bool:
+    """作業ディレクトリを表示・変更"""
+    import os
+    from pathlib import Path
+    console = context.get('console', Console())
+    orchestrator = context.get('orchestrator')
+    if not orchestrator:
+        return True
+
+    if not args:
+        current_dir = orchestrator.working_directory
+        console.print(f"[bold]Current working directory:[/bold] {current_dir}")
+        console.print(f"[dim]Usage: /workdir <path>[/dim]")
+    else:
+        new_dir = args[0]
+        path = Path(new_dir).resolve()
+        if not path.is_dir():
+            console.print(f"[red]Error: Directory does not exist: {new_dir}[/red]")
+            return True
+
+        orchestrator.working_directory = str(path)
+        os.environ['MOCO_WORKING_DIRECTORY'] = str(path)
+        # 各 runtime にも working_directory を反映
+        for runtime in orchestrator.runtimes.values():
+            if hasattr(runtime, 'working_directory'):
+                runtime.working_directory = str(path)
+
+        console.print(f"[green]Working directory changed to: {path}[/green]")
     return True
 
 def handle_session(args: List[str], context: Dict[str, Any]) -> bool:
