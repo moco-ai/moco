@@ -24,7 +24,6 @@ from .optimizer import (
     ExecutionMetrics,
     SelectionResult
 )
-from ..utils.json_parser import SmartJSONParser
 
 try:
     from rich.console import Console
@@ -1026,7 +1025,13 @@ class Orchestrator:
 
             # JSONパース
             result = result.strip()
-            eval_json = SmartJSONParser.parse(result, default={})
+            if result.startswith('```json'):
+                result = result[7:]
+            if result.endswith('```'):
+                result = result[:-3]
+            result = result.strip()
+
+            eval_json = json.loads(result)
 
             # 整数値のバリデーション（範囲チェック付き）
             for key in ["completion", "quality", "prompt_specificity"]:

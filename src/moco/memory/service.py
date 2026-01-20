@@ -18,8 +18,6 @@ Memory Service - 記憶・学習システム API (SQLite版)
     result = memory.analyze(user_message, response)
     
     # 4. 必要なら記憶保存
-
-Note: LLM レスポンスの JSON 解析には SmartJSONParser を使用
     if result["should_learn"]:
         memory.learn(result)
 """
@@ -35,7 +33,6 @@ from .db import init_db, get_conn
 from .embeddings import GENAI_AVAILABLE, build_genai_client, embed_text
 from .serialization import serialize_embedding, deserialize_embedding, deserialize_keywords
 from .similarity import cos_sim
-from ..utils.json_parser import SmartJSONParser
 
 # Lazy import for GraphStore (requires networkx)
 GraphStore = None
@@ -456,7 +453,7 @@ scoreが{self.feedback_threshold}以上の時のみruleを作成。それ以外�
                     config=types.GenerateContentConfig(response_mime_type="application/json"),
                     contents=[{"role":"user", "parts":[{"text":prompt}]}]
                 )
-                result = SmartJSONParser.parse(r.text, default={})
+                result = json.loads(r.text)
             
             # OpenAI の場合
             elif hasattr(client, "chat"):
@@ -465,7 +462,7 @@ scoreが{self.feedback_threshold}以上の時のみruleを作成。それ以外�
                     messages=[{"role": "user", "content": prompt}],
                     response_format={"type": "json_object"}
                 )
-                result = SmartJSONParser.parse(r.choices[0].message.content, default={})
+                result = json.loads(r.choices[0].message.content)
             
             else:
                 raise ValueError("Unsupported LLM client")
@@ -578,7 +575,7 @@ scoreが{self.feedback_threshold}以上の時のみruleを作成。それ以外�
                     config=types.GenerateContentConfig(response_mime_type="application/json"),
                     contents=[{"role":"user", "parts":[{"text":prompt}]}]
                 )
-                result = SmartJSONParser.parse(r.text, default={})
+                result = json.loads(r.text)
                 return result.get("delete_ids", [])
             else:
                 # OpenAI fallback (omitted for brevity, assuming Gemini)
