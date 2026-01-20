@@ -170,8 +170,14 @@ def handle_profile(args: List[str], context: Dict[str, Any]) -> bool:
         return True
 
     if not args:
-        console.print(f"[dim]Current profile: {orchestrator.profile}[/dim]")
-        console.print(f"[dim]Usage: /profile <profile_name>[/dim]")
+        from .cli import get_available_profiles
+        profiles = get_available_profiles()
+        console.print(f"[bold]Current profile:[/bold] {orchestrator.profile}")
+        console.print(f"\n[bold]Available profiles:[/bold]")
+        for p in profiles:
+            marker = "→" if p == orchestrator.profile else " "
+            console.print(f"  {marker} {p}")
+        console.print(f"\n[dim]Usage: /profile <profile_name>[/dim]")
     else:
         new_profile = args[0]
         # プロファイルの変更は Orchestrator の再初期化が必要
