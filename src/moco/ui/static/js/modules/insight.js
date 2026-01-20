@@ -141,14 +141,26 @@ export function clearInsights() {
     `;
 }
 
-export function loadInsightsForSession(sessionId) {
+export function loadInsightsForSession(sessionId, serverInsights = null) {
     clearInsights();
     if (!sessionId) return;
 
-    const items = _loadStoredInsights(sessionId);
-    if (!items.length) return;
+    let items = [];
+    if (serverInsights && Array.isArray(serverInsights)) {
+        items = serverInsights.map(ev => {
+            let data = ev.content;
+            if (typeof data === 'string') {
+                try { data = JSON.parse(data); } catch (e) { data = { query: data }; }
+            }
+            return { ...data, _ts: ev.timestamp };
+        });
+    } else {
+        items = _loadStoredInsights(sessionId);
+    }
 
-    // stored は新しい順（先頭が最新）
+    if (!items || !items.length) return;
+
+    // stored/server は新しい順（先頭が最新）
     for (const item of items) {
         _renderRecallItem(item, { animate: false });
     }
@@ -244,14 +256,35 @@ function renderStats(data) {
     const content = document.getElementById('stats-content');
     if (!content) return;
 
-    // Initialize structure if not exists
-    if (!content.querySelector('.stats-controls')) {
+    if (data && data.error) {
+        content.innerHTML = `
+            <div class="stats-error">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <p>Failed to load statistics: ${escapeHtml(data.error)}</p>
+                <button class="retry-btn" id="stats-error-retry-btn">Retry</button>
+            </div>
+        `;
+        document.getElementById('stats-error-retry-btn')?.addEventListener('click', () => loadStats());
+        return;
+    }
+
+    // Initialize structure if not exists or if it's the old static version
+    if (!document.getElementById('stats-data-display')) {
         content.innerHTML = `
             ${CONTROLS_HTML}
             <div id="stats-data-display"></div>
         `;
-        document.getElementById('stats-scope-select').addEventListener('change', loadStats);
-        document.getElementById('stats-refresh-btn').addEventListener('click', loadStats);
+        const scopeSelect = document.getElementById('stats-scope-select');
+        if (scopeSelect) {
+            scopeSelect.addEventListener('change', loadStats);
+            // Restore scope if we had one
+            if (data.scope) scopeSelect.value = data.scope;
+        }
+        document.getElementById('stats-refresh-btn')?.addEventListener('click', loadStats);
     }
 
     const display = document.getElementById('stats-data-display');

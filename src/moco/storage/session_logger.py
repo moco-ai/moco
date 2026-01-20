@@ -635,6 +635,29 @@ class SessionLogger:
             logger.error(f"Failed to add event: {e}")
             return event_id
 
+    def get_events(self, session_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get events for a session."""
+        try:
+            with self._lock:
+                conn = self._get_connection()
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+
+                cursor.execute("""
+                    SELECT event_id, timestamp, event_type, source, content
+                    FROM session_events
+                    WHERE session_id = ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """, (session_id, limit))
+
+                rows = cursor.fetchall()
+                conn.close()
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting events: {e}")
+            return []
+
     def update_session_status(self, session_id: str, status: str):
         """Update session status."""
         try:

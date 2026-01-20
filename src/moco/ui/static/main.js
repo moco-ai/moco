@@ -353,7 +353,7 @@ async function loadSession(sessionId) {
 
         ui.clearMessages();
         ui.showWelcome(false);
-        insight.loadInsightsForSession(sessionId);
+        insight.loadInsightsForSession(sessionId, data.insights);
         insight.loadStats();
 
         data.messages.forEach(msg => {

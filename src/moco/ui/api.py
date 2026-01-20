@@ -234,9 +234,23 @@ async def get_session(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
 
     history = session_logger._get_recent_messages(session_id, limit=100)
+    events = session_logger.get_events(session_id, limit=50)
+    
+    # イベントの content が JSON 文字列の場合はデコード
+    processed_events = []
+    for ev in events:
+        try:
+            content = ev["content"]
+            if isinstance(content, str) and (content.startswith("{") or content.startswith("[")):
+                ev["content"] = json.loads(content)
+        except Exception:
+            pass
+        processed_events.append(ev)
+
     return {
         "session": session,
-        "messages": history
+        "messages": history,
+        "insights": processed_events
     }
 
 
@@ -315,7 +329,16 @@ async def get_stats(session_id: Optional[str] = None, scope: str = "all"):
     """統計データを取得"""
     try:
         from pathlib import Path
-        db_path = Path(__file__).parent.parent.parent.parent / "data" / "optimizer" / "metrics.db"
+        # プロジェクトのルートディレクトリ（moco-agent の親）にある data/optimizer/metrics.db を参照
+        # MOCO_WORKING_DIRECTORY があればそれを優先
+        work_dir = os.getenv("MOCO_WORKING_DIRECTORY") or os.getcwd()
+        db_path = Path(work_dir) / "data" / "optimizer" / "metrics.db"
+        
+        # 従来の相対パス計算もフォールバックとして残すが、基本は work_dir を使う
+        if not db_path.exists():
+            alternative_path = Path(__file__).parent.parent.parent.parent / "data" / "optimizer" / "metrics.db"
+            if alternative_path.exists():
+                db_path = alternative_path
         
         # デフォルトのレスポンス構造
         stats = {
@@ -660,31 +683,42 @@ async def chat_stream(req: ChatRequest):
             if parts:
                 clean_name = parts[-1]
 
-        # インサイトパネル用のイベント送信
+        # インサイトパネル用のイベント送信 & 永続化
         if event_type == "recall":
             results = kwargs.get("results", [])
             for res in results:
-                event_queue.put({
+                q = detail or "Semantic Recall"
+                d = res.get("content", "") if isinstance(res, dict) else str(res)
+                event_data = {
                     "type": "recall",
                     "recall_type": "Memory",
-                    "query": detail or "Semantic Recall",
-                    "details": res.get("content", "") if isinstance(res, dict) else str(res)
-                })
+                    "query": q,
+                    "details": d
+                }
+                event_queue.put(event_data)
+                if session_id:
+                    session_logger.add_event(session_id, "insight", "memory", event_data)
         elif event_type == "delegate" and status == "running":
-            event_queue.put({
+            event_data = {
                 "type": "recall",
                 "recall_type": "Delegation",
                 "query": f"→ @{clean_name}",
                 "details": detail
-            })
+            }
+            event_queue.put(event_data)
+            if session_id:
+                session_logger.add_event(session_id, "insight", "delegation", event_data)
         elif event_type == "tool" and status == "completed":
             # ツール実行結果もインサイトに表示
-            event_queue.put({
+            event_data = {
                 "type": "recall",
                 "recall_type": "Tool",
                 "query": f"🛠️ {tool_name or clean_name}",
                 "details": result
-            })
+            }
+            event_queue.put(event_data)
+            if session_id:
+                session_logger.add_event(session_id, "insight", "tool", event_data)
 
         # app.js が期待する形式（agent, parent, tool, event, status）に統一
         data = {
