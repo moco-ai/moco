@@ -99,4 +99,4 @@ moco skills search pdf               # スキル検索
 
 ## 📄 ライセンス
 
-MIT License - 詳細は [LICENSE](https://github.com/moco-team/moco-agent/blob/main/LICENSE) を参照
+MIT License - 詳細は [LICENSE](https://github.com/moco-ai/moco/blob/main/LICENSE) を参照

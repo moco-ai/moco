@@ -25,8 +25,8 @@ pip install moco-agent
 ### 開発版をインストール
 
 ```bash
-git clone https://github.com/moco-team/moco-agent.git
-cd moco-agent
+git clone https://github.com/moco-ai/moco.git
+cd moco
 pip install -e ".[dev]"
 ```
 

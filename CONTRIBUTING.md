@@ -544,8 +544,8 @@ Traceback (most recent call last):
 
 ## 質問・サポート
 
-- **一般的な質問**: [GitHub Discussions](https://github.com/moco-team/moco-agent/discussions)
-- **バグ報告・機能リクエスト**: [GitHub Issues](https://github.com/moco-team/moco-agent/issues)
+- **一般的な質問**: [GitHub Discussions](https://github.com/moco-ai/moco/discussions)
+- **バグ報告・機能リクエスト**: [GitHub Issues](https://github.com/moco-ai/moco/issues)
 - **セキュリティの問題**: SECURITY.md を参照
 
 ---
@@ -554,4 +554,4 @@ Traceback (most recent call last):
 
 moco に貢献してくださるすべての方に感謝します！
 
-貢献者は [Contributors](https://github.com/moco-team/moco-agent/graphs/contributors) ページで確認できます。
+貢献者は [Contributors](https://github.com/moco-ai/moco/graphs/contributors) ページで確認できます。

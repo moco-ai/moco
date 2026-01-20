@@ -140,8 +140,8 @@ moco run "タスク" --provider openrouter -m claude-sonnet-4
 
 ```bash
 # リポジトリをクローン
-git clone https://github.com/moco-team/moco-agent.git
-cd moco-agent
+git clone https://github.com/moco-ai/moco.git
+cd moco
 
 # 依存関係をインストール
 pip install -e .
