@@ -328,6 +328,113 @@ moco run "APIを実装して" --profile development
 moco chat --profile code
 ```
 
+### エージェント組織パターン
+
+`delegate_to_agent` ツールを使って、様々な組織構造を実現できます。
+
+#### 1. 階層型（Hierarchical）
+
+最も基本的なパターン。Orchestrator がサブエージェントにタスクを委譲。
+
+```
+orchestrator
+├── @backend-coder  → バックエンド実装
+├── @frontend-coder → フロントエンド実装
+└── @code-reviewer  → コードレビュー
+```
+
+```python
+# orchestrator.md での記述例
+delegate_to_agent(agent_name="backend-coder", task="API を実装して")
+```
+
+#### 2. 多層階層型（Multi-level Hierarchy）
+
+サブエージェントがさらにサブエージェントに委譲。
+
+```
+orchestrator
+└── @chief-architect
+    ├── @architect-team-a → チームAの設計
+    └── @architect-team-b → チームBの設計
+```
+
+```yaml
+# chief-architect.md
+tools:
+  - delegate_to_agent  # サブエージェントにも委譲権限を付与
+```
+
+#### 3. 並列型（Parallel）
+
+複数のエージェントが同時に独立して作業。
+
+```markdown
+# orchestrator.md で複数の @メンションを同時に書く
+@backend-coder APIを実装して
+@frontend-coder UIを実装して
+@unit-tester テストを作成して
+```
+
+MOCO は自動的に並列実行し、すべての結果を集約します。
+
+#### 4. パイプライン型（Sequential）
+
+処理結果を次のエージェントに渡すチェーン。
+
+```
+@api-designer → @backend-coder → @unit-tester → @code-reviewer
+```
+
+```markdown
+# orchestrator.md での記述例
+1. @api-designer に API 設計を依頼
+2. 設計結果を @backend-coder に渡して実装を依頼
+3. 実装結果を @unit-tester に渡してテスト作成を依頼
+4. すべてを @code-reviewer に渡してレビューを依頼
+```
+
+#### 5. ピアレビュー型（Peer Review）
+
+サブエージェント同士が互いの成果物をレビュー。
+
+```yaml
+# backend-coder.md
+tools:
+  - delegate_to_agent
+
+# プロンプト内で
+実装完了後、@frontend-coder にAPI連携部分のレビューを依頼
+```
+
+#### 6. 合意形成型（Consensus）
+
+複数の専門家が議論して最適解を導出。
+
+```markdown
+# orchestrator.md
+以下の専門家に意見を求め、総合判断：
+@security-reviewer セキュリティ観点
+@performance-reviewer パフォーマンス観点
+@architect 設計観点
+
+3つの意見を統合して最終決定
+```
+
+#### 7. 競争型（Competition）
+
+複数のアプローチを同時に試し、最良を選択。
+
+```markdown
+# orchestrator.md
+3つのアプローチで同時に実装：
+@approach-simple シンプルな実装
+@approach-perf パフォーマンス重視
+@approach-flex 拡張性重視
+
+結果を比較して最良の実装を採用
+```
+
 #### profile.yaml
 
 ```yaml
