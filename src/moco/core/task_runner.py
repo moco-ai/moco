@@ -98,25 +98,32 @@ class TaskRunner:
     def cancel_task(self, task_id: str) -> bool:
         task = self.store.get_task(task_id)
         if not task or not task.get("pid"):
+            # タスクは存在するがpidがない場合もCANCELLEDにする
+            if task:
+                full_task_id = task.get("task_id", task_id)
+                self.store.update_task(full_task_id, status=TaskStatus.CANCELLED)
+                return True
             return False
         
+        # 完全なtask_idを使用（短縮ID対応）
+        full_task_id = task.get("task_id", task_id)
         pid = task["pid"]
         try:
             # プロセスグループ全体を終了させる
             os.killpg(os.getpgid(pid), signal.SIGTERM)
             self.store.update_task(
-                task_id,
+                full_task_id,
                 status=TaskStatus.CANCELLED,
                 completed_at=datetime.now().isoformat()
             )
             return True
         except ProcessLookupError:
             # 既に終了している場合
-            self.store.update_task(task_id, status=TaskStatus.FAILED, error="Process not found")
-            return False
+            self.store.update_task(full_task_id, status=TaskStatus.CANCELLED, error="Process already exited")
+            return True
         except Exception as e:
-            self.store.update_task(task_id, error=str(e))
-            return False
+            self.store.update_task(full_task_id, status=TaskStatus.CANCELLED, error=str(e))
+            return True
 
     def _find_log_file(self, task_id: str) -> Optional[Path]:
         """短縮IDまたは完全IDからログファイルを検索"""
