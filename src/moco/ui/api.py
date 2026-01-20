@@ -329,16 +329,35 @@ async def get_stats(session_id: Optional[str] = None, scope: str = "all"):
     """統計データを取得"""
     try:
         from pathlib import Path
-        # プロジェクトのルートディレクトリ（moco-agent の親）にある data/optimizer/metrics.db を参照
-        # MOCO_WORKING_DIRECTORY があればそれを優先
-        work_dir = os.getenv("MOCO_WORKING_DIRECTORY") or os.getcwd()
-        db_path = Path(work_dir) / "data" / "optimizer" / "metrics.db"
+        # DBパスの決定ロジックを強化
+        # 1. 環境変数 MOCO_WORKING_DIRECTORY
+        work_dir = os.getenv("MOCO_WORKING_DIRECTORY")
+        db_path = None
         
-        # 従来の相対パス計算もフォールバックとして残すが、基本は work_dir を使う
-        if not db_path.exists():
-            alternative_path = Path(__file__).parent.parent.parent.parent / "data" / "optimizer" / "metrics.db"
+        if work_dir:
+            db_path = Path(work_dir) / "data" / "optimizer" / "metrics.db"
+        
+        # 2. 親方向に data/optimizer/metrics.db を探す
+        if not db_path or not db_path.exists():
+            curr = Path.cwd()
+            for _ in range(5):
+                target = curr / "data" / "optimizer" / "metrics.db"
+                if target.exists():
+                    db_path = target
+                    break
+                if curr.parent == curr: break
+                curr = curr.parent
+        
+        # 3. ファイル位置からの相対パス
+        if not db_path or not db_path.exists():
+            # src/moco/ui/api.py -> プロジェクトルート/data/optimizer/metrics.db
+            alternative_path = Path(__file__).resolve().parent.parent.parent.parent / "data" / "optimizer" / "metrics.db"
             if alternative_path.exists():
                 db_path = alternative_path
+        
+        # 4. フォールバック
+        if not db_path:
+            db_path = Path.cwd() / "data" / "optimizer" / "metrics.db"
         
         # デフォルトのレスポンス構造
         stats = {

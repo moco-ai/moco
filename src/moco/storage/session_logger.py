@@ -33,10 +33,26 @@ def _get_summarize_model() -> str:
 
 
 def _get_default_db_path() -> str:
-    """デフォルトのDBパスを取得（環境変数 > cwd）"""
+    """デフォルトのDBパスを取得（環境変数 > cwd > プロジェクトルート探索）"""
     if os.environ.get("SESSION_DB_PATH"):
         return os.environ["SESSION_DB_PATH"]
-    # カレントワーキングディレクトリの data/sessions.db
+    
+    # data/sessions.db が存在するディレクトリを親方向に遡って探す
+    try:
+        cwd = Path.cwd()
+        # カレントディレクトリまたは親ディレクトリで data/sessions.db を探す
+        check_path = cwd
+        for _ in range(5):
+            db_file = check_path / "data" / "sessions.db"
+            if db_file.exists():
+                return str(db_file)
+            if check_path.parent == check_path: # Root reached
+                break
+            check_path = check_path.parent
+    except Exception:
+        pass
+        
+    # 見つからない場合はカレントの data/sessions.db
     return str(Path.cwd() / "data" / "sessions.db")
 CHARS_PER_TOKEN = 2.5  # 日本語の場合
 
