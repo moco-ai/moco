@@ -104,10 +104,72 @@ tasks_app = typer.Typer(help="タスク管理")
 app.add_typer(tasks_app, name="tasks")
 
 
+def get_available_profiles() -> List[str]:
+    """利用可能なプロファイル一覧を取得"""
+    profiles = []
+    
+    # 1. カレントディレクトリの profiles/
+    cwd_profiles = Path.cwd() / "profiles"
+    if cwd_profiles.exists():
+        for p in cwd_profiles.iterdir():
+            if p.is_dir() and (p / "profile.yaml").exists():
+                profiles.append(p.name)
+    
+    # 2. パッケージ内蔵プロファイル
+    pkg_profiles = Path(__file__).parent / "profiles"
+    if pkg_profiles.exists():
+        for p in pkg_profiles.iterdir():
+            if p.is_dir() and (p / "profile.yaml").exists():
+                if p.name not in profiles:
+                    profiles.append(p.name)
+    
+    return sorted(profiles) if profiles else ["default"]
+
+
+def complete_profile(incomplete: str) -> List[str]:
+    """プロファイル名のタブ補完"""
+    profiles = get_available_profiles()
+    return [p for p in profiles if p.startswith(incomplete)]
+
+
+def prompt_profile_selection() -> str:
+    """対話的にプロファイルを選択"""
+    from rich.console import Console
+    from rich.prompt import Prompt
+    
+    console = Console()
+    profiles = get_available_profiles()
+    
+    if len(profiles) == 1:
+        return profiles[0]
+    
+    console.print("\n[bold]Available profiles:[/]")
+    for i, p in enumerate(profiles, 1):
+        console.print(f"  [cyan]{i}[/]. {p}")
+    
+    choice = Prompt.ask(
+        "\n[bold]Select profile[/]",
+        choices=[str(i) for i in range(1, len(profiles) + 1)] + profiles,
+        default="1"
+    )
+    
+    # 数字で選択された場合
+    if choice.isdigit():
+        idx = int(choice) - 1
+        if 0 <= idx < len(profiles):
+            return profiles[idx]
+    
+    # 名前で選択された場合
+    if choice in profiles:
+        return choice
+    
+    return profiles[0]
+
+
 @app.command()
 def run(
     task: str = typer.Argument(..., help="実行するタスク"),
-    profile: str = typer.Option("default", "--profile", "-p", help="使用するプロファイル"),
+    profile: str = typer.Option("default", "--profile", "-p", help="使用するプロファイル", autocompletion=complete_profile),
     provider: Optional[str] = typer.Option(None, "--provider", "-P", help="LLMプロバイダ (gemini/openai/openrouter/zai) - 省略時は自動選択"),
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名 (例: gpt-4o, gemini-2.5-pro, claude-sonnet-4)"),
     stream: bool = typer.Option(False, "--stream/--no-stream", help="ストリーミング出力（デフォルト: オフ）"),
@@ -445,7 +507,7 @@ def list_profiles():
 
 @app.command()
 def chat(
-    profile: str = typer.Option("default", "--profile", "-p", help="使用するプロファイル"),
+    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="使用するプロファイル", autocompletion=complete_profile),
     provider: Optional[str] = typer.Option(None, "--provider", "-P", help="LLMプロバイダ (gemini/openai/openrouter/zai) - 省略時は自動選択"),
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
     stream: bool = typer.Option(True, "--stream/--no-stream", help="ストリーミング出力（デフォルト: オン）"),
@@ -468,6 +530,10 @@ def chat(
     from .core.llm_provider import get_available_provider
 
     console = Console()
+
+    # プロファイルの解決（指定なしの場合は対話選択）
+    if profile is None:
+        profile = prompt_profile_selection()
 
     # プロバイダーの解決（指定なしの場合は優先順位で自動選択）
     if provider is None:
@@ -783,7 +849,7 @@ def version():
 @tasks_app.command("run")
 def tasks_run(
     task: str = typer.Argument(..., help="実行するタスク内容"),
-    profile: str = typer.Option("default", "--profile", "-p", help="プロファイル"),
+    profile: str = typer.Option("default", "--profile", "-p", help="プロファイル", autocompletion=complete_profile),
     provider: Optional[str] = typer.Option(None, "--provider", "-P", help="プロバイダ - 省略時は自動選択"),
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
     working_dir: Optional[str] = typer.Option(None, "--working-dir", "-w", help="作業ディレクトリ"),
