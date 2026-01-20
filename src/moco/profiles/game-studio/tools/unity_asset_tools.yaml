@@ -1,0 +1,59 @@
+# Unity Asset Management Tools
+
+tool:
+  name: UnityAssetValidator
+  description: Validate Unity assets for technical standards
+
+  capabilities:
+    - Check sprite settings compliance
+    - Verify audio import settings
+    - Validate prefab structure
+    - Check texture compression settings
+    - Verify component dependencies
+
+  parameters:
+    asset_path: Path to the asset to validate
+    asset_type: Type of asset (sprite, audio, prefab, etc.)
+
+  output:
+    validation_result: PASS/FAIL
+    issues_found: List of validation issues
+    recommendations: Suggested fixes
+
+tool:
+  name: UnityPrefabAnalyzer
+  description: Analyze prefabs for performance and structure issues
+
+  capabilities:
+    - Detect nested prefabs
+    - Identify unnecessary components
+    - Check for missing references
+    - Analyze component count
+    - Identify optimization opportunities
+
+  parameters:
+    prefab_path: Path to the prefab to analyze
+
+  output:
+    component_count: Number of components
+    issues_found: List of potential issues
+    optimization_suggestions: Recommended changes
+
+tool:
+  name: UnitySceneHealthChecker
+  description: Check scene health and identify potential issues
+
+  capabilities:
+    - Count objects in scene
+    - Identify missing scripts
+    - Check for static batching opportunities
+    - Identify performance bottlenecks
+    - Check lighting settings
+
+  parameters:
+    scene_path: Path to the scene to check
+
+  output:
+    object_count: Number of game objects
+    issues_found: List of issues
+    health_score: Overall scene health rating

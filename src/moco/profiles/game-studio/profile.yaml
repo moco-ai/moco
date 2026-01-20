@@ -1,0 +1,44 @@
+name: game-studio
+description: Unity2Dゲーム開発用プロファイル（10人規模開発チーム）
+include_base_tools: true
+
+# Unity2Dゲーム開発向けの設定
+development_environment:
+  engine: Unity
+  engine_version: "2022.3 LTS or later"
+  rendering_pipeline: URP (Universal Render Pipeline)
+  target_platforms:
+    - Windows
+    - macOS
+    - WebGL
+  input_system: New Input System
+  scripting_backend: IL2CPP
+
+# チーム構成
+team_structure:
+  scale: 10人規模
+  roles:
+    - Director (1人)
+    - Planner/Game Designer (2人)
+    - Unity Architect (1人)
+    - Unity Programmer (3人)
+    - Artist/Animator (2人)
+    - QA Engineer (1人)
+
+# 開発ワークフロー
+workflow:
+  design_phase:
+    - Game concept document
+    - Level design specifications
+    - Character and UI design
+  development_phase:
+    - Architecture design
+    - Prototype development
+    - Core feature implementation
+    - Asset integration
+    - Polish and optimization
+  qa_phase:
+    - Unit testing
+    - Integration testing
+    - Playtesting
+    - Performance profiling

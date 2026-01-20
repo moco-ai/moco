@@ -1,0 +1,57 @@
+# Design Crew
+# Core design team for game design and planning
+
+crew:
+  name: design_crew
+  description: Game design team for mechanics, levels, and systems planning
+
+agents:
+  - name: director
+    type: manager
+    role: Vision alignment, feasibility review, approval
+
+  - name: planner_core
+    type: specialist
+    role: Core mechanics, game loops, progression, balance
+
+  - name: planner_level
+    type: specialist
+    role: Level design, pacing, tutorials, encounters
+
+process:
+  type: hierarchical
+  manager: director
+  workflow:
+    - name: concept_development
+      agents: [director, planner_core]
+      description: Develop core game concept and unique selling points
+
+    - name: mechanics_design
+      agents: [planner_core, director]
+      description: Design core gameplay mechanics and systems
+
+    - name: progression_systems
+      agents: [planner_core]
+      description: Design progression, rewards, and economy
+
+    - name: level_progression
+      agents: [planner_level, director, planner_core]
+      description: Plan level order and difficulty curve
+
+    - name: individual_levels
+      agents: [planner_level, planner_core]
+      description: Design specific level layouts and encounters
+
+    - name: design_review
+      agents: [director, planner_core, planner_level]
+      description: Review complete design package
+
+manager:
+  type: hierarchical
+  manager_agent: director
+
+shared_context:
+  - game_vision
+  - target_audience
+  - market_analysis
+  - technical_constraints

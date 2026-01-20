@@ -7,12 +7,12 @@ from .ui.theme import THEMES, ThemeName
 from .ui.layout import ui_state
 
 def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
-    """スラッシュコマンドを処理。True を返すとチャット継続、False で終了"""
+    """Process slash commands. Returns True to continue chat, False to exit."""
     try:
         parts = shlex.split(text)
     except ValueError:
         parts = text.split()
-        
+    
     if not parts:
         return True
     
@@ -41,7 +41,7 @@ def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
     if command in SLASH_COMMANDS:
         return SLASH_COMMANDS[command](args, context)
     else:
-        # カスタムコマンドが存在するかチェック（tools/command_loaderがあれば）
+        # Check if custom command exists (if tools/command_loader exists)
         try:
             from .tools.command_loader import load_custom_commands, render_command, parse_command_args
             custom_commands = load_custom_commands()
@@ -65,7 +65,7 @@ def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
         return True
 
 def handle_ls(args: List[str], context: Dict[str, Any]) -> bool:
-    """現在のディレクトリの内容を表示"""
+    """Display contents of current directory"""
     import os
     from rich.table import Table
     console = context.get('console', Console())
@@ -79,7 +79,7 @@ def handle_ls(args: List[str], context: Dict[str, Any]) -> bool:
         table.add_column("Type", width=6)
         table.add_column("Name")
         
-        # ディレクトリを優先
+        # Prioritize directories
         for item in sorted(items):
             full_path = os.path.join(path, item)
             is_dir = os.path.isdir(full_path)
@@ -97,7 +97,7 @@ def handle_ls(args: List[str], context: Dict[str, Any]) -> bool:
     return True
 
 def handle_tree(args: List[str], context: Dict[str, Any]) -> bool:
-    """ディレクトリ構造をツリー表示"""
+    """Tree display of directory structure"""
     import os
     from rich.tree import Tree
     console = context.get('console', Console())
@@ -129,7 +129,7 @@ def handle_tree(args: List[str], context: Dict[str, Any]) -> bool:
     return True
 
 def handle_help(args: List[str], context: Dict[str, Any]) -> bool:
-    """利用可能なコマンド一覧を表示"""
+    """Display available commands"""
     console = context.get('console', Console())
     table = Table(title="Available Commands", border_style="cyan")
     table.add_column("Command", style="cyan")
@@ -157,7 +157,7 @@ def handle_help(args: List[str], context: Dict[str, Any]) -> bool:
     
     console.print(table)
 
-    # カスタムコマンドを表示
+    # Display custom commands
     try:
         from .tools.command_loader import load_custom_commands
         custom_commands = load_custom_commands()
@@ -175,7 +175,7 @@ def handle_help(args: List[str], context: Dict[str, Any]) -> bool:
     return True
 
 def handle_clear(args: List[str], context: Dict[str, Any]) -> bool:
-    """会話履歴をクリア"""
+    """Clear conversation history"""
     orchestrator = context.get('orchestrator')
     session_id = context.get('session_id')
     console = context.get('console', Console())
@@ -188,13 +188,13 @@ def handle_clear(args: List[str], context: Dict[str, Any]) -> bool:
     return True
 
 def handle_quit(args: List[str], context: Dict[str, Any]) -> bool:
-    """チャットを終了"""
+    """Exit chat"""
     console = context.get('console', Console())
     console.print("[dim]Goodbye![/dim]")
     return False
 
 def handle_theme(args: List[str], context: Dict[str, Any]) -> bool:
-    """テーマを表示・変更"""
+    """Show or change theme"""
     console = context.get('console', Console())
     if not args:
         available = ", ".join([t.value for t in ThemeName])
@@ -212,7 +212,7 @@ def handle_theme(args: List[str], context: Dict[str, Any]) -> bool:
     return True
 
 def handle_model(args: List[str], context: Dict[str, Any]) -> bool:
-    """モデルを表示・変更"""
+    """Show or change model"""
     console = context.get('console', Console())
     orchestrator = context.get('orchestrator')
     if not orchestrator:
@@ -225,7 +225,7 @@ def handle_model(args: List[str], context: Dict[str, Any]) -> bool:
     else:
         new_model = args[0]
         orchestrator.model = new_model
-        # 各エージェントのランタイムにも反映させる必要がある
+        # Reflect change to each agent's runtime
         for runtime in orchestrator.runtimes.values():
             if hasattr(runtime, 'model_name'):
                 runtime.model_name = new_model
@@ -235,7 +235,7 @@ def handle_model(args: List[str], context: Dict[str, Any]) -> bool:
     return True
 
 def handle_profile(args: List[str], context: Dict[str, Any]) -> bool:
-    """プロファイルを表示・変更"""
+    """Show or change profile"""
     console = context.get('console', Console())
     orchestrator = context.get('orchestrator')
     if not orchestrator:
@@ -252,7 +252,7 @@ def handle_profile(args: List[str], context: Dict[str, Any]) -> bool:
         console.print(f"\n[dim]Usage: /profile <profile_name>[/dim]")
     else:
         new_profile = args[0]
-        # プロファイルの変更は Orchestrator の再初期化が必要
+        # Profile change requires re-initialization of Orchestrator
         console.print(f"[dim]Changing profile to '{new_profile}'...[/dim]")
         orchestrator.profile = new_profile
         orchestrator.loader.profile = new_profile
@@ -264,7 +264,7 @@ def handle_profile(args: List[str], context: Dict[str, Any]) -> bool:
     return True
 
 def handle_workdir(args: List[str], context: Dict[str, Any]) -> bool:
-    """作業ディレクトリを表示・変更、およびブックマークの管理"""
+    """Show or change working directory, and manage bookmarks"""
     import os
     import json
     from pathlib import Path
@@ -273,7 +273,7 @@ def handle_workdir(args: List[str], context: Dict[str, Any]) -> bool:
     if not orchestrator:
         return True
 
-    # ブックマーク保存用パス
+    # Path for saving bookmarks
     moco_home = Path.home() / ".moco"
     bookmarks_file = moco_home / "bookmarks.json"
     
@@ -341,7 +341,7 @@ def handle_workdir(args: List[str], context: Dict[str, Any]) -> bool:
             console.print(table)
         return True
 
-    # ブックマーク名かパスとして処理
+    # Process as bookmark name or path
     target = args[0]
     if target in bookmarks:
         new_dir = bookmarks[target]
@@ -355,7 +355,7 @@ def handle_workdir(args: List[str], context: Dict[str, Any]) -> bool:
 
     orchestrator.working_directory = str(path)
     os.environ['MOCO_WORKING_DIRECTORY'] = str(path)
-    # 各 runtime にも working_directory を反映
+    # Reflect working_directory to each runtime
     for runtime in orchestrator.runtimes.values():
         if hasattr(runtime, 'working_directory'):
             runtime.working_directory = str(path)
@@ -364,7 +364,7 @@ def handle_workdir(args: List[str], context: Dict[str, Any]) -> bool:
     return True
 
 def handle_session(args: List[str], context: Dict[str, Any]) -> bool:
-    """セッション情報を表示"""
+    """Show session information"""
     console = context.get('console', Console())
     session_id = context.get('session_id')
     orchestrator = context.get('orchestrator')
@@ -389,19 +389,19 @@ def handle_session(args: List[str], context: Dict[str, Any]) -> bool:
     return True
 
 def handle_save(args: List[str], context: Dict[str, Any]) -> bool:
-    """現在のセッションを保存（Mocoでは自動保存されるため、通知のみ）"""
+    """Save current session (Notification only, as Moco autosaves)"""
     console = console = context.get('console', Console())
     console.print("[green]Session is automatically saved.[/green]")
     return True
 
 def handle_cost(args: List[str], context: Dict[str, Any]) -> bool:
-    """コスト表示（未実装）"""
+    """Show cost (Not implemented)"""
     console = context.get('console', Console())
     console.print("[yellow]/cost is not yet implemented.[/yellow]")
     return True
 
 def handle_tools(args: List[str], context: Dict[str, Any]) -> bool:
-    """利用可能なツール一覧を表示"""
+    """Show available tools"""
     console = context.get('console', Console())
     orchestrator = context.get('orchestrator')
     if not orchestrator:
@@ -418,7 +418,7 @@ def handle_tools(args: List[str], context: Dict[str, Any]) -> bool:
     return True
 
 def handle_agents(args: List[str], context: Dict[str, Any]) -> bool:
-    """利用可能なエージェント一覧を表示"""
+    """Show available agents"""
     console = context.get('console', Console())
     orchestrator = context.get('orchestrator')
     if not orchestrator:

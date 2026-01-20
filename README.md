@@ -8,190 +8,190 @@
 [![GitHub issues](https://img.shields.io/github/issues/moco-ai/moco)](https://github.com/moco-ai/moco/issues)
 [![GitHub release](https://img.shields.io/github/v/release/moco-ai/moco)](https://github.com/moco-ai/moco/releases)
 
-**マルチプロバイダ対応・プロファイルベースの軽量AIエージェントオーケストレーションフレームワーク**
+**Multi-provider, profile-based lightweight AI agent orchestration framework**
 
-MOCO は、複数のLLMプロバイダ（Gemini, OpenAI, OpenRouter, Z.ai）に対応し、ドメイン別のプロファイルで複数エージェントの振る舞いを柔軟にカスタマイズできるマルチエージェントオーケストレーションフレームワークです。
+MOCO is an orchestration framework that supports multiple LLM providers (Gemini, OpenAI, OpenRouter, Z.ai) and allows flexible customization of multi-agent behaviors through domain-specific profiles.
 
-## ✨ 特徴
+## ✨ Features
 
-### コア機能
-- **🔄 マルチプロバイダ対応**: Gemini, OpenAI, OpenRouter, Z.ai を環境変数またはCLIオプションで切り替え
-- **📦 プロファイル機能**: ドメイン別（開発、セキュリティ、税務など）にエージェントとツールをYAMLで定義
-- **🤖 マルチエージェント**: 複数のエージェントが協調してタスクを実行、委譲・レビューのワークフロー
-- **🧠 セマンティックメモリ**: FAISS による類似度検索で過去の知識・インシデントを自動想起
-- **📚 学習メモリ**: 会話から知識を自動抽出・保存、次回の対話で自動想起
-- **📝 自動コンテキスト圧縮**: トークン上限に近づくと古い会話を自動要約して圧縮
+### Core Features
+- **🔄 Multi-provider Support**: Switch between Gemini, OpenAI, OpenRouter, and Z.ai via environment variables or CLI options.
+- **📦 Profile-based Configuration**: Define agents and tools for specific domains (development, security, tax, etc.) using YAML.
+- **🤖 Multi-agent Orchestration**: Coordinate multiple agents to execute tasks with delegation and review workflows.
+- **🧠 Semantic Memory**: Automatically recall past knowledge and incidents using FAISS-based similarity search.
+- **📚 Learning Memory**: Automatically extract and store knowledge from conversations for use in subsequent interactions.
+- **📝 Automatic Context Compression**: Automatically summarizes and compresses older conversation history when approaching token limits.
 
 ### CLI & UI
-- **💻 リッチCLI**: `moco run`, `moco chat` でターミナルから即座に実行
-- **🌐 Web UI**: `moco ui` でブラウザベースのチャットインターフェースを起動
-- **📊 タスク管理**: バックグラウンドでタスクを実行、進捗確認、ログ表示
-- **📁 セッション管理**: 会話履歴の保存・復元、名前付きセッション
+- **💻 Rich CLI**: Execute tasks immediately from the terminal with `moco run` and `moco chat`.
+- **🌐 Web UI**: Launch a browser-based chat interface with `moco ui`.
+- **📊 Task Management**: Run tasks in the background, monitor progress, and view logs.
+- **📁 Session Management**: Persistent storage, recovery, and named sessions for conversation history.
 
-### 開発者向け
-- **🔍 コードベース検索**: FAISS によるセマンティック検索でコードを理解
-- **🔧 Git統合**: AI生成コミットメッセージ、PR作成
-- **🛡️ サンドボックス**: Dockerコンテナ内での隔離実行
-- **🔌 MCP対応**: Model Context Protocol で外部ツールサーバーと連携
-- **📚 スキル管理**: Claude Skills互換のスキルをインストール・管理
+### Developer-focused
+- **🔍 Codebase Search**: Understand your codebase via semantic search powered by FAISS.
+- **🔧 Git Integration**: Generate AI commit messages and create Pull Requests.
+- **🛡️ Sandbox**: Isolated execution within Docker containers.
+- **🔌 MCP Support**: Integrate with external tool servers via the Model Context Protocol.
+- **📚 Skill Management**: Install and manage Claude Skills compatible packages.
 
-### 安全性
-- **🛡️ ガードレール**: 危険なコマンドのブロック、入出力長制限
-- **🔒 ループ検出**: 同じツール呼び出しの無限ループを自動検出・停止
-- **💾 チェックポイント**: 会話状態を保存し、後から復元可能
+### Safety & Reliability
+- **🛡️ Guardrails**: Block dangerous commands and enforce input/output length limits.
+- **🔒 Loop Detection**: Automatically detect and stop infinite tool-calling loops.
+- **💾 Checkpoints**: Save conversation states and restore them later.
 
-## 📋 CLI コマンド一覧
+## 📋 CLI Commands
 
-### 基本コマンド
+### Basic Commands
 
 ```bash
-moco run "タスク"              # タスクを実行
-moco chat                      # 対話型チャット（ストリーミング）
-moco chat -s my-session        # 名前付きセッションで対話
-moco chat --new                # 新規セッションを強制開始
-moco ui                        # Web UI を起動
-moco version                   # バージョン表示
-moco list-profiles             # プロファイル一覧
+moco run "task"                # Execute a task
+moco chat                      # Interactive chat (streaming)
+moco chat -s my-session        # Chat with a named session
+moco chat --new                # Force start a new session
+moco ui                        # Start the Web UI
+moco version                   # Show version
+moco list-profiles             # List available profiles
 ```
 
-### 対話モード内コマンド (Slash Commands)
+### In-Chat Commands (Slash Commands)
 
-チャット実行中に `/` を入力することで、様々な操作が可能です。
+Enter `/` during a chat session to access various operations:
 
-*   `/help`: コマンドヘルプを表示
-*   `/cd <path|bookmark>`: 作業ディレクトリを変更
-*   `/workdir <add|list|remove> [name]`: ブックマーク管理
-*   `/ls [path]`: ファイル一覧を表示
-*   `/tree [depth]`: ディレクトリ構造を表示
-*   `/model [model_name]`: モデルの表示・変更
-*   `/profile [profile_name]`: プロファイルの変更
-*   `/clear`: 履歴をクリアしてセッション再開
-*   `/quit`: チャットを終了
+*   `/help`: Show command help
+*   `/cd <path|bookmark>`: Change working directory
+*   `/workdir <add|list|remove> [name]`: Manage directory bookmarks
+*   `/ls [path]`: List files
+*   `/tree [depth]`: Show directory structure
+*   `/model [model_name]`: View or change the current model
+*   `/profile [profile_name]`: Change the current profile
+*   `/clear`: Clear history and restart the session
+*   `/quit`: Exit the chat
 
 ### Web UI
 
 ```bash
-moco ui                        # http://0.0.0.0:8000 で起動
-moco ui -p 3000                # ポート指定
-moco ui -h 127.0.0.1           # ホスト指定
-moco ui -r                     # 開発モード（自動リロード）
+moco ui                        # Available at http://0.0.0.0:8000
+moco ui -p 3000                # Specify port
+moco ui -h 127.0.0.1           # Specify host
+moco ui -r                     # Development mode (auto-reload)
 ```
 
-### タスク管理（バックグラウンド実行）
+### Task Management (Background Execution)
 
 ```bash
-moco tasks run "タスク" -P zai -w /path/to/project  # バックグラウンド実行
-moco tasks list                # タスク一覧
-moco tasks status              # リアルタイムダッシュボード
-moco tasks logs <task_id>      # ログ表示（最大10KB）
-moco tasks logs <task_id> -a   # フルログ表示（--all）
-moco tasks cancel <task_id>    # キャンセル
+moco tasks run "task" -P zai -w /path/to/project  # Run in background
+moco tasks list                # List all tasks
+moco tasks status              # Real-time dashboard
+moco tasks logs <task_id>      # Show logs (max 10KB)
+moco tasks logs <task_id> -a   # Show full logs (--all)
+moco tasks cancel <task_id>    # Cancel a task
 ```
 
-### セッション管理
+### Session Management
 
 ```bash
-moco sessions list             # セッション一覧
-moco sessions show <id>        # セッション詳細
-moco run "続き" --continue     # 直前のセッションを継続
-moco run "続き" -s my-session  # 名前付きセッションを継続
+moco sessions list             # List all sessions
+moco sessions show <id>        # Show session details
+moco run "continue" --continue # Continue the last session
+moco run "continue" -s my-session # Continue a named session
 ```
 
-### スキル管理（Claude Skills互換）
+### Skill Management (Claude Skills Compatible)
 
 ```bash
-moco skills list               # インストール済みスキル一覧
-moco skills info               # 利用可能なレジストリ情報
-moco skills sync anthropics    # 公式スキルを同期
-moco skills sync community     # コミュニティスキルを同期
-moco skills search pdf         # スキル検索
-moco skills install <github>   # GitHubからインストール
-moco skills uninstall <name>   # アンインストール
+moco skills list               # List installed skills
+moco skills info               # Show available registry info
+moco skills sync anthropics    # Sync official skills
+moco skills sync community     # Sync community skills
+moco skills search pdf         # Search for skills
+moco skills install <github>   # Install from GitHub
+moco skills uninstall <name>   # Uninstall a skill
 ```
 
-### オプション
+### Options
 
 ```bash
---profile, -p <name>           # プロファイル指定
---provider, -P <name>          # プロバイダ指定 (gemini/openai/openrouter/zai)
---provider, -P <name/model>    # プロバイダ+モデル一括指定 (例: zai/glm-4.7)
---model, -m <name>             # モデル指定 (例: gpt-4o, gemini-2.5-pro, glm-4.7)
---working-dir, -w <path>       # 作業ディレクトリ
---session, -s <name>           # 名前付きセッション指定
---continue, -c                 # 直前のセッションを継続
---new                          # 新規セッションを強制開始
---sandbox                      # Dockerコンテナ内で隔離実行
---sandbox-image <image>        # サンドボックスイメージ (default: python:3.12-slim)
---stream/--no-stream           # ストリーミング出力（chatはデフォルトON）
---optimizer/--no-optimizer     # Optimizerによるエージェント自動選択（デフォルトOFF）
---verbose, -v                  # 詳細ログ
+--profile, -p <name>           # Specify profile
+--provider, -P <name>          # Specify provider (gemini/openai/openrouter/zai)
+--provider, -P <name/model>    # Specify provider + model (e.g., zai/glm-4.7)
+--model, -m <name>             # Specify model (e.g., gpt-4o, gemini-2.0-flash, glm-4.7)
+--working-dir, -w <path>       # Set working directory
+--session, -s <name>           # Specify named session
+--continue, -c                 # Continue last session
+--new                          # Force start a new session
+--sandbox                      # Run inside an isolated Docker container
+--sandbox-image <image>        # Sandbox image (default: python:3.12-slim)
+--stream/--no-stream           # Enable/disable streaming output (default: ON for chat)
+--optimizer/--no-optimizer     # Auto-select agents using Optimizer (default: OFF)
+--verbose, -v                  # Verbose logging
 ```
 
-**プロバイダ指定例:**
+**Provider Specification Examples:**
 ```bash
-moco run "タスク" --provider zai -m glm-4.7        # 別々に指定
-moco run "タスク" --provider zai/glm-4.7          # 一括指定（推奨）
-moco run "タスク" --provider openrouter -m claude-sonnet-4
+moco run "task" --provider zai -m glm-4.7      # Specify separately
+moco run "task" --provider zai/glm-4.7        # Combined (recommended)
+moco run "task" --provider openrouter -m claude-3-5-sonnet
 ```
 
-## 🚀 クイックスタート
+## 🚀 Quick Start
 
-### インストール
+### Installation
 
 ```bash
-# リポジトリをクローン
+# Clone the repository
 git clone https://github.com/moco-ai/moco.git
 cd moco
 
-# 依存関係をインストール
+# Install dependencies
 pip install -e .
 
-# または pipx で直接インストール
+# Or install directly via pipx
 pipx install .
 ```
 
-### 環境変数の設定
+### Environment Variables
 
 ```bash
-# .env ファイルを作成
+# Create a .env file
 cat << EOF > .env
-# Gemini（デフォルト）
+# Gemini (Default)
 GEMINI_API_KEY=your-gemini-api-key
 
-# OpenAI（オプション）
+# OpenAI (Optional)
 OPENAI_API_KEY=your-openai-api-key
 
-# OpenRouter（オプション）
+# OpenRouter (Optional)
 OPENROUTER_API_KEY=your-openrouter-api-key
 
-# Z.ai（オプション）
+# Z.ai (Optional)
 ZAI_API_KEY=your-zai-api-key
 EOF
 ```
 
-### 最初の実行
+### First Run
 
-### 実行中の処理を停止する
+### Stopping Running Processes
 
-- Web UI でチャットを実行中に表示される「停止」ボタンを押すと、そのセッションのストリーミングレスポンスが中断されます。
-- バックエンドではセッションごとにキャンセル用のフラグを管理しており、「停止」ボタンは `POST /api/sessions/{session_id}/cancel` を呼び出してフラグを立てます。
-- CLI についても同じキャンセル機構（`moco.cancellation` モジュール）を利用する想定ですが、現時点では Esc キーなどによる対話的な中断 UI は未実装です。
+- Clicking the "Stop" button in the Web UI interrupts the streaming response for that session.
+- The backend manages cancellation flags per session. The "Stop" button triggers `POST /api/sessions/{session_id}/cancel` to set this flag.
+- The same cancellation mechanism (`moco.cancellation` module) is planned for the CLI, though an interactive UI (like an Esc key bind) is currently pending.
 
 ```bash
-# タスクを実行
-moco run "Hello, World! と表示するPythonスクリプトを作成して"
+# Run a task
+moco run "Create a Python script that prints 'Hello, World!'"
 
-# プロファイルを指定
-moco run "セキュリティ監査を実行" --profile security
+# Specify a profile
+moco run "Perform a security audit" --profile security
 
-# プロバイダを切り替え
-moco run "コードをレビューして" --provider openai
+# Switch providers
+moco run "Review the code" --provider openai
 
-# 対話モード
+# Interactive mode
 moco chat
 ```
 
-## 🏗️ アーキテクチャ
+## 🏗️ Architecture
 
 ```mermaid
 graph TB
@@ -222,14 +222,14 @@ graph TB
 
     subgraph "Tools"
         BASE[Base Tools<br/>read/write/bash/grep...]
-        PROFILE[Profile Tools<br/>ドメイン固有ツール]
-        MCP[MCP Tools<br/>外部サーバー]
+        PROFILE[Profile Tools<br/>Domain-specific]
+        MCP[MCP Tools<br/>External Servers]
     end
 
     subgraph "Profiles"
-        DEFAULT[default<br/>最小構成]
-        CODE[code<br/>汎用コーディング]
-        DEV[development<br/>マルチエージェント]
+        DEFAULT[default<br/>Minimal Config]
+        CODE[code<br/>General Coding]
+        DEV[development<br/>Multi-agent]
     end
 
     CLI --> ORCH
@@ -256,285 +256,285 @@ graph TB
     ORCH --> TAX
 ```
 
-### コンポーネント説明
+### Component Breakdown
 
-| コンポーネント | 役割 |
-|---------------|------|
-| **Orchestrator** | メインエントリポイント。ユーザー入力をエージェントにルーティングし、サブエージェントへの委譲を管理 |
-| **AgentRuntime** | 個々のエージェントの実行環境。LLM呼び出しとツール実行を担当 |
-| **ContextCompressor** | トークン数監視と自動圧縮。古い会話をLLMで要約 |
-| **Guardrails** | 入力/出力/ツール呼び出しの検証。危険パターンのブロック |
-| **SessionLogger** | 会話履歴のSQLite永続化 |
-| **SemanticMemory** | FAISS + Gemini Embeddingsによる類似度検索 |
-| **CheckpointManager** | 会話状態のスナップショット保存/復元 |
+| Component | Role |
+|-----------|------|
+| **Orchestrator** | Main entry point. Routes user input to agents and manages delegation to sub-agents. |
+| **AgentRuntime** | Execution environment for individual agents. Handles LLM calls and tool execution. |
+| **ContextCompressor** | Monitors token count and automatically summarizes old conversation history using LLM. |
+| **Guardrails** | Validates input/output and tool calls. Blocks dangerous patterns. |
+| **SessionLogger** | Persists conversation history in SQLite. |
+| **SemanticMemory** | Performs similarity search using FAISS + Gemini Embeddings. |
+| **CheckpointManager** | Saves and restores snapshots of conversation states. |
 
-## ⚙️ 設定
+## ⚙️ Configuration
 
-### 環境変数
+### Environment Variables
 
-| 変数名 | 説明 | デフォルト |
-|--------|------|-----------|
-| `GENAI_API_KEY` | Gemini API キー | - |
-| `GEMINI_API_KEY` | Gemini API キー (後方互換) | - |
-| `OPENAI_API_KEY` | OpenAI API キー | - |
-| `OPENROUTER_API_KEY` | OpenRouter API キー | - |
-| `ZAI_API_KEY` | Z.ai API キー | - |
-| `MOCO_DEFAULT_PROVIDER` | デフォルトプロバイダを強制指定 | 自動選択 |
-| `GEMINI_MODEL` | Gemini モデル名 | `gemini-2.0-flash` |
-| `OPENAI_MODEL` | OpenAI モデル名 | `gpt-5.2-codex` |
-| `OPENROUTER_MODEL` | OpenRouter モデル名 | `google/gemini-3-flash-preview` |
-| `ZAI_MODEL` | Z.ai モデル名 | `glm-4.7` |
-| `SEMANTIC_DB_PATH` | セマンティックメモリDB | `data/semantic.db` |
-| `MEMORY_DB_PATH` | 学習メモリDB | `src/moco/data/memory.db` |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `GENAI_API_KEY` | Gemini API Key | - |
+| `GEMINI_API_KEY` | Gemini API Key (Backward Compatibility) | - |
+| `OPENAI_API_KEY` | OpenAI API Key | - |
+| `OPENROUTER_API_KEY` | OpenRouter API Key | - |
+| `ZAI_API_KEY` | Z.ai API Key | - |
+| `MOCO_DEFAULT_PROVIDER` | Force a default provider | Auto-select |
+| `GEMINI_MODEL` | Gemini Model Name | `gemini-2.0-flash` |
+| `OPENAI_MODEL` | OpenAI Model Name | `gpt-4o` |
+| `OPENROUTER_MODEL` | OpenRouter Model Name | `google/gemini-2.0-flash-001` |
+| `ZAI_MODEL` | Z.ai Model Name | `glm-4.7` |
+| `SEMANTIC_DB_PATH` | Path to Semantic Memory DB | `data/semantic.db` |
+| `MEMORY_DB_PATH` | Path to Learning Memory DB | `src/moco/data/memory.db` |
 
-**プロバイダ自動選択の優先順位**: 設定されたAPIキーに基づき、`zai` → `openrouter` → `gemini` の順で自動選択されます。
+**Auto-selection Priority**: Based on configured API keys, providers are automatically selected in the following order: `zai` → `openrouter` → `gemini`.
 
-### プロファイル設定
+### Profile Configuration
 
-プロファイルは `moco/profiles/<name>/` ディレクトリで定義します：
+Profiles are defined in the `moco/profiles/<name>/` directory:
 
 ```
 moco/profiles/my-profile/
-├── profile.yaml      # プロファイル設定
-├── agents/           # エージェント定義（Markdown）
+├── profile.yaml      # Profile settings
+├── agents/           # Agent definitions (Markdown)
 │   ├── orchestrator.md
 │   └── specialist.md
-├── tools/            # プロファイル固有ツール（Python）
+├── tools/            # Profile-specific tools (Python)
 │   └── custom_tool.py
-└── skills/           # スキル定義（Claude Skills互換）
+└── skills/           # Skill definitions (Claude Skills compatible)
     └── my-skill/
         └── skill.md
 ```
 
-### 組み込みプロファイル
+### Built-in Profiles
 
-| プロファイル | エージェント数 | 説明 |
-|-------------|:--------------:|------|
-| **default** | 1 | 最小構成。シンプルなタスク向け |
-| **code** | 2 | 汎用コーディング。orchestrator + code-reviewer |
-| **development** | 14 | マルチエージェント開発チーム（下表参照） |
+| Profile | Agent Count | Description |
+|---------|:-----------:|-------------|
+| **default** | 1 | Minimal configuration for simple tasks. |
+| **code** | 2 | General coding. Includes orchestrator and code-reviewer. |
+| **development** | 14 | Multi-agent development team (see table below). |
 
-#### development プロファイルのエージェント
+#### Agents in the `development` Profile
 
-| エージェント | 役割 |
-|-------------|------|
-| orchestrator | タスクの振り分け、全体管理 |
-| backend-coder | バックエンド実装（Python, Node.js, Go等） |
-| frontend-coder | フロントエンド実装（React, Vue, Angular等） |
-| code-reviewer | コードレビュー、品質チェック |
-| architect | アーキテクチャ設計 |
-| api-designer | API設計（REST, GraphQL） |
-| schema-designer | データベーススキーマ設計 |
-| unit-tester | ユニットテスト作成 |
-| integration-tester | 統合テスト作成 |
-| test-strategist | テスト戦略策定 |
-| security-reviewer | セキュリティレビュー |
-| performance-reviewer | パフォーマンスレビュー |
-| refactorer | リファクタリング |
-| doc-writer | ドキュメント作成 |
+| Agent | Role |
+|-------|------|
+| orchestrator | Task distribution and overall management. |
+| backend-coder | Backend implementation (Python, Node.js, Go, etc.). |
+| frontend-coder | Frontend implementation (React, Vue, Angular, etc.). |
+| code-reviewer | Code review and quality checks. |
+| architect | Architectural design. |
+| api-designer | API design (REST, GraphQL). |
+| schema-designer | Database schema design. |
+| unit-tester | Creating unit tests. |
+| integration-tester | Creating integration tests. |
+| test-strategist | Formulating testing strategies. |
+| security-reviewer | Security reviews. |
+| performance-reviewer | Performance reviews. |
+| refactorer | Refactoring. |
+| doc-writer | Documentation generation. |
 
 ```bash
-# プロファイル一覧表示
+# List available profiles
 moco list-profiles
 
-# 使用例
-moco run "APIを実装して" --profile development
+# Usage examples
+moco run "Implement an API" --profile development
 moco chat --profile code
 ```
 
-### エージェント組織パターン
+### Agent Organization Patterns
 
-`delegate_to_agent` ツールを使って、様々な組織構造を実現できます。
+Using the `delegate_to_agent` tool, you can implement various organizational structures.
 
-#### 1. 階層型（Hierarchical）
+#### 1. Hierarchical
 
-最も基本的なパターン。Orchestrator がサブエージェントにタスクを委譲。
+The most fundamental pattern. The Orchestrator delegates tasks to sub-agents.
 
 ```
 orchestrator
-├── @backend-coder  → バックエンド実装
-├── @frontend-coder → フロントエンド実装
-└── @code-reviewer  → コードレビュー
+├── @backend-coder  → Backend implementation
+├── @frontend-coder → Frontend implementation
+└── @code-reviewer  → Code review
 ```
 
 ```python
-# orchestrator.md での記述例
-delegate_to_agent(agent_name="backend-coder", task="API を実装して")
+# Example in orchestrator.md
+delegate_to_agent(agent_name="backend-coder", task="Implement the API")
 ```
 
-#### 2. 多層階層型（Multi-level Hierarchy）
+#### 2. Multi-level Hierarchy
 
-サブエージェントがさらにサブエージェントに委譲。
+Sub-agents can delegate to their own sub-agents.
 
 ```
 orchestrator
 └── @chief-architect
-    ├── @architect-team-a → チームAの設計
-    └── @architect-team-b → チームBの設計
+    ├── @architect-team-a → Team A design
+    └── @architect-team-b → Team B design
 ```
 
 ```yaml
 # chief-architect.md
 tools:
-  - delegate_to_agent  # サブエージェントにも委譲権限を付与
+  - delegate_to_agent  # Grant delegation authority to the sub-agent
 ```
 
-#### 3. 並列型（Parallel）
+#### 3. Parallel
 
-複数のエージェントが同時に独立して作業。
+Multiple agents work independently and simultaneously.
 
 ```markdown
-# orchestrator.md で複数の @メンションを同時に書く
-@backend-coder APIを実装して
-@frontend-coder UIを実装して
-@unit-tester テストを作成して
+# Mention multiple @agents simultaneously in orchestrator.md
+@backend-coder Implement the API
+@frontend-coder Implement the UI
+@unit-tester Create tests
 ```
 
-MOCO は自動的に並列実行し、すべての結果を集約します。
+MOCO automatically executes these in parallel and aggregates the results.
 
-#### 4. パイプライン型（Sequential）
+#### 4. Sequential (Pipeline)
 
-処理結果を次のエージェントに渡すチェーン。
+A chain where output from one agent is passed to the next.
 
 ```
 @api-designer → @backend-coder → @unit-tester → @code-reviewer
 ```
 
 ```markdown
-# orchestrator.md での記述例
-1. @api-designer に API 設計を依頼
-2. 設計結果を @backend-coder に渡して実装を依頼
-3. 実装結果を @unit-tester に渡してテスト作成を依頼
-4. すべてを @code-reviewer に渡してレビューを依頼
+# Workflow in orchestrator.md
+1. Request @api-designer for API design
+2. Pass the design to @backend-coder for implementation
+3. Pass implementation to @unit-tester for test creation
+4. Pass everything to @code-reviewer for final review
 ```
 
-#### 5. ピアレビュー型（Peer Review）
+#### 5. Peer Review
 
-サブエージェント同士が互いの成果物をレビュー。
+Sub-agents review each other's work.
 
 ```yaml
 # backend-coder.md
 tools:
   - delegate_to_agent
 
-# プロンプト内で
-実装完了後、@frontend-coder にAPI連携部分のレビューを依頼
+# Inside prompt
+After implementation, request @frontend-coder to review the API integration.
 ```
 
-#### 6. 合意形成型（Consensus）
+#### 6. Consensus
 
-複数の専門家が議論して最適解を導出。
+Multiple specialists discuss and derive the optimal solution.
 
 ```markdown
 # orchestrator.md
-以下の専門家に意見を求め、総合判断：
-@security-reviewer セキュリティ観点
-@performance-reviewer パフォーマンス観点
-@architect 設計観点
+Gather opinions from specialists for a final decision:
+@security-reviewer Security perspective
+@performance-reviewer Performance perspective
+@architect Design perspective
 
-3つの意見を統合して最終決定
+Synthesize the three opinions into a final decision.
 ```
 
-#### 7. 競争型（Competition）
+#### 7. Competition
 
-複数のアプローチを同時に試し、最良を選択。
+Try multiple approaches simultaneously and select the best one.
 
 ```markdown
 # orchestrator.md
-3つのアプローチで同時に実装：
-@approach-simple シンプルな実装
-@approach-perf パフォーマンス重視
-@approach-flex 拡張性重視
+Implement using three different approaches:
+@approach-simple Simple implementation
+@approach-perf Performance-focused
+@approach-flex Extensibility-focused
 
-結果を比較して最良の実装を採用
+Compare results and adopt the best implementation.
 ```
 
 #### profile.yaml
 
 ```yaml
 name: my-profile
-description: カスタムプロファイルの説明
-include_base_tools: true  # ベースツールを含めるか
+description: Description of your custom profile
+include_base_tools: true  # Whether to include base tools
 ```
 
-#### エージェント定義（Markdown）
+#### Agent Definition (Markdown)
 
 ```markdown
 ---
-description: エージェントの説明
-mode: primary  # primary または chat
+description: Description of the agent
+mode: primary  # primary or chat
 tools:
   read_file: true
   write_file: true
   custom_tool: true
 ---
 
-あなたは専門家エージェントです。
-ユーザーの質問に答えてください。
+You are an expert agent.
+Please answer user questions.
 
-現在時刻: {{CURRENT_DATETIME}}
+Current time: {{CURRENT_DATETIME}}
 ```
 
-## 🔧 ツール一覧
+## 🔧 Tools
 
-### ベースツール
+### Base Tools
 
-| ツール名 | 説明 | エイリアス |
-|----------|------|-----------|
-| `read_file` | ファイルを読み込む | `read` |
-| `write_file` | ファイルを書き込む | `write` |
-| `edit_file` | ファイルを部分編集 | `edit` |
-| `execute_bash` | Bashコマンドを実行 | `bash` |
-| `list_dir` | ディレクトリ一覧 | - |
-| `glob_search` | Globパターン検索 | - |
-| `tree` | ディレクトリツリー表示 | - |
-| `file_info` | ファイル情報取得 | - |
-| `grep` | 正規表現検索 | - |
-| `ripgrep` | 高速grep（rg） | - |
-| `find_definition` | 定義を検索 | - |
-| `find_references` | 参照を検索 | - |
-| `codebase_search` | セマンティックコード検索 | - |
-| `websearch` | Web検索 | - |
-| `webfetch` | Webページ取得 | - |
-| `todowrite` | TODOリスト書き込み | - |
-| `todoread` | TODOリスト読み込み | - |
+| Tool | Role | Alias |
+|------|------|-------|
+| `read_file` | Read file content | `read` |
+| `write_file` | Write to a file | `write` |
+| `edit_file` | Partially edit a file | `edit` |
+| `execute_bash` | Execute Bash commands | `bash` |
+| `list_dir` | List directory contents | - |
+| `glob_search` | Search via Glob patterns | - |
+| `tree` | Show directory tree | - |
+| `file_info` | Get file metadata | - |
+| `grep` | Regular expression search | - |
+| `ripgrep` | Fast grep (rg) | - |
+| `find_definition` | Find definitions in code | - |
+| `find_references` | Find code references | - |
+| `codebase_search` | Semantic codebase search | - |
+| `websearch` | Web search | - |
+| `webfetch` | Fetch web page content | - |
+| `todowrite` | Write to TODO list | - |
+| `todoread` | Read TODO list | - |
 
-### Git ツール
+### Git Tools
 
-| ツール名 | 説明 |
-|----------|------|
-| `git_status` | Git ステータス表示 |
-| `git_diff` | 差分表示 |
-| `git_commit` | AI生成コミットメッセージでコミット |
-| `create_pr` | GitHub PR作成 |
+| Tool | Role |
+|------|------|
+| `git_status` | Show Git status |
+| `git_diff` | Show diffs |
+| `git_commit` | Commit with AI-generated message |
+| `create_pr` | Create a GitHub Pull Request |
 
-### スキルツール
+### Skill Tools
 
-| ツール名 | 説明 |
-|----------|------|
-| `search_skills` | スキルを検索（ローカル + リモート） |
-| `load_skill` | スキルをロードして知識を使用 |
-| `list_loaded_skills` | ロード済みスキル一覧 |
+| Tool | Role |
+|------|------|
+| `search_skills` | Search skills (local + remote) |
+| `load_skill` | Load a skill to use its knowledge |
+| `list_loaded_skills` | List currently loaded skills |
 
-### プロセス管理ツール
+### Process Management Tools
 
-| ツール名 | 説明 |
-|----------|------|
-| `start_background` | バックグラウンドプロセス開始 |
-| `stop_process` | プロセス停止 |
-| `list_processes` | プロセス一覧 |
-| `send_input` | プロセスに入力送信 |
-| `wait_for_pattern` | 出力パターンを待機 |
+| Tool | Role |
+|------|------|
+| `start_background` | Start a background process |
+| `stop_process` | Stop a process |
+| `list_processes` | List active processes |
+| `send_input` | Send input to a process |
+| `wait_for_pattern` | Wait for an output pattern |
 
-### プロファイル固有ツール
+### Profile-specific Tools
 
-各プロファイルは独自のツールを定義できます：
+Each profile can define its own tools:
 
-- **security**: `network_scan`, `cve_lookup`, `incident`, `threat_intel` など
-- **tax**: `tax_calculator`, `tax_law_search`, `mortgage_calculator` など
-- **development**: コード生成・レビュー用ツール
+- **security**: `network_scan`, `cve_lookup`, `incident`, `threat_intel`, etc.
+- **tax**: `tax_calculator`, `tax_law_search`, `mortgage_calculator`, etc.
+- **development**: Tools for code generation and review.
 
-## 📖 使用例
+## 📖 Usage Examples
 
 ### Python API
 
@@ -542,7 +542,7 @@ tools:
 from moco.core.orchestrator import Orchestrator
 from moco.core.runtime import LLMProvider
 
-# オーケストレーターの初期化
+# Initialize Orchestrator
 orchestrator = Orchestrator(
     profile="development",
     provider=LLMProvider.GEMINI,
@@ -550,38 +550,38 @@ orchestrator = Orchestrator(
     verbose=False
 )
 
-# セッション作成
-session_id = orchestrator.create_session(title="開発タスク")
+# Create a session
+session_id = orchestrator.create_session(title="Dev Task")
 
-# タスク実行
+# Execute a task
 result = orchestrator.run_sync(
-    "README.mdを作成してください",
+    "Generate a README.md file",
     session_id=session_id
 )
 print(result)
 
-# セッション継続
+# Continue session
 result = orchestrator.run_sync(
-    "テストも追加して",
+    "Now add some tests",
     session_id=session_id
 )
 ```
 
-### ガードレールの設定
+### Guardrail Configuration
 
 ```python
 from moco.core.guardrails import Guardrails, GuardrailResult, GuardrailAction
 
-# カスタムバリデーターを定義
+# Define a custom validator
 def block_sensitive_data(text: str) -> GuardrailResult:
     if "password" in text.lower():
         return GuardrailResult(
             action=GuardrailAction.BLOCK,
-            message="パスワード情報は出力できません"
+            message="Sensitive password info cannot be exported."
         )
     return GuardrailResult(action=GuardrailAction.ALLOW)
 
-# ガードレールを設定
+# Configure guardrails
 guardrails = Guardrails(
     max_input_length=50000,
     max_tool_calls_per_turn=10,
@@ -595,12 +595,12 @@ orchestrator = Orchestrator(
 )
 ```
 
-### MCP サーバーとの連携
+### MCP Server Integration
 
 ```python
 from moco.core.mcp_client import MCPClient, MCPConfig, MCPServerConfig
 
-# MCP設定
+# MCP configuration
 mcp_config = MCPConfig(
     enabled=True,
     servers=[
@@ -612,137 +612,137 @@ mcp_config = MCPConfig(
     ]
 )
 
-# MCPクライアントを初期化
+# Initialize MCP Client
 mcp_client = MCPClient(mcp_config)
 
-# オーケストレーターに渡す
+# Pass to Orchestrator
 orchestrator = Orchestrator(
     profile="default",
     mcp_client=mcp_client
 )
 ```
 
-## 🗂️ ディレクトリ構造
+## 🗂️ Directory Structure
 
 ```
 moco/
-├── cli.py                 # CLIエントリポイント
+├── cli.py                 # CLI entry point
 ├── core/
-│   ├── orchestrator.py    # メインオーケストレーター
-│   ├── runtime.py         # エージェント実行環境
-│   ├── context_compressor.py  # コンテキスト圧縮
-│   ├── guardrails.py      # ガードレール
-│   ├── checkpoint.py      # チェックポイント管理
-│   ├── mcp_client.py      # MCPクライアント
-│   └── telemetry.py       # テレメトリ
+│   ├── orchestrator.py    # Main orchestrator
+│   ├── runtime.py         # Agent runtime environment
+│   ├── context_compressor.py  # Context compression
+│   ├── guardrails.py      # Guardrails
+│   ├── checkpoint.py      # Checkpoint management
+│   ├── mcp_client.py      # MCP client
+│   └── telemetry.py       # Telemetry
 ├── storage/
-│   ├── session_logger.py  # セッション管理
-│   └── semantic_memory.py # セマンティックメモリ
+│   ├── session_logger.py  # Session management
+│   └── semantic_memory.py # Semantic memory
 ├── tools/
-│   ├── base.py            # 基本ツール
-│   ├── filesystem.py      # ファイルシステム操作
-│   ├── search.py          # 検索ツール
-│   ├── web.py             # Web関連ツール
-│   └── discovery.py       # ツール/エージェント検出
+│   ├── base.py            # Base tools
+│   ├── filesystem.py      # Filesystem operations
+│   ├── search.py          # Search tools
+│   ├── web.py             # Web-related tools
+│   └── discovery.py       # Tool/Agent discovery
 ├── profiles/
-│   ├── default/           # 最小構成（1エージェント）
-│   ├── code/              # 汎用コーディング（2エージェント）
-│   └── development/       # マルチエージェント開発チーム（14エージェント）
+│   ├── default/           # Minimal config (1 agent)
+│   ├── code/              # General coding (2 agents)
+│   └── development/       # Multi-agent development team (14 agents)
 └── ui/
-    ├── console.py         # コンソールUI
-    └── theme.py           # テーマ設定
+    ├── console.py         # Console UI
+    └── theme.py           # Theme settings
 ```
 
-## 🧪 開発
+## 🧪 Development
 
-### 開発環境のセットアップ
+### Development Setup
 
 ```bash
-# 開発用依存関係をインストール
+# Install development dependencies
 pip install -e ".[dev]"
 
-# テスト実行
+# Run tests
 pytest
 
-# 型チェック
+# Type checks
 mypy moco/
 
-# リンター
+# Linter
 ruff check moco/
 ```
 
-### 新しいプロファイルの作成
+### Creating a New Profile
 
 ```bash
-# プロファイルディレクトリを作成
+# Create profile directory
 mkdir -p moco/profiles/my-profile/{agents,tools,skills}
 
-# profile.yaml を作成
+# Create profile.yaml
 cat << EOF > moco/profiles/my-profile/profile.yaml
 name: my-profile
-description: 私のカスタムプロファイル
+description: My custom profile
 include_base_tools: true
 EOF
 
-# orchestrator.md を作成
+# Create orchestrator.md
 cat << EOF > moco/profiles/my-profile/agents/orchestrator.md
 ---
-description: カスタムオーケストレーター
+description: Custom Orchestrator
 mode: primary
 tools:
   read_file: true
   write_file: true
 ---
 
-あなたはカスタムエージェントです。
+You are a custom agent.
 EOF
 
-# 使用
-moco run "タスク" --profile my-profile
+# Usage
+moco run "task" --profile my-profile
 ```
 
-## 🧠 学習メモリ機能
+## 🧠 Learning Memory
 
-MOCO は会話から知識を自動的に学習し、次回の対話で活用します。
+MOCO automatically learns knowledge from conversations and applies it to future interactions.
 
-### 機能概要
+### Feature Overview
 
-| 機能 | 説明 |
-|------|------|
-| **recall** | プロンプト前に関連記憶を検索（ハイブリッド検索: embedding + keyword） |
-| **learn** | 会話から知識を抽出して保存（重複・矛盾チェック付き） |
-| **record_task_run_event** | ツール実行をログに記録 |
+| Feature | Description |
+|---------|-------------|
+| **recall** | Searches relevant memories before prompting (hybrid search: embedding + keyword). |
+| **learn** | Extracts and stores knowledge from conversations (with duplication/contradiction checks). |
+| **record_task_run_event** | Logs tool executions. |
 
-### 使用例
+### Example Usage
 
 ```bash
-# 情報を教える
-moco run "経費精算は田中さんに聞いてね"
+# Provide information
+moco run "Ask Tanaka-san about expense reports."
 
-# 後で質問すると、学習した内容を活用
-moco run "経費精算どこに聞けばいい？"
-# → 「田中さんに聞いてください」と回答
+# Later, when you ask a question, it uses the learned knowledge
+moco run "Who should I ask about expense reports?"
+# -> Response: "You should ask Tanaka-san."
 ```
 
-### データベース
+### Database
 
-学習データは SQLite に保存されます（デフォルト: `src/moco/data/memory.db`）
+Knowledge is stored in SQLite (default: `src/moco/data/memory.db`).
 
 ```bash
-# 記憶の確認
+# Check memories
 sqlite3 src/moco/data/memory.db "SELECT content FROM memories"
 
-# ツール実行ログの確認
+# Check tool execution logs
 sqlite3 src/moco/data/memory.db "SELECT tool_name, success FROM task_run_events"
 ```
 
-### テーブル構造
+### Table Structure
 
-- **memories**: 学習した知識（content, type, keywords, embedding）
-- **task_run_events**: ツール実行ログ（run_id, tool_name, params, result, success）
-- **relations**: エンティティ間の関係性（NetworkX 連携用、オプション）
+- **memories**: Learned knowledge (content, type, keywords, embedding).
+- **task_run_events**: Tool execution logs (run_id, tool_name, params, result, success).
+- **relations**: Relationships between entities (for NetworkX integration, optional).
 
-## 📄 ライセンス
+## 📄 License
 
 MIT License
 

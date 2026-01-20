@@ -74,7 +74,7 @@ def check_cancelled(job_id: str) -> None:
     """Raise OperationCancelled if the job has been cancelled."""
     event = get_cancel_event(job_id)
     if event is not None and event.is_set():
-        # イベントが設定されていたらクリアしてから例外を投げる
-        # (次のリクエストに影響させないため)
+        # If the event is set, clear it before raising the exception
+        # (To avoid affecting subsequent requests)
         clear_cancel_event(job_id)
         raise OperationCancelled(f"Operation cancelled for job_id={job_id}")

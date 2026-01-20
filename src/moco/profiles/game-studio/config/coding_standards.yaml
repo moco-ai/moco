@@ -1,0 +1,83 @@
+# Coding Standards for Unity 2D Game Development
+
+# C# Style Guidelines
+csharp_style:
+  naming_conventions:
+    classes: PascalCase
+    methods: PascalCase
+    properties: PascalCase
+    public_fields: PascalCase
+    private_fields: camelCase (with underscore prefix: _fieldName)
+    constants: PascalCase
+    local_variables: camelCase
+    namespaces: PascalCase
+
+  code_organization:
+    - Order: fields -> properties -> methods
+    - Separate regions: #region Fields, #region Properties, #region Methods
+    - One class per file (except nested classes)
+    - File name matches class name
+
+# Unity-Specific Guidelines
+unity_specific:
+  monobehaviour_practices:
+    - Use Awake for initialization
+    - Use Start for dependent initialization
+    - Avoid FindObjectOfType at runtime (cache in Awake)
+    - Use coroutines instead of Update where possible
+    - Disable components when not needed
+    - Use object pooling for frequent spawns
+
+  scriptableobjects:
+    - Use for static game data
+    - Use for configuration
+    - Use for item/character definitions
+    - Mark with [CreateAssetMenu]
+
+  performance:
+    - Cache component references in Awake
+    - Avoid string comparisons (use enums or IDs)
+    - Use Physics2D.OverlapCircle instead of Raycast for 2D
+    - Minimize allocations in Update
+    - Use object pooling
+
+# Documentation Standards
+documentation:
+  xml_doc_comments:
+    - Required for public methods
+    - Required for public properties
+    - Include parameter descriptions
+    - Include return value description
+
+  inline_comments:
+    - Explain "why", not "what"
+    - Comment complex algorithms
+    - Comment workarounds with explanation
+    - Keep comments up to date
+
+# Code Quality Requirements
+code_quality:
+  required_patterns:
+    - Single Responsibility Principle
+    - Open/Closed Principle
+    - Dependency Inversion (use interfaces)
+
+  prohibited_patterns:
+    - Singleton pattern (use dependency injection instead)
+    - Static variables for game state
+    - Direct references to other Monobehaviours
+    - Update with empty body
+
+# Testing Guidelines
+testing:
+  unit_tests:
+    - Test non-Unity logic with NUnit
+    - Test gameplay calculations
+    - Test utility functions
+    - Mock Unity dependencies
+
+  integration_tests:
+    - Test component interactions
+    - Test scene loading
+    - Test save/load functionality
+    - Test UI navigation

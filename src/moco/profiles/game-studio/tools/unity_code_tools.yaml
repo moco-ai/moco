@@ -1,0 +1,60 @@
+# Unity Code Analysis Tools
+
+tool:
+  name: UnityCodeAnalyzer
+  description: Analyze Unity C# code for quality and performance issues
+
+  capabilities:
+    - Check for Update abuse
+    - Identify FindObjectOfType calls
+    - Detect memory allocations
+    - Check for singleton patterns
+    - Identify physics calls in Update
+    - Check for string comparisons
+
+  parameters:
+    script_path: Path to the script to analyze
+    analyze_performance: Enable performance analysis
+
+  output:
+    issues_found: List of code issues
+    performance_warnings: Performance-related warnings
+    suggestions: Code improvement suggestions
+
+tool:
+  name: UnityAPIValidator
+  description: Validate Unity API usage for best practices
+
+  capabilities:
+    - Check deprecated API usage
+    - Verify correct component references
+    - Identify thread safety issues
+    - Check for proper event cleanup
+    - Validate coroutine usage
+
+  parameters:
+    script_path: Path to the script to validate
+
+  output:
+    api_compliance: Compliance status
+    deprecated_apis: List of deprecated API calls
+    warnings: Warning messages
+
+tool:
+  name: UnityScriptDependencyMapper
+  description: Map dependencies between Unity scripts
+
+  capabilities:
+    - Identify script dependencies
+    - Detect circular dependencies
+    - Build dependency graph
+    - Identify potential coupling issues
+
+  parameters:
+    project_path: Path to the Unity project
+    include_all_assemblies: Include all assemblies in analysis
+
+  output:
+    dependency_graph: Visual representation of dependencies
+    circular_dependencies: List of circular dependencies found
+    coupling_score: Overall coupling assessment

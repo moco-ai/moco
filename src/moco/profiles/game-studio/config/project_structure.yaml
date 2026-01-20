@@ -1,0 +1,105 @@
+# Unity 2D Project Folder Structure
+
+project_folders:
+  root:
+    - name: Assets
+      description: Main assets folder
+      subfolders:
+        - name: _Project
+          description: Project-specific assets, excluded from version control
+          subfolders:
+            - name: Settings
+            - name: Temp
+            - name: UserSettings
+
+        - name: Art
+          description: All art assets
+          subfolders:
+            - name: Characters
+            - name: Environments
+            - name: UI
+            - name: Icons
+            - name: Effects
+            - name: Materials
+
+        - name: Audio
+          description: All audio assets
+          subfolders:
+            - name: Music
+            - name: SFX
+            - name: Voice
+            - name: Mixers
+
+        - name: Scripts
+          description: All C# scripts
+          subfolders:
+            - name: Core
+            - name: Gameplay
+            - name: Systems
+            - name: UI
+            - name: Audio
+            - name: Utilities
+            - name: Data
+
+        - name: Scenes
+          description: Scene files
+          subfolders:
+            - name: Levels
+            - name: Menus
+            - name: Testing
+
+        - name: Prefabs
+          description: Prefab objects
+          subfolders:
+            - name: Characters
+            - name: Enemies
+            - name: Items
+            - name: UI
+            - name: Effects
+
+        - name: ScriptableObjects
+          description: ScriptableObject data assets
+          subfolders:
+            - name: Characters
+            - name: Items
+            - name: Levels
+            - name: Config
+
+        - name: Resources
+          description: Assets loaded at runtime
+          subfolders:
+            - name: Audio
+            - name: Sprites
+            - name: Data
+
+        - name: Plugins
+          description: Third-party plugins
+          subfolders:
+            - name: Android
+            - name: iOS
+            - name: WebGL
+
+        - name: Tests
+          description: Test scripts and playmode tests
+          subfolders:
+            - name: EditMode
+            - name: PlayMode
+
+# Naming Conventions
+naming_conventions:
+  files:
+    scripts: PascalCase (e.g., PlayerController.cs)
+    prefabs: PascalCase (e.g., PlayerCharacter.prefab)
+    scenes: PascalCase (e.g., Main_Menu.unity)
+    sprites: snake_case or PascalCase
+    audio: snake_case or PascalCase
+
+  folders:
+    standard: PascalCase (e.g., Gameplay, UI)
+    private: _PascalCase (e.g., _Internal)
+
+  game_objects:
+    hierarchy: PascalCase (e.g., PlayerManager, SpawnPoint)
+    prefixes:
+      - UI: "UI_" (e.g., UI_MainMenu)
+      - Colliders: "Col_" (e.g., Col_EnemyTrigger)
