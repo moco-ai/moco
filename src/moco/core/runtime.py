@@ -14,15 +14,15 @@ from ..utils.json_parser import SmartJSONParser
 
 
 class ToolCallTracker:
-    """同じツール呼び出しのループを検出・防止するトラッカー"""
+    """Tracker to detect and prevent loops of the same tool calls"""
     
-    HASH_THRESHOLD = 100  # 引数文字列がこの長さを超える場合はハッシュ化する
+    HASH_THRESHOLD = 100  # Hash the argument string if it exceeds this length
     
     def __init__(self, max_repeats: int = 3, window_size: int = 10):
         """
         Args:
-            max_repeats: 同じ呼び出しが許可される最大回数
-            window_size: チェック対象の直近の呼び出し数
+            max_repeats: Maximum number of times the same call is allowed
+            window_size: Number of recent calls to check
         """
         self.history: List[str] = []
         self.max_repeats = max_repeats
@@ -30,10 +30,10 @@ class ToolCallTracker:
         self.blocked_calls: Dict[str, int] = defaultdict(int)
     
     def _make_key(self, tool_name: str, args: dict) -> str:
-        """ツール呼び出しのユニークキーを生成（引数が大きい場合はハッシュ化）"""
+        """Generate a unique key for the tool call (hashed if arguments are large)"""
         try:
             args_str = json.dumps(args, sort_keys=True, default=str)
-            # 引数がしきい値を超える場合はSHA-256ハッシュを使用
+            # Use SHA-256 hash if arguments exceed the threshold
             if len(args_str) > self.HASH_THRESHOLD:
                 args_hash = hashlib.sha256(args_str.encode()).hexdigest()
                 return f"{tool_name}:hash:{args_hash}"
@@ -43,32 +43,32 @@ class ToolCallTracker:
     
     def check_and_record(self, tool_name: str, args: dict) -> tuple[bool, str]:
         """
-        ツール呼び出しをチェックし、履歴に記録する。
+        Check the tool call and record it in the history.
         
         Returns:
             (allowed: bool, message: str)
-            - allowed=True: 実行許可
-            - allowed=False: ループ検出、実行ブロック
+            - allowed=True: Execution allowed
+            - allowed=False: Loop detected, execution blocked
         """
         call_key = self._make_key(tool_name, args)
         
-        # 直近の呼び出しで同じキーをカウント
+        # Count the same key in recent calls
         recent = self.history[-self.window_size:] if len(self.history) >= self.window_size else self.history
         repeat_count = sum(1 for h in recent if h == call_key)
         
         if repeat_count >= self.max_repeats:
             self.blocked_calls[call_key] += 1
             return False, (
-                f"⚠️ ループ検出: {tool_name} が同じ引数で {repeat_count} 回呼び出されました。\n"
-                f"このツール呼び出しはブロックされました。\n"
-                f"別のアプローチを試すか、異なる引数を使用してください。"
+                f"⚠️ Loop detected: {tool_name} was called {repeat_count} times with the same arguments.\n"
+                f"This tool call has been blocked.\n"
+                f"Please try a different approach or use different arguments."
             )
         
         self.history.append(call_key)
         return True, ""
     
     def reset(self):
-        """履歴をリセット"""
+        """Reset history"""
         self.history.clear()
         self.blocked_calls.clear()
 
@@ -87,24 +87,24 @@ from ..tools.discovery import AgentConfig
 from ..storage.semantic_memory import SemanticMemory
 from .context_compressor import ContextCompressor
 
-# ツール使用ログ用
-MAX_ARG_LEN = 40  # 引数の最大文字数
+# For tool usage logs
+MAX_ARG_LEN = 40  # Maximum number of characters for arguments
 
 class StreamPrintState:
-    """stdout状態を管理するクラス（テスト時にリセット可能）"""
+    """Class to manage stdout state (resettable during testing)"""
     broken = False
     
     @classmethod
     def reset(cls):
-        """テスト用：状態をリセット"""
+        """For testing: reset state"""
         cls.broken = False
 
 
 def _safe_stream_print(text: str) -> None:
-    """ストリーミング表示用の安全な print。
+    """Safe print for streaming display.
 
-    Web UI 実行時などで stdout が閉じられていると BrokenPipeError / OSError(errno=32) が出るため、
-    以後の標準出力を抑制して処理自体は継続する。
+    Prevents BrokenPipeError / OSError(errno=32) when stdout is closed (e.g., during Web UI execution),
+    by suppressing subsequent standard output and continuing the process.
     """
     if StreamPrintState.broken:
         return
@@ -118,46 +118,46 @@ def _safe_stream_print(text: str) -> None:
             return
         raise
 
-# ツール種類別のアイコンと色
+# Icons and colors by tool type
 TOOL_STYLES = {
-    # ファイル操作
+    # File operations
     "read_file": ("📖", "cyan"),
     "write_file": ("📝", "green"),
     "edit_file": ("✏️", "yellow"),
-    # 実行系
+    # Execution
     "execute_bash": ("⚡", "magenta"),
-    # 委譲
+    # Delegation
     "delegate_to_agent": ("👤", "blue"),
-    # 検索系
+    # Search
     "websearch": ("🔍", "cyan"),
     "webfetch": ("🌐", "cyan"),
     "grep": ("🔎", "dim"),
     "codebase_search": ("🔍", "cyan"),
-    # ディレクトリ
+    # Directory
     "list_dir": ("📁", "dim"),
     "glob_search": ("📂", "dim"),
-    # 計算系
+    # Calculation
     "calculate_tax": ("🧮", "green"),
-    # デフォルト
+    # Default
     "_default": ("🔧", "dim"),
 }
 
 def _format_tool_log(tool_name: str, args: dict) -> tuple:
-    """ツールログをフォーマット。(icon, name, arg_str, color) を返す"""
+    """Format tool log. Returns (icon, name, arg_str, color)"""
     style = TOOL_STYLES.get(tool_name, TOOL_STYLES["_default"])
     icon, color = style
 
-    # 引数を抽出
+    # Extract arguments
     arg_str = ""
 
     if tool_name in ("read_file", "write_file", "edit_file"):
         path = args.get("path") or args.get("file_path") or ""
-        # ファイル名だけ抽出
+        # Extract only the filename
         if path and "/" in path:
             arg_str = path.split("/")[-1]
         else:
             arg_str = path or ""
-        # offset/limit も表示（使用している場合）
+        # Also display offset/limit (if used)
         offset = args.get("offset")
         limit = args.get("limit")
         if offset or limit:
@@ -167,7 +167,7 @@ def _format_tool_log(tool_name: str, args: dict) -> tuple:
 
     elif tool_name == "execute_bash":
         cmd = args.get("command") or ""
-        # 最初のコマンドだけ
+        # Only the first command
         arg_str = cmd.split()[0] if cmd and cmd.split() else (cmd or "")
         if cmd and len(cmd) > len(arg_str) + 5:
             arg_str += " ..."
@@ -192,14 +192,14 @@ def _format_tool_log(tool_name: str, args: dict) -> tuple:
 
     elif tool_name == "webfetch":
         url = args.get("url") or ""
-        # ドメインだけ
+        # Only the domain
         if url and "://" in url:
             arg_str = url.split("://")[1].split("/")[0]
         else:
             arg_str = url[:25] if url else ""
 
     else:
-        # その他: 最初の引数
+        # Others: first argument
         for k, v in list(args.items())[:1]:
             v_str = str(v)
             if len(v_str) > 25:
@@ -207,7 +207,7 @@ def _format_tool_log(tool_name: str, args: dict) -> tuple:
             arg_str = v_str
             break
 
-    # 長さ制限
+    # Length limit
     if len(arg_str) > MAX_ARG_LEN:
         arg_str = arg_str[:MAX_ARG_LEN - 3] + "..."
 
@@ -218,12 +218,12 @@ try:
     _tool_console = Console()
 
     def _log_tool_use(tool_name: str, args: dict = None, verbose: bool = False):
-        """ツール使用を簡潔にログ"""
+        """Log tool usage concisely"""
         if verbose:
-            pass  # verbose の場合は詳細ログが別途出力される
+            pass  # In verbose mode, detailed logs are output separately
         else:
             icon, name, arg_str, color = _format_tool_log(tool_name, args or {})
-            # ツール名を固定幅で揃える
+            # Align tool names to a fixed width
             name_padded = name[:18].ljust(18)
             if arg_str:
                 _tool_console.print(f"    {icon} [{color}]{name_padded}[/{color}] [dim]→ {arg_str}[/dim]")
@@ -242,7 +242,7 @@ except ImportError:
 
 def _validate_arguments(func: Callable, args: Dict[str, Any]) -> Dict[str, Any]:
     """
-    関数の引数の型をバリデーションし、可能な限り変換する。
+    Validate the types of function arguments and convert them if possible.
     """
     sig = inspect.signature(func)
     try:
@@ -260,7 +260,7 @@ def _validate_arguments(func: Callable, args: Dict[str, Any]) -> Dict[str, Any]:
             expected_type = hints.get(param_name)
             
             if expected_type:
-                # 簡易的な型変換/チェック
+                # Simple type conversion/check
                 if expected_type is int and not isinstance(val, int):
                     try:
                         val = int(val)
@@ -279,7 +279,7 @@ def _validate_arguments(func: Callable, args: Dict[str, Any]) -> Dict[str, Any]:
             
             validated_args[param_name] = val
         elif param.default != inspect.Parameter.empty:
-            # デフォルト値がある場合は何もしない（func(**validated_args)でデフォルトが使われる）
+            # If there's a default value, do nothing (the default will be used in func(**validated_args))
             pass
             
     return validated_args
@@ -287,23 +287,23 @@ def _validate_arguments(func: Callable, args: Dict[str, Any]) -> Dict[str, Any]:
 
 def _execute_tool_safely(func: Callable, args: Dict[str, Any]) -> Any:
     """
-    ツールを安全に実行する。async関数の場合は同期的に実行する。
+    Execute tool safely. If it's an async function, execute it synchronously.
     """
     valid_args = _validate_arguments(func, args)
     result = func(**valid_args)
     
-    # async 関数の場合は同期的に実行
+    # Execute synchronously if it's an async function
     if asyncio.iscoroutine(result):
         try:
-            # Python 3.10+: get_running_loop()を使用して実行中のループを確認
+            # Python 3.10+: Check for a running loop using get_running_loop()
             loop = asyncio.get_running_loop()
-            # 実行中のループ内からは新しいスレッドで実行
+            # Execute in a new thread if within a running loop
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(asyncio.run, result)
                 result = future.result(timeout=60)
         except RuntimeError:
-            # ループが実行中でない場合は asyncio.run() を使用
+            # Use asyncio.run() if no loop is running
             result = asyncio.run(result)
     
     return result
@@ -311,40 +311,40 @@ def _execute_tool_safely(func: Callable, args: Dict[str, Any]) -> Any:
 
 async def _execute_tool_safely_async(func: Callable, args: Dict[str, Any]) -> Any:
     """
-    ツールを安全に実行する（async版）。
-    - async tool / coroutine 戻り値は await で解決する
-    - 同期ツールはイベントループをブロックしないよう to_thread で実行する
+    Execute tool safely (async version).
+    - Resolve async tool / coroutine return values with await
+    - Execute synchronous tools with to_thread to avoid blocking the event loop
     """
     valid_args = _validate_arguments(func, args)
 
-    # まずは通常呼び出し
+    # First, normal call
     if asyncio.iscoroutinefunction(func):
         result = await func(**valid_args)
     else:
         result = await asyncio.to_thread(func, **valid_args)
 
-    # 念のため coroutine 返り値も解決
+    # Resolve coroutine return value just in case
     if asyncio.iscoroutine(result):
         result = await result
     return result
 
 
-# ツール出力の最大文字数（これを超えると一時ファイルに保存）
+# Maximum number of characters for tool output (saved to temporary file if exceeded)
 MAX_TOOL_OUTPUT_CHARS = 50000
 _TEMP_OUTPUT_DIR = "/tmp/moco_tool_outputs"
 
-# コンテキスト上限管理（1回のエージェント実行内）
-MAX_CONTEXT_TOKENS = 150000      # 入力コンテキストの上限（約150K tokens）
-# MAX_TOOL_CALLS = 15            # コメントアウト: ContextCompressor で管理
-CONTEXT_WARNING_THRESHOLD = 0.8  # 80%で警告・圧縮発動
+# Context limit management (within one agent execution)
+MAX_CONTEXT_TOKENS = 150000      # Upper limit for input context (approx. 150K tokens)
+# MAX_TOOL_CALLS = 15            # Commented out: Managed by ContextCompressor
+CONTEXT_WARNING_THRESHOLD = 0.8  # Warning/compression triggered at 80%
 
 
 def _gemini_messages_to_dict(messages: List[Any]) -> List[Dict[str, Any]]:
-    """Gemini の types.Content を Dict 形式に変換"""
+    """Convert Gemini's types.Content to Dict format"""
     result = []
     for msg in messages:
         if hasattr(msg, 'role') and hasattr(msg, 'parts'):
-            # types.Content オブジェクト
+            # types.Content object
             parts_text = []
             for part in msg.parts:
                 if hasattr(part, 'text') and part.text:
@@ -363,19 +363,19 @@ def _gemini_messages_to_dict(messages: List[Any]) -> List[Dict[str, Any]]:
 
 
 def _dict_to_gemini_messages(messages: List[Dict[str, Any]]) -> List[Any]:
-    """Dict 形式を Gemini の types.Content に変換"""
+    """Convert Dict format to Gemini's types.Content"""
     result = []
     for msg in messages:
         role = msg.get("role", "user")
         content = msg.get("content", "")
-        # model -> assistant の変換（Gemini は model を使う）
+        # Convert model -> assistant (Gemini uses model)
         if role == "assistant":
             role = "model"
         result.append(types.Content(role=role, parts=[types.Part(text=content)]))
     return result
 
 
-# 全エージェント共通ルール（システムプロンプトに自動注入）
+# Common rules for all agents (automatically injected into system prompt)
 COMMON_AGENT_RULES = """
 ## 🔧 ツール呼び出しのルール
 
@@ -384,45 +384,45 @@ Markdown で「delegate_to_agent: @name」と書くのではなく、実際に�
 
 ## ⛔ ツール呼び出し上限時のルール
 
-### 自分が上限に達した場合
-「⛔ ツール呼び出し上限到達」メッセージが表示されたら:
-1. 現在までの作業結果をまとめる
-2. 以下のJSON形式で残りタスクを返す:
+### When you reach the limit yourself
+When the "⛔ Tool call limit reached" message is displayed:
+1. Summarize the work done so far
+2. Return the remaining tasks in the following JSON format:
 
 ```json
 {
   "status": "interrupted",
-  "completed": ["完了したタスク1", "完了したタスク2"],
-  "remaining": ["残りタスク1", "残りタスク2"],
-  "context": "継続に必要な情報（対象ファイル、現在の状態等）"
+  "completed": ["Task 1 completed", "Task 2 completed"],
+  "remaining": ["Remaining task 1", "Remaining task 2"],
+  "context": "Information needed for continuation (target files, current state, etc.)"
 }
 ```
 
-### 委譲先から中断を受け取った場合
-委譲先エージェントから `"status": "interrupted"` を含む応答を受け取ったら:
-1. `remaining` の内容を確認
-2. 同じエージェントに `remaining` タスクと `context` を渡して再度委譲
-3. 完了まで繰り返す
+### When receiving an interruption from a delegate
+When receiving a response containing `"status": "interrupted"` from a delegate agent:
+1. Check the content of `remaining`
+2. Delegate again to the same agent with the `remaining` task and `context`
+3. Repeat until complete
 
-## 📄 出力が切り詰められた場合のルール
+## 📄 Rules for truncated output
 
-ツール出力に以下のメッセージが表示された場合:
-- `⚠️ OUTPUT TRUNCATED` または `Content truncated`
-- `👉 NEXT STEP:` で始まる指示
+When the following message is displayed in the tool output:
+- `⚠️ OUTPUT TRUNCATED` or `Content truncated`
+- `👉 NEXT STEP:` instructions starting with
 
-**必ず指示されたコマンドを実行して続きを読んでください。**
-- 同じリクエストを繰り返さないこと
-- 表示されたパス・offset・limit をそのまま使用すること
-- 続きを読み終わるまで繰り返すこと
+**Be sure to execute the instructed command to read the rest.**
+- Do not repeat the same request
+- Use the displayed path, offset, and limit as is
+- Repeat until you have finished reading the rest
 """
 
 def _estimate_tokens(text: str) -> int:
-    """トークン数を推定（簡易: 4文字 ≒ 1トークン）"""
+    """Estimate number of tokens (Simple: 4 chars ≒ 1 token)"""
     return len(text) // 4
 
 def _truncate_tool_output(result: Any, tool_name: str) -> str:
     """
-    ツール出力が長すぎる場合、一時ファイルに保存して参照を返す。
+    If the tool output is too long, save it to a temporary file and return a reference.
     """
     if result is None:
         return "No output"
@@ -432,7 +432,7 @@ def _truncate_tool_output(result: Any, tool_name: str) -> str:
     if len(result_str) <= MAX_TOOL_OUTPUT_CHARS:
         return result_str
     
-    # 長すぎる場合は一時ファイルに保存
+    # Save to a temporary file if too long
     import os
     import time
     
@@ -443,7 +443,7 @@ def _truncate_tool_output(result: Any, tool_name: str) -> str:
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(result_str)
     
-    # 先頭部分を表示し、残りはファイル参照
+    # Display the beginning and refer to the file for the rest
     preview = result_str[:500]
     total_lines = result_str.count('\n') + 1
     total_chars = len(result_str)
@@ -453,13 +453,13 @@ def _truncate_tool_output(result: Any, tool_name: str) -> str:
         f"⚠️ OUTPUT TRUNCATED ⚠️\n"
         f"Total: {total_chars:,} chars, {total_lines:,} lines\n"
         f"Full output saved to: {filepath}\n\n"
-        f"👉 NEXT STEP: 以下を実行して続きを読んでください:\n"
+        f"👉 NEXT STEP: Execute the following to read the rest:\n"
         f"   read_file(path=\"{filepath}\", offset=1, limit=10000)\n"
     )
 
 
 def _ensure_jsonable(value: Any) -> Any:
-    """JSON化できない値（coroutine等）は文字列化して返す。"""
+    """Return non-JSON-serializable values (e.g., coroutines) as strings."""
     try:
         json.dumps(value)
         return value
@@ -467,7 +467,7 @@ def _ensure_jsonable(value: Any) -> Any:
         return str(value)
 
 
-# LLMプロバイダー設定
+# LLM Provider Settings
 class LLMProvider:
     GEMINI = "gemini"
     OPENAI = "openai"
@@ -476,15 +476,15 @@ class LLMProvider:
 
 
 def _is_reasoning_model(model_name: str) -> bool:
-    """reasoning/thinking 対応モデルかどうかを判定
+    """Determine if the model supports reasoning/thinking
     
-    - OpenAI: o1, o3, o4 系
-    - Gemini (OpenRouter経由): gemini-2.5, gemini-3 系
+    - OpenAI: o1, o3, o4 series
+    - Gemini (via OpenRouter): gemini-2.5, gemini-3 series
     """
     model_lower = model_name.lower()
-    # OpenAI reasoning モデル
+    # OpenAI reasoning models
     openai_patterns = ["o1", "o3", "o4"]
-    # Gemini thinking 対応モデル (OpenRouter経由: google/gemini-...)
+    # Gemini thinking models (via OpenRouter: google/gemini-...)
     gemini_patterns = ["gemini-2.5", "gemini-3", "gemini-2.0-flash-thinking"]
     
     all_patterns = openai_patterns + gemini_patterns
@@ -492,7 +492,7 @@ def _is_reasoning_model(model_name: str) -> bool:
 
 
 def _python_type_to_schema(py_type) -> Dict[str, Any]:
-    """Python型をJSONスキーマに変換"""
+    """Convert Python type to JSON schema"""
     type_map = {
         str: {"type": "string"},
         int: {"type": "integer"},
@@ -505,10 +505,10 @@ def _python_type_to_schema(py_type) -> Dict[str, Any]:
 
 
 def _func_to_openai_tool(func: Callable, tool_name: str) -> Dict[str, Any]:
-    """Python関数をOpenAIのtool形式に変換"""
+    """Convert Python function to OpenAI tool format"""
     sig = inspect.signature(func)
     docstring = func.__doc__ or ""
-    # docstring 全体を description として使用（フォーマット例などを LLM に伝える）
+    # Use entire docstring as description (to convey format examples to LLM)
     description = docstring.strip() if docstring else f"{tool_name} function"
 
     properties = {}
@@ -554,14 +554,14 @@ def _func_to_openai_tool(func: Callable, tool_name: str) -> Dict[str, Any]:
 
 
 def _func_to_declaration(func: Callable, tool_name: str) -> types.FunctionDeclaration:
-    """Python関数をFunctionDeclarationに変換"""
+    """Convert Python function to FunctionDeclaration"""
     sig = inspect.signature(func)
     docstring = func.__doc__ or ""
 
-    # docstring 全体を description として使用（フォーマット例などを LLM に伝える）
+    # Use the entire docstring as the description (to convey formatting examples, etc., to the LLM)
     description = docstring.strip() if docstring else f"{tool_name} function"
 
-    # パラメータスキーマを構築
+    # Build parameter schema
     properties = {}
     required = []
 
@@ -574,14 +574,14 @@ def _func_to_declaration(func: Callable, tool_name: str) -> types.FunctionDeclar
         if param_name in ("self", "cls"):
             continue
 
-        # 型アノテーションがあればそれを使用
+        # Use type annotation if available
         param_type = hints.get(param_name, str)
         schema = _python_type_to_schema(param_type)
 
-        # docstringからパラメータ説明を抽出（Args: セクション）
+        # Extract parameter descriptions from docstring (Args: section)
         param_desc = f"Parameter: {param_name}"
         if f"{param_name}" in docstring:
-            # 簡易的な抽出
+            # Simple extraction
             lines = docstring.split("\n")
             for line in lines:
                 if param_name in line and ":" in line:
@@ -590,13 +590,13 @@ def _func_to_declaration(func: Callable, tool_name: str) -> types.FunctionDeclar
 
         properties[param_name] = {**schema, "description": param_desc}
 
-        # デフォルト値がなければ必須
+        # Required if there's no default value
         if param.default == inspect.Parameter.empty:
             required.append(param_name)
 
-    # parameters引数にはSchema型が必要だが、dict構造を渡すと内部で変換されることが多い
-    # エラーが出る場合は types.Schema(**...) でラップする必要があるかもしれない
-    # 現時点では互換性のため辞書として渡す
+    # The parameters argument requires a Schema type, but passing a dict structure is often converted internally
+    # If an error occurs, it might be necessary to wrap it with types.Schema(**...)
+    # For now, pass it as a dictionary for compatibility
     return types.FunctionDeclaration(
         name=tool_name,
         description=description,
@@ -635,17 +635,17 @@ class AgentRuntime:
         self.skills: List[SkillConfig] = skills or []
         self.memory_service = memory_service
         
-        # ツール呼び出しループ検出
+        # Tool call loop detection
         self.tool_tracker = ToolCallTracker(max_repeats=3, window_size=10)
         
-        # セマンティックメモリの初期化
+        # Initialization of semantic memory
         self.semantic_memory = semantic_memory
         if not self.semantic_memory:
             from pathlib import Path
             db_path = os.getenv("SEMANTIC_DB_PATH", str(Path.cwd() / "data" / "semantic.db"))
             self.semantic_memory = SemanticMemory(db_path=db_path)
 
-        # プロバイダーの決定（環境変数 or 引数 or 自動選択）
+        # Determine provider (environment variable, argument, or auto-selection)
         from .llm_provider import get_available_provider
         if provider:
             self.provider = provider
@@ -654,21 +654,21 @@ class AgentRuntime:
         else:
             self.provider = get_available_provider()
 
-        # モデル名の決定
+        # Determine model name
         if model:
             self.model_name = model
         elif self.provider == LLMProvider.OPENROUTER:
-            self.model_name = os.environ.get("OPENROUTER_MODEL", "google/gemini-3-flash-preview")  # reasoning対応
+            self.model_name = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp")  # Reasoning support
         elif self.provider == LLMProvider.OPENAI:
-            self.model_name = os.environ.get("OPENAI_MODEL", "gpt-5.2-codex")
+            self.model_name = os.environ.get("OPENAI_MODEL", "gpt-4o")
         elif self.provider == LLMProvider.ZAI:
             self.model_name = os.environ.get("ZAI_MODEL", "glm-4.7")
         else:
-            self.model_name = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
+            self.model_name = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash-exp")
 
-        # クライアントの初期化
+        # Initialization of client
         if self.provider == LLMProvider.OPENROUTER:
-            # OpenRouter は OpenAI互換API
+            # OpenRouter is an OpenAI-compatible API
             if not OPENAI_AVAILABLE:
                 raise ImportError("OpenAI package not installed. Run: pip install openai")
             openrouter_key = os.environ.get("OPENROUTER_API_KEY")
@@ -688,7 +688,7 @@ class AgentRuntime:
             self.openai_client = AsyncOpenAI(api_key=openai_key)
             self.client = None
         elif self.provider == LLMProvider.ZAI:
-            # Z.ai GLM-4.7 (OpenAI互換API)
+            # Z.ai GLM-4.7 (OpenAI-compatible API)
             if not OPENAI_AVAILABLE:
                 raise ImportError("OpenAI package not installed. Run: pip install openai")
             zai_key = os.environ.get("ZAI_API_KEY")
@@ -711,29 +711,29 @@ class AgentRuntime:
             self.client = genai.Client(api_key=api_key)
             self.openai_client = None
 
-        # ストリーミング設定
+        # Streaming configuration
         self.stream = stream
         
-        # 部分応答（エラー発生時に保存するため）
+        # Partial response (to save in case of error)
         self._partial_response = ""
 
-        # コンテキスト上限管理（1回のrun()内でリセット）
+        # Context limit management (reset within one run())
         self._accumulated_tokens = 0
         self._tool_call_count = 0
         self._context_limit_reached = False
 
-        # メトリクス記録用
+        # For metrics recording
         self.last_usage: Dict[str, Any] = {}
 
-        # ツールの準備
+        # Preparation of tools
         self.available_tools = {}
-        self.tool_declarations = []  # Gemini用
-        self.openai_tools = []       # OpenAI用
+        self.tool_declarations = []  # For Gemini
+        self.openai_tools = []       # For OpenAI
 
         self._prepare_tools()
 
     def _prepare_tools(self):
-        """有効化されたツールを準備する"""
+        """Prepare enabled tools"""
         if not self.config.tools:
             return
 
@@ -742,11 +742,11 @@ class AgentRuntime:
                 func = self.tool_map[tool_name]
                 self.available_tools[tool_name] = func
 
-                # Gemini用 FunctionDeclaration
+                # Gemini FunctionDeclaration
                 declaration = _func_to_declaration(func, tool_name)
                 self.tool_declarations.append(declaration)
 
-                # OpenAI用 tool定義
+                # OpenAI tool definition
                 openai_tool = _func_to_openai_tool(func, tool_name)
                 self.openai_tools.append(openai_tool)
             else:
@@ -755,8 +755,8 @@ class AgentRuntime:
 
     def _update_context_usage(self, result: str) -> str:
         """
-        ツール結果のトークンを累積し、上限チェックを行う。
-        警告または上限メッセージを result に追加して返す。
+        Accumulate tokens from tool results and perform limit checks.
+        Return result with warning or limit message appended.
         """
         result_tokens = _estimate_tokens(result)
         self._accumulated_tokens += result_tokens
@@ -764,52 +764,52 @@ class AgentRuntime:
         
         usage_ratio = self._accumulated_tokens / MAX_CONTEXT_TOKENS
         
-        # 100%超過: 強制終了指示
+        # Over 100%: Instruction for forced termination
         if usage_ratio >= 1.0:
             self._context_limit_reached = True
             return (
                 f"{result}\n\n"
-                f"⛔ **コンテキスト上限到達** ({self._accumulated_tokens:,} / {MAX_CONTEXT_TOKENS:,} tokens)\n"
-                f"これ以上ツールを呼び出さず、今ある情報で応答を完了してください。"
+                f"⛔ **Context limit reached** ({self._accumulated_tokens:,} / {MAX_CONTEXT_TOKENS:,} tokens)\n"
+                f"Do not call any more tools and complete the response with the current information."
             )
         
-        # ツール呼び出し回数上限 - コメントアウト: ContextCompressor で管理
+        # Tool call limit - Commented out: Managed by ContextCompressor
         # if self._tool_call_count >= MAX_TOOL_CALLS:
         #     self._context_limit_reached = True
         #     return (
         #         f"{result}\n\n"
-        #         f"⛔ **ツール呼び出し上限到達** ({self._tool_call_count} / {MAX_TOOL_CALLS} calls)\n"
-        #         f"これ以上ツールを呼び出さず、今ある情報で応答を完了してください。"
+        #         f"⛔ **Tool call limit reached** ({self._tool_call_count} / {MAX_TOOL_CALLS} calls)\n"
+        #         f"Do not call any more tools and complete the response with the current information."
         #     )
         
-        # 80%警告
+        # 80% warning
         if usage_ratio >= CONTEXT_WARNING_THRESHOLD:
             remaining = MAX_CONTEXT_TOKENS - self._accumulated_tokens
             return (
                 f"{result}\n\n"
-                f"⚠️ コンテキスト {usage_ratio*100:.0f}% 使用中 "
-                f"(残り約 {remaining:,} tokens)\n"
-                f"必要最小限のツール呼び出しに抑えてください。"
+                f"⚠️ Context {usage_ratio*100:.0f}% in use "
+                f"(Approx. {remaining:,} tokens remaining)\n"
+                f"Please keep tool calls to a minimum."
             )
         
         return result
 
     def _get_system_prompt(self) -> str:
-        """システムプロンプトを取得し、文脈情報を挿入する"""
+        """Retrieve system prompt and insert context information"""
         # JST (UTC+9)
         jst = timezone(timedelta(hours=9))
         now_dt = datetime.now(jst)
         now_str = now_dt.strftime("%Y-%m-%d %H:%M:%S (JST)")
 
-        # コンテキスト情報の構築
+        # Construction of context information
         context_header = f"---\n[Current Context]\nTimestamp: {now_str}\n"
         
-        # 想起結果の追加
+        # Addition of recall results
         if hasattr(self, "_recall_results") and self._recall_results:
             context_header += "\n[Related Knowledge/Past Incidents]\n"
             for i, res in enumerate(self._recall_results):
                 content = res.get('content', '')
-                # 長すぎる場合は切り詰め
+                # Truncate if too long
                 if len(content) > 1000:
                     content = content[:1000] + "..."
                 context_header += f"- Knowledge {i+1}:\n{content}\n"
@@ -818,7 +818,7 @@ class AgentRuntime:
 
         prompt = self.config.system_prompt
 
-        # Skills の注入
+        # Injection of Skills
         if self.skills:
             skills_section = "\n\n## Skills\n\n"
             for i, skill in enumerate(self.skills, 1):
@@ -829,39 +829,39 @@ class AgentRuntime:
                 skills_section += f"\n{skill.content}\n\n"
             prompt += skills_section
 
-        # プレースホルダー置換
-        # ヘッダーと重複する場合があるが、プロンプト内の特定位置に日時を埋め込みたい要望に対応
+        # Placeholder replacement
+        # May overlap with header, but addresses requests to embed date/time at specific locations in the prompt
         if "{{CURRENT_DATETIME}}" in prompt:
             prompt = prompt.replace("{{CURRENT_DATETIME}}", now_str)
         
-        # セッションコンテキスト（mdで {{SESSION_CONTEXT}} を使った場合のみ注入）
+        # Session context (injected only if {{SESSION_CONTEXT}} is used in md)
         if "{{SESSION_CONTEXT}}" in prompt:
             session_context = self._build_session_context()
             prompt = prompt.replace("{{SESSION_CONTEXT}}", session_context)
         
-        # エージェント統計（mdで {{AGENT_STATS}} を使った場合のみ注入）
+        # Agent stats (injected only if {{AGENT_STATS}} is used in md)
         if "{{AGENT_STATS}}" in prompt:
             agent_stats = self._build_agent_stats()
             prompt = prompt.replace("{{AGENT_STATS}}", agent_stats)
 
-        # 共通ルールを末尾に追加
+        # Add common rules at the end
         return context_header + prompt + "\n\n" + COMMON_AGENT_RULES
     
     def _build_session_context(self) -> str:
-        """現在のセッションコンテキストを構築"""
+        """Construct current session context"""
         try:
             from ..tools.stats import get_session_stats
             return get_session_stats()
         except Exception as e:
-            return f"(セッションコンテキスト取得エラー: {e})"
+            return f"(Session context retrieval error: {e})"
     
     def _build_agent_stats(self) -> str:
-        """エージェント統計を構築"""
+        """Construct agent stats"""
         try:
             from ..tools.stats import get_agent_stats
             return get_agent_stats(days=7)
         except Exception as e:
-            return f"(エージェント統計取得エラー: {e})"
+            return f"(Agent stats retrieval error: {e})"
 
     async def _execute_tool_with_tracking(
         self, 
@@ -869,20 +869,20 @@ class AgentRuntime:
         args_dict: Dict[str, Any], 
         session_id: Optional[str] = None
     ) -> str:
-        """ツール実行とトラッキングの共通処理
+        """Common processing for tool execution and tracking
         
         Args:
-            func_name: ツール名
-            args_dict: ツール引数
-            session_id: セッションID（キャンセルチェック用）
+            func_name: Tool name
+            args_dict: Tool arguments
+            session_id: Session ID (for cancellation check)
             
         Returns:
-            ツール実行結果
+            Tool execution result
         """
-        # ログ出力
+        # Log output
         _log_tool_use(func_name, args_dict, self.verbose)
         
-        # 開始通知
+        # Start notification
         if self.progress_callback:
             icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
             self.progress_callback(
@@ -898,11 +898,11 @@ class AgentRuntime:
         if self.verbose:
             print(f"  args: {args_dict}")
 
-        # キャンセルチェック
+        # Cancellation check
         if session_id:
             check_cancelled(session_id)
 
-        # ループ検出
+        # Loop detection
         allowed, block_msg = self.tool_tracker.check_and_record(func_name, args_dict)
         if not allowed:
             result = block_msg
@@ -915,10 +915,10 @@ class AgentRuntime:
         else:
             result = f"Error: Tool {func_name} not found"
 
-        # コンテキスト上限チェック
+        # Context limit check
         result = self._update_context_usage(result)
         
-        # Memory: ツール実行イベントを記録
+        # Memory: Record tool execution event
         if self.memory_service and session_id:
             try:
                 is_error = result.startswith("Error") if isinstance(result, str) else False
@@ -934,7 +934,7 @@ class AgentRuntime:
             except Exception:
                 pass  # Don't fail on memory errors
 
-        # 終了通知
+        # End notification
         if self.progress_callback:
             icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
             self.progress_callback(
@@ -952,27 +952,27 @@ class AgentRuntime:
 
     async def run(self, user_input: str, history: Optional[List[Any]] = None, session_id: Optional[str] = None) -> str:
         """
-        エージェントを実行する
+        Execute the agent
         """
         if self.progress_callback:
             self.progress_callback(event_type="start", agent_name=self.name)
 
-        # セッションIDを保存
+        # Save session ID
         self._current_session_id = session_id
 
-        # コンテキスト上限管理をリセット
+        # Reset context limit management
         self._accumulated_tokens = 0
         self._tool_call_count = 0
         self._context_limit_reached = False
         
-        # ツール呼び出しループ検出をリセット
+        # Reset tool call loop detection
         self.tool_tracker.reset()
 
-        # キャンセルチェック
+        # Cancellation check
         if session_id:
             check_cancelled(session_id)
 
-        # セマンティックメモリからの想起
+        # Recall from semantic memory
         self._recall_results = []
         try:
             self._recall_results = self.semantic_memory.search(user_input, top_k=3)
@@ -991,7 +991,7 @@ class AgentRuntime:
         else:
             result = await self._run_gemini(user_input, history, session_id=session_id)
 
-        # CostTrackerにコストを記録
+        # Record cost in CostTracker
         self._record_cost()
 
         if self.progress_callback:
@@ -1000,7 +1000,7 @@ class AgentRuntime:
         return result
 
     def _record_cost(self) -> None:
-        """CostTrackerにコストを記録"""
+        """Record cost in CostTracker"""
         if not self.last_usage:
             return
         try:
@@ -1014,7 +1014,7 @@ class AgentRuntime:
                 input_tokens=self.last_usage.get("prompt_tokens", 0),
                 output_tokens=self.last_usage.get("completion_tokens", 0),
             )
-            # プロバイダ名を決定
+            # Determine provider name
             provider_name = "gemini" if self.provider == LLMProvider.GEMINI else "openai"
             if self.provider == LLMProvider.OPENROUTER:
                 provider_name = "openrouter"
@@ -1031,7 +1031,7 @@ class AgentRuntime:
                 session_id=session_id,
             )
             
-            # DBにも永続化
+            # Persist to DB as well
             usage_store.record_usage(
                 provider=provider_name,
                 model=self.model_name,
@@ -1046,60 +1046,66 @@ class AgentRuntime:
                 print(f"Warning: Failed to record cost: {e}")
 
     def get_metrics(self) -> Dict[str, Any]:
-        """最新の実行メトリクスを取得"""
+        """Get the latest execution metrics"""
         return self.last_usage
 
     async def _run_openai(self, user_input: str, history: Optional[List[Any]] = None, session_id: Optional[str] = None) -> str:
-        """OpenAI GPTでエージェントを実行"""
+        """Execute agent with OpenAI GPT"""
         if history is None:
             history = []
 
-        # メッセージ構築
+        # Message construction
         messages = [{"role": "system", "content": self._get_system_prompt()}]
 
-        # 履歴を追加
+        # Add history
         for h in history:
             if isinstance(h, dict):
                 role = h.get("role", "user")
-                # Gemini形式 → OpenAI形式に変換
+                # Convert Gemini format -> OpenAI format
                 if role == "model":
                     role = "assistant"
-                # tool/function ロールはスキップ（一部モデルで未サポート）
+                # Skip tool/function roles (unsupported by some models)
                 if role not in ("system", "user", "assistant"):
                     continue
                 content = h.get("content", "")
                 if not content and "parts" in h:
                     parts = h.get("parts", [])
                     content = " ".join(str(p) for p in parts)
-                if content:  # 空メッセージはスキップ
+                if content:  # Skip empty messages
                     messages.append({"role": role, "content": content})
 
         messages.append({"role": "user", "content": user_input})
 
-        # ツール設定
+        # Tool settings
         tools = self.openai_tools if self.openai_tools else None
 
-        # max_iterations をコメントアウト: トークン上限で管理
+        # Z.ai doesn't support tool_stream in streaming mode for glm-4.7
+        # Force non-streaming when using tools to ensure tool calls work correctly
+        use_stream = self.stream
+        if self.provider == LLMProvider.ZAI and tools:
+            use_stream = False
+
+        # Commented out max_iterations: managed by token limit
         # iterations = 0
         # max_iterations = 20
         while True:
             if session_id:
                 check_cancelled(session_id)
             
-            # イテレーション警告はコメントアウト（トークン上限で管理）
+            # Iteration warnings commented out (managed by token limit)
             # remaining = max_iterations - iterations
             # if remaining <= 3 and remaining > 0:
             #     warning_msg = ...
             
             try:
-                if self.stream:
-                    # ストリーミングモード
-                    # reasoning/thinking モデルの場合
+                if use_stream:
+                    # Streaming mode
+                    # In case of reasoning/thinking model
                     if _is_reasoning_model(self.model_name):
                         extra_body = {}
                         
-                        # OpenRouter の場合は reasoning パラメータを使用
-                        # effort と max_tokens は同時に指定できない
+                        # Use reasoning parameter for OpenRouter
+                        # effort and max_tokens cannot be specified simultaneously
                         if self.provider == LLMProvider.OPENROUTER:
                             extra_body["reasoning"] = {
                                 "effort": "high"  # low, medium, high, xhigh
@@ -1112,11 +1118,11 @@ class AgentRuntime:
                             "stream": True,
                             "stream_options": {"include_usage": True},
                         }
-                        # OpenRouter以外の場合のみ parallel_tool_calls を設定
+                        # Set parallel_tool_calls only for non-OpenRouter providers
                         if self.provider != LLMProvider.OPENROUTER:
                             create_kwargs["parallel_tool_calls"] = True
                         
-                        # OpenAI o1/o3 の場合は reasoning_effort を使用
+                        # Use reasoning_effort for OpenAI o1/o3
                         if self.provider != LLMProvider.OPENROUTER:
                             create_kwargs["reasoning_effort"] = "medium"
                         
@@ -1125,7 +1131,7 @@ class AgentRuntime:
                         
                         response = await self.openai_client.chat.completions.create(**create_kwargs)
                     else:
-                        # OpenRouter/Bedrockでは parallel_tool_calls がサポートされない場合がある
+                        # parallel_tool_calls might not be supported on OpenRouter/Bedrock
                         create_kwargs = {
                             "model": self.model_name,
                             "messages": messages,
@@ -1134,21 +1140,21 @@ class AgentRuntime:
                             "stream": True,
                             "stream_options": {"include_usage": True},
                         }
-                        # OpenRouter以外の場合のみ parallel_tool_calls を設定
+                        # Set parallel_tool_calls only for non-OpenRouter providers
                         if self.provider != LLMProvider.OPENROUTER:
                             create_kwargs["parallel_tool_calls"] = True
                         response = await self.openai_client.chat.completions.create(**create_kwargs)
 
-                    # ストリーミングレスポンスを処理
+                    # Process streaming response
                     collected_content = ""
                     collected_tool_calls = []
                     current_tool_call = None
-                    # 思考テキストのバッファリング（GLM等の細かいチャンク対策）
+                    # Buffering thinking text (mitigation for fine chunks in GLM, etc.)
                     reasoning_buffer = ""
                     reasoning_header_shown = False
 
                     async for chunk in response:
-                        # usage情報の取得（最後のチャンクに含まれる）
+                        # Get usage information (included in the last chunk)
                         if hasattr(chunk, "usage") and chunk.usage:
                             self.last_usage = {
                                 "prompt_tokens": int(chunk.usage.prompt_tokens or 0),
@@ -1160,22 +1166,22 @@ class AgentRuntime:
                         if not delta:
                             continue
 
-                        # reasoning/thinking コンテンツの処理
-                        # OpenRouter: delta.reasoning または delta.reasoning_details
+                        # Processing reasoning/thinking content
+                        # OpenRouter: delta.reasoning or delta.reasoning_details
                         # OpenAI o1/o3: delta.reasoning_content
                         reasoning_text = None
-                        # OpenRouter: reasoning フィールド（文字列）
+                        # OpenRouter: reasoning field (string)
                         if hasattr(delta, 'reasoning') and delta.reasoning:
                             reasoning_text = delta.reasoning
-                        # OpenRouter: reasoning_details フィールド（配列）
+                        # OpenRouter: reasoning_details field (array)
                         elif hasattr(delta, 'reasoning_details') and delta.reasoning_details:
                             if isinstance(delta.reasoning_details, list):
                                 for detail in delta.reasoning_details:
-                                    # dict の場合
+                                    # In case of dict
                                     if isinstance(detail, dict) and detail.get('text'):
                                         reasoning_text = detail['text']
                                         break
-                                    # object の場合
+                                    # In case of object
                                     elif hasattr(detail, 'text') and detail.text:
                                         reasoning_text = detail.text
                                         break
@@ -1187,27 +1193,27 @@ class AgentRuntime:
                         
                         if reasoning_text:
                             if self.progress_callback:
-                                # Web UI経由: progress_callback でバッチ化して送信
+                                # Via Web UI: Send batched via progress_callback
                                 self.progress_callback(
                                     event_type="thinking",
                                     content=reasoning_text,
                                     agent_name=self.name
                                 )
                             else:
-                                # CLI直接実行: verbose のときだけ思考過程を表示する
+                                # CLI direct execution: Show thinking process only in verbose mode
                                 if self.verbose and not self.progress_callback:
-                                    # バッファリングして句点/改行/一定文字数でフラッシュ
+                                    # Buffer and flush at periods, newlines, or a certain number of characters
                                     reasoning_buffer += reasoning_text
-                                    # ヘッダーを1回だけ表示
+                                    # Show header only once
                                     if not reasoning_header_shown:
-                                        _safe_stream_print("\n💭 [思考中...]\n")
+                                        _safe_stream_print("\n💭 [Thinking...]\n")
                                         reasoning_header_shown = True
-                                    # フラッシュ条件: 句点、改行、または80文字以上
-                                    while len(reasoning_buffer) >= 80 or any(c in reasoning_buffer for c in '。\n'):
-                                        # 句点か改行があればそこまで出力
+                                    # Flush conditions: period, newline, or 80+ characters
+                                    while len(reasoning_buffer) >= 80 or any(c in reasoning_buffer for c in '.\n'):
+                                        # If there is a period or newline, output until there
                                         flush_pos = -1
                                         for i, c in enumerate(reasoning_buffer):
-                                            if c in '。\n':
+                                            if c in '.\n':
                                                 flush_pos = i + 1
                                                 break
                                         if flush_pos == -1 and len(reasoning_buffer) >= 80:
@@ -1218,14 +1224,14 @@ class AgentRuntime:
                                         else:
                                             break
                                 else:
-                                    # verbose でない場合は思考バッファを使わない
+                                    # Do not use thinking buffer if not in verbose mode
                                     reasoning_buffer = ""
-                        # テキストコンテンツをストリーム出力
+                        # Stream output text content
                         if delta.content:
                             if not self.progress_callback:
                                 _safe_stream_print(delta.content)
                             collected_content += delta.content
-                            self._partial_response = collected_content  # エラー時の復旧用
+                            self._partial_response = collected_content  # For recovery on error
                             if self.progress_callback:
                                 self.progress_callback(
                                     event_type="chunk",
@@ -1233,16 +1239,16 @@ class AgentRuntime:
                                     agent_name=self.name
                                 )
 
-                        # ツール呼び出しの収集
+                        # Collecting tool calls
                         if delta.tool_calls:
                             for tc_delta in delta.tool_calls:
-                                # OpenAI SDK/モデルによっては index が入らないことがある
-                                # その場合は単一呼び出しとして index=0 扱いにする
+                                # Index might be missing depending on the OpenAI SDK/model
+                                # In that case, treat as a single call with index=0
                                 idx = getattr(tc_delta, "index", None)
                                 if idx is None:
                                     idx = 0
 
-                                # 新しいツール呼び出しまたは既存の更新
+                                # New tool call or update existing
                                 while len(collected_tool_calls) <= idx:
                                     collected_tool_calls.append({
                                         "id": "",
@@ -1265,21 +1271,21 @@ class AgentRuntime:
                                         else:
                                             tc["function"]["arguments"] += new_args  # 断片→連結
 
-                    # 残りの思考バッファをフラッシュ（verbose のときだけ）
+                    # Flush remaining thinking buffer (verbose only)
                     if reasoning_buffer and self.verbose and not self.progress_callback:
                         _safe_stream_print(reasoning_buffer)
                         reasoning_buffer = ""
                     if reasoning_header_shown and self.verbose and not self.progress_callback:
-                        _safe_stream_print("\n[/思考]\n")
+                        _safe_stream_print("\n[/Thinking]\n")
 
                     if collected_content and not self.progress_callback:
-                        _safe_stream_print("\n")  # 改行
+                        _safe_stream_print("\n")  # Newline
 
-                    # ツール呼び出しがあるか確認
-                    # OpenAI のストリーミングでは tool_call_id が欠落するケースがあるため、
-                    # id の有無ではなく function.name の有無で判定する
+                    # Check for tool calls
+                    # As tool_call_id might be missing in OpenAI streaming,
+                    # determine based on the presence of function.name rather than the id
                     if collected_tool_calls and any(tc.get("function", {}).get("name") for tc in collected_tool_calls):
-                        # ツール呼び出しを処理
+                        # Process tool calls
                         messages.append({
                             "role": "assistant",
                             "content": collected_content or "",
@@ -1292,7 +1298,7 @@ class AgentRuntime:
 
                             result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
 
-                            # tool_call_id が空の場合でも進められるように補完
+                            # Complement tool_call_id if empty to allow proceeding
                             if not tc.get("id"):
                                 tc["id"] = f"call_{idx}"
 
@@ -1302,7 +1308,7 @@ class AgentRuntime:
                                 "content": str(result)
                             })
                         
-                        # 80%超過時にコンテキスト圧縮
+                        # Compress context when exceeding 80%
                         usage_ratio = self._accumulated_tokens / MAX_CONTEXT_TOKENS
                         if usage_ratio >= CONTEXT_WARNING_THRESHOLD:
                             compressor = ContextCompressor(
@@ -1315,15 +1321,15 @@ class AgentRuntime:
                                 if self.verbose:
                                     print(f"\n🗜️ [Context compressed: {self._accumulated_tokens:,} tokens]")
                         
-                        continue  # 次のイテレーション
+                        continue  # Next iteration
                     else:
-                        # 空の場合は部分応答を返す
+                        # If empty, return partial response
                         if not collected_content and self._partial_response:
                             return self._partial_response
                         return collected_content
                 else:
-                    # 非ストリーミングモード
-                    # reasoning モデル (o1/o3) の場合は reasoning_effort を使用
+                    # Non-streaming mode
+                    # Use reasoning_effort for reasoning models (o1/o3)
                     if _is_reasoning_model(self.model_name):
                         create_kwargs = {
                             "model": self.model_name,
@@ -1344,7 +1350,7 @@ class AgentRuntime:
                         if self.provider != LLMProvider.OPENROUTER:
                             create_kwargs["parallel_tool_calls"] = True
                         response = await self.openai_client.chat.completions.create(**create_kwargs)
-                    # usage記録
+                    # usage recording
                     if hasattr(response, "usage") and response.usage:
                         self.last_usage = {
                             "prompt_tokens": int(response.usage.prompt_tokens or 0),
@@ -1356,15 +1362,15 @@ class AgentRuntime:
             except Exception as e:
                 return f"Error calling OpenAI API: {e}"
 
-            if not self.stream:
+            if not use_stream:
                 choice = response.choices[0]
                 message = choice.message
             else:
-                continue  # ストリーミングの場合は上で処理済み
+                continue  # Already processed above for streaming
 
-            # ツール呼び出しの確認（非ストリーミング）
+            # Check for tool calls (non-streaming)
             if message.tool_calls:
-                # アシスタントメッセージを追加
+                # Add assistant message
                 messages.append({
                     "role": "assistant",
                     "content": message.content or "",
@@ -1381,7 +1387,7 @@ class AgentRuntime:
                     ]
                 })
 
-                # ツール実行（並列化）
+                # Tool execution (parallelized)
                 async def execute_one(tc):
                     func_name = tc.function.name
                     args_dict = SmartJSONParser.parse(tc.function.arguments, default={})
@@ -1397,7 +1403,7 @@ class AgentRuntime:
                 tool_results = await asyncio.gather(*tasks)
                 messages.extend(tool_results)
                 
-                # 80%超過時にコンテキスト圧縮
+                # Compress context when exceeding 80%
                 usage_ratio = self._accumulated_tokens / MAX_CONTEXT_TOKENS
                 if usage_ratio >= CONTEXT_WARNING_THRESHOLD:
                     compressor = ContextCompressor(
@@ -1410,37 +1416,37 @@ class AgentRuntime:
                         if self.verbose:
                             print(f"[Context compressed: {self._accumulated_tokens:,} tokens]")
             else:
-                # テキスト応答を返す
+                # Return text response
                 return message.content or ""
 
-        # max_iterations に達した場合
+        # If max_iterations is reached
         if self._partial_response:
-            return f"[最大イテレーション到達]\n{self._partial_response}"
+            return f"[Max iterations reached]\n{self._partial_response}"
         return "Error: Max iterations reached without response."
 
     async def _run_gemini(self, user_input: str, history: Optional[List[Any]] = None, session_id: Optional[str] = None) -> str:
-        """Geminiでエージェントを実行"""
+        """Execute agent with Gemini"""
         if history is None:
             history = []
 
-        # システムプロンプトの構築
+        # System prompt construction
         system_instruction = self._get_system_prompt()
 
-        # ツール設定
+        # Tool settings
         tools_config = None
         if self.tool_declarations:
-            # Python関数をそのまま渡すと自動的にスキーマ生成される
+            # Passing Python functions directly often generates schemas automatically
             tools_config = [types.Tool(function_declarations=self.tool_declarations)]
 
         messages = []
-        # 履歴の追加（dict形式をContent形式に変換）
+        # Add history (convert dict format to Content format)
         for h in history:
             if isinstance(h, dict):
                 role = h.get("role", "user")
                 parts = h.get("parts", [])
                 if not parts and "content" in h:
                     parts = [h["content"]]
-                # partsをPartオブジェクトに変換
+                # Convert parts to Part objects
                 part_objects = []
                 for p in parts:
                     if isinstance(p, str):
@@ -1449,19 +1455,19 @@ class AgentRuntime:
                         part_objects.append(p)
                 messages.append(types.Content(role=role, parts=part_objects))
             else:
-                # 既にContent形式の場合
+                # If already in Content format
                 messages.append(h)
 
         messages.append(types.Content(role="user", parts=[types.Part(text=user_input)]))
 
-        # 設定（thinking mode を有効化）
+        # Settings (enable thinking mode)
         config = types.GenerateContentConfig(
             system_instruction=system_instruction,
             tools=tools_config,
             temperature=0.7,
             thinking_config=types.ThinkingConfig(
                 include_thoughts=True,
-                thinking_budget=32768,  # API仕様上の最小値
+                thinking_budget=32768,  # Minimum value per API specs
             ),
         )
 
@@ -1471,7 +1477,7 @@ class AgentRuntime:
 
             try:
                 if self.stream:
-                    # ストリーミングモード
+                    # Streaming mode
                     response_stream = self.client.models.generate_content_stream(
                         model=self.model_name,
                         contents=messages,
@@ -1483,7 +1489,7 @@ class AgentRuntime:
                     function_calls = []
 
                     for chunk in response_stream:
-                        # usage情報の取得
+                        # Get usage information
                         if chunk.usage_metadata:
                             self.last_usage = {
                                 "prompt_tokens": int(chunk.usage_metadata.prompt_token_count or 0),
@@ -1499,7 +1505,7 @@ class AgentRuntime:
                             continue
 
                         for part in candidate.content.parts or []:
-                            # 思考プロセスの表示 (verbose モードのみ)
+                            # Display thinking process (verbose mode only)
                             if hasattr(part, 'thought') and part.thought and part.text:
                                 if self.progress_callback:
                                     self.progress_callback(
@@ -1508,7 +1514,7 @@ class AgentRuntime:
                                         agent_name=self.name
                                     )
                                 elif self.verbose:
-                                    thought_text = f"\n💭 [思考中...]\n{part.text}\n[/思考]\n"
+                                    thought_text = f"\n💭 [Thinking...]\n{part.text}\n[/Thinking]\n"
                                     _safe_stream_print(thought_text)
                                 continue
                             if part.text:
@@ -1532,7 +1538,7 @@ class AgentRuntime:
 
                     if function_calls:
                         messages.append(types.Content(role="model", parts=collected_parts))
-                        # ツール実行（並列化）
+                        # Tool execution (parallelized)
                         async def execute_one(fc):
                             func_name = fc.name
                             args = fc.args
@@ -1559,7 +1565,7 @@ class AgentRuntime:
                         return collected_text
 
                 else:
-                    # 非ストリーミングモード
+                    # Non-streaming mode
                     response = self.client.models.generate_content(
                         model=self.model_name,
                         contents=messages,
@@ -1592,11 +1598,11 @@ class AgentRuntime:
                                     agent_name=self.name
                                 )
                             elif self.verbose:
-                                print(f"\n💭 [思考中...]\n{part.text}\n[/思考]")
+                                print(f"\n💭 [Thinking...]\n{part.text}\n[/Thinking]")
 
                     function_calls = [p.function_call for p in message.parts if p.function_call]
                     if function_calls:
-                        # ツール実行（並列化）
+                        # Tool execution (parallelized)
                         async def execute_one(fc):
                             func_name = fc.name
                             args = fc.args
