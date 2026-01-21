@@ -173,7 +173,8 @@ def _format_tool_log(tool_name: str, args: dict) -> tuple:
             arg_str += " ..."
 
     elif tool_name == "delegate_to_agent":
-        arg_str = f"@{args.get('agent_name') or ''}"
+        name = args.get('agent_name') or ''
+        arg_str = name if name.startswith('@') else f"@{name}"
 
     elif tool_name in ("websearch", "codebase_search"):
         q = args.get("query") or ""
