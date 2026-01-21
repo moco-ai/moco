@@ -13,6 +13,7 @@ from ..cancellation import check_cancelled, clear_cancel_event, OperationCancell
 from .runtime import AgentRuntime, LLMProvider
 from ..storage.session_logger import SessionLogger
 from ..storage.semantic_memory import SemanticMemory
+from ..memory import MemoryService
 from ..utils.json_parser import SmartJSONParser
 
 # Optimizer components
@@ -128,6 +129,13 @@ class Orchestrator:
         db_path = os.getenv("SEMANTIC_DB_PATH", str(Path.cwd() / "data" / "semantic.db"))
         self.semantic_memory = SemanticMemory(db_path=db_path)
 
+        # MemoryService（学習・記憶システム）の初期化
+        memory_db_path = os.getenv("MEMORY_DB_PATH", str(Path.cwd() / "data" / "memory.db"))
+        self.memory_service = MemoryService(
+            channel_id=self.profile,  # プロファイルごとに記憶を分離
+            db_path=memory_db_path
+        )
+
         # ツールを動的に読み込む
         self.tool_map = discover_tools(profile=self.profile)
 
@@ -179,7 +187,8 @@ class Orchestrator:
                     verbose=self.verbose,
                     progress_callback=self.progress_callback,
                     parent_agent=None if name == "orchestrator" else "orchestrator",
-                    semantic_memory=self.semantic_memory
+                    semantic_memory=self.semantic_memory,
+                    memory_service=self.memory_service
                 )
             else:
                 self.runtimes[name] = AgentRuntime(
@@ -193,7 +202,8 @@ class Orchestrator:
                     verbose=self.verbose,
                     progress_callback=self.progress_callback,
                     parent_agent="orchestrator",  # サブエージェントの親はorchestrator
-                    semantic_memory=self.semantic_memory
+                    semantic_memory=self.semantic_memory,
+                    memory_service=self.memory_service
                 )
 
     def _create_delegate_tool(self, available_agents: list):
@@ -390,7 +400,43 @@ class Orchestrator:
         # Optimizer: メトリクス記録
         await self._record_execution_metrics(session_id, user_input, response)
 
+        # MemoryService: 会話から学習
+        await self._learn_from_conversation(user_input, response)
+
         return response
+    
+    async def _learn_from_conversation(
+        self,
+        user_input: str,
+        response: str
+    ) -> None:
+        """会話から学習すべき内容を分析して記憶する"""
+        if not self.memory_service:
+            return
+        
+        try:
+            # 非同期で分析を実行（ブロッキングを避ける）
+            import asyncio
+            analysis = await asyncio.to_thread(
+                self.memory_service.analyze,
+                user_input,
+                response
+            )
+            
+            if analysis.get("should_learn") and analysis.get("content"):
+                # 学習実行
+                await asyncio.to_thread(
+                    self.memory_service.learn,
+                    content=analysis["content"],
+                    memory_type=analysis.get("type", "knowledge"),
+                    keywords=analysis.get("keywords", []),
+                    source="conversation"
+                )
+                if self.verbose:
+                    moco_log(f"[Memory] Learned: {analysis['content'][:50]}...", self.verbose)
+        except Exception as e:
+            if self.verbose:
+                moco_log(f"[Memory] Learning failed: {e}", self.verbose)
     
     async def _record_execution_metrics(
         self,

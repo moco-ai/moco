@@ -18,6 +18,8 @@ Memory Service - 記憶・学習システム API (SQLite版)
     result = memory.analyze(user_message, response)
     
     # 4. 必要なら記憶保存
+
+Note: LLM レスポンスの JSON 解析には SmartJSONParser を使用
     if result["should_learn"]:
         memory.learn(result)
 """
@@ -33,6 +35,7 @@ from .db import init_db, get_conn
 from .embeddings import GENAI_AVAILABLE, build_genai_client, embed_text
 from .serialization import serialize_embedding, deserialize_embedding, deserialize_keywords
 from .similarity import cos_sim
+from ..utils.json_parser import SmartJSONParser
 
 # Lazy import for GraphStore (requires networkx)
 GraphStore = None
@@ -453,7 +456,13 @@ scoreが{self.feedback_threshold}以上の時のみruleを作成。それ以外�
                     config=types.GenerateContentConfig(response_mime_type="application/json"),
                     contents=[{"role":"user", "parts":[{"text":prompt}]}]
                 )
-                result = json.loads(r.text)
+                # .text を使うと警告が出るため、直接 parts からテキストを取得
+                response_text = ""
+                if r.candidates and r.candidates[0].content and r.candidates[0].content.parts:
+                    for part in r.candidates[0].content.parts:
+                        if hasattr(part, 'text') and part.text:
+                            response_text += part.text
+                result = SmartJSONParser.parse(response_text, default={})
             
             # OpenAI の場合
             elif hasattr(client, "chat"):
@@ -462,10 +471,16 @@ scoreが{self.feedback_threshold}以上の時のみruleを作成。それ以外�
                     messages=[{"role": "user", "content": prompt}],
                     response_format={"type": "json_object"}
                 )
-                result = json.loads(r.choices[0].message.content)
+                result = SmartJSONParser.parse(r.choices[0].message.content, default={})
             
             else:
                 raise ValueError("Unsupported LLM client")
+
+            # result がリストの場合は最初の要素を使用、辞書でない場合は空辞書
+            if isinstance(result, list):
+                result = result[0] if result else {}
+            if not isinstance(result, dict):
+                result = {}
 
             score = result.get("score", 0)
             rule = result.get("rule")
@@ -575,7 +590,13 @@ scoreが{self.feedback_threshold}以上の時のみruleを作成。それ以外�
                     config=types.GenerateContentConfig(response_mime_type="application/json"),
                     contents=[{"role":"user", "parts":[{"text":prompt}]}]
                 )
-                result = json.loads(r.text)
+                # .text を使うと警告が出るため、直接 parts からテキストを取得
+                response_text = ""
+                if r.candidates and r.candidates[0].content and r.candidates[0].content.parts:
+                    for part in r.candidates[0].content.parts:
+                        if hasattr(part, 'text') and part.text:
+                            response_text += part.text
+                result = SmartJSONParser.parse(response_text, default={})
                 return result.get("delete_ids", [])
             else:
                 # OpenAI fallback (omitted for brevity, assuming Gemini)

@@ -635,6 +635,10 @@ class AgentRuntime:
         self.skills: List[SkillConfig] = skills or []
         self.memory_service = memory_service
         
+        # メモリコンテキスト（run() で動的に更新）
+        self._memory_context = ""
+        self._recall_results = []
+        
         # ツール呼び出しループ検出
         self.tool_tracker = ToolCallTracker(max_repeats=3, window_size=10)
         
@@ -804,7 +808,7 @@ class AgentRuntime:
         # コンテキスト情報の構築
         context_header = f"---\n[Current Context]\nTimestamp: {now_str}\n"
         
-        # 想起結果の追加
+        # 想起結果の追加（セマンティックメモリ）
         if hasattr(self, "_recall_results") and self._recall_results:
             context_header += "\n[Related Knowledge/Past Incidents]\n"
             for i, res in enumerate(self._recall_results):
@@ -813,6 +817,10 @@ class AgentRuntime:
                 if len(content) > 1000:
                     content = content[:1000] + "..."
                 context_header += f"- Knowledge {i+1}:\n{content}\n"
+        
+        # MemoryService からの記憶コンテキスト追加
+        if hasattr(self, "_memory_context") and self._memory_context:
+            context_header += f"\n{self._memory_context}\n"
         
         context_header += "---\n\n"
 
@@ -985,6 +993,17 @@ class AgentRuntime:
         except Exception as e:
             if self.verbose:
                 print(f"Warning: Semantic recall failed: {e}")
+
+        # MemoryService からの記憶コンテキスト取得
+        self._memory_context = ""
+        if self.memory_service:
+            try:
+                self._memory_context = self.memory_service.get_context_prompt(user_input)
+                if self._memory_context and self.verbose:
+                    print(f"[Memory] Retrieved context: {len(self._memory_context)} chars")
+            except Exception as e:
+                if self.verbose:
+                    print(f"Warning: Memory recall failed: {e}")
 
         if self.provider in (LLMProvider.OPENAI, LLMProvider.OPENROUTER, LLMProvider.ZAI):
             result = await self._run_openai(user_input, history, session_id=session_id)

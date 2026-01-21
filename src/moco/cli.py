@@ -11,6 +11,9 @@ try:
     # urllib3 の NotOpenSSLWarning はインポート時に発生するため、
     # 警告フィルターを先に設定しておく必要がある
     warnings.filterwarnings("ignore", message=".*urllib3 v2 only supports OpenSSL 1.1.1+.*")
+    # Google GenAI の thought_signature 警告を抑制
+    warnings.filterwarnings("ignore", message=".*non-text parts in the response.*")
+    warnings.filterwarnings("ignore", message=".*thought_signature.*")
 except Exception:
     pass
 
@@ -516,7 +519,6 @@ def chat(
     new_session: bool = typer.Option(False, "--new", help="新規セッションを強制開始"),
     theme: ThemeName = typer.Option(ThemeName.DEFAULT, "--theme", help="UIカラーテーマ", case_sensitive=False),
     use_optimizer: bool = typer.Option(False, "--optimizer/--no-optimizer", help="Optimizerによるエージェント自動選択"),
-    working_dir: Optional[str] = typer.Option(None, "--working-dir", "-w", help="作業ディレクトリ"),
 ):
     """対話型チャット"""
     from .ui.layout import ui_state
@@ -542,14 +544,6 @@ def chat(
 
     provider_enum, model = resolve_provider(provider, model)
 
-    # working_dir の解決
-    resolved_working_dir = None
-    if working_dir:
-        resolved_working_dir = os.path.abspath(working_dir)
-        if not os.path.isdir(resolved_working_dir):
-            console.print(f"[red]Error: Directory does not exist: {working_dir}[/red]")
-            raise typer.Exit(code=1)
-
     with console.status(f"[bold cyan]Initializing Orchestrator ({profile})...[/]"):
         o = Orchestrator(
             profile=profile,
@@ -558,7 +552,6 @@ def chat(
             stream=stream,
             verbose=verbose,
             use_optimizer=use_optimizer,
-            working_directory=resolved_working_dir,
         )
 
     # Context for slash commands
