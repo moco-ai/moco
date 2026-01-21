@@ -10,6 +10,7 @@ import sys
 from collections import defaultdict
 
 from ..tools.skill_loader import SkillConfig
+from ..utils.json_parser import SmartJSONParser
 
 
 class ToolCallTracker:
@@ -376,6 +377,11 @@ def _dict_to_gemini_messages(messages: List[Dict[str, Any]]) -> List[Any]:
 
 # 全エージェント共通ルール（システムプロンプトに自動注入）
 COMMON_AGENT_RULES = """
+## 🔧 ツール呼び出しのルール
+
+`delegate_to_agent` でサブエージェントに委譲するときは、**必ずツール呼び出し（JSON形式）で実行**してください。
+Markdown で「delegate_to_agent: @name」と書くのではなく、実際にツールを呼び出してください。
+
 ## ⛔ ツール呼び出し上限時のルール
 
 ### 自分が上限に達した場合
@@ -1282,10 +1288,7 @@ class AgentRuntime:
 
                         for idx, tc in enumerate(collected_tool_calls):
                             func_name = tc["function"]["name"]
-                            try:
-                                args_dict = json.loads(tc["function"]["arguments"])
-                            except json.JSONDecodeError:
-                                args_dict = {}
+                            args_dict = SmartJSONParser.parse(tc["function"]["arguments"], default={})
 
                             result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
 
@@ -1381,10 +1384,7 @@ class AgentRuntime:
                 # ツール実行（並列化）
                 async def execute_one(tc):
                     func_name = tc.function.name
-                    try:
-                        args_dict = json.loads(tc.function.arguments)
-                    except json.JSONDecodeError:
-                        args_dict = {}
+                    args_dict = SmartJSONParser.parse(tc.function.arguments, default={})
                     
                     result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
                     return {
