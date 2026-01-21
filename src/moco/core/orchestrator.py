@@ -203,6 +203,10 @@ class Orchestrator:
         def delegate_to_agent(agent_name: str, task: str) -> str:
             """
             サブエージェントにタスクを委譲します。
+            
+            重要: 委譲するときは必ずこのツールを呼び出してください。
+            Markdown で「delegate_to_agent: @name」と書くのではなく、
+            このツールを実際に呼び出して委譲を実行してください。
 
             Args:
                 agent_name: 委譲先エージェント名（例: backend-coder, code-reviewer）
