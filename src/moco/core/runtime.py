@@ -659,7 +659,7 @@ class AgentRuntime:
         if model:
             self.model_name = model
         elif self.provider == LLMProvider.OPENROUTER:
-            self.model_name = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp")  # Reasoning support
+            self.model_name = os.environ.get("OPENROUTER_MODEL", "google/gemini-3-flash-preview")
         elif self.provider == LLMProvider.OPENAI:
             self.model_name = os.environ.get("OPENAI_MODEL", "gpt-4o")
         elif self.provider == LLMProvider.ZAI:
