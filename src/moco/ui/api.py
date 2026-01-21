@@ -8,18 +8,12 @@ import asyncio
 import queue
 import threading
 import time
-import sys
+from pathlib import Path
 from typing import Optional
-
-# moco imports - sys.path must be set before importing moco modules
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
-from moco.common.schemas import ChatRequest, SessionCreate, FileResponse
-from moco.common.errors import setup_exception_handlers
 import json
 import sqlite3
 import logging
@@ -29,10 +23,13 @@ from dotenv import load_dotenv, find_dotenv
 # .env を読み込む（親方向に自動探索）
 load_dotenv(find_dotenv())
 
+# moco imports
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 from moco.core.orchestrator import Orchestrator
 from moco.storage.session_logger import SessionLogger
 from moco.tools.discovery import _find_profiles_dir
-from moco.utils.json_parser import SmartJSONParser
 from moco.cancellation import (
     create_cancel_event,
     request_cancel,
@@ -66,7 +63,6 @@ def filter_response_for_display(response: str, verbose: bool = False) -> str:
     return response
 
 app = FastAPI(title="Moco", version="1.0.0")
-setup_exception_handlers(app)
 
 # 静的ファイルのマウント
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -89,6 +85,30 @@ def get_orchestrator(profile: str, provider: str = "gemini", verbose: bool = Fal
         working_directory=work_dir
     )
 
+
+# === Models ===
+
+class ChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    profile: str = "development"
+    provider: str = "gemini"
+    model: Optional[str] = None  # OpenRouter用モデル名
+    verbose: bool = False
+    working_directory: Optional[str] = None  # 作業ディレクトリ（セッションごとに設定可能）
+
+
+class SessionCreate(BaseModel):
+    title: str = "New Chat"
+    profile: str = "development"
+    working_directory: Optional[str] = None  # 作業ディレクトリ
+
+
+class FileResponse(BaseModel):
+    content: str
+    line_count: int
+    size: int
+    path: str
 
 
 # === Routes ===
@@ -234,23 +254,9 @@ async def get_session(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
 
     history = session_logger._get_recent_messages(session_id, limit=100)
-    events = session_logger.get_events(session_id, limit=50)
-    
-    # イベントの content が JSON 文字列の場合はデコード
-    processed_events = []
-    for ev in events:
-        try:
-            content = ev["content"]
-            if isinstance(content, str) and (content.startswith("{") or content.startswith("[")):
-                ev["content"] = json.loads(content)
-        except Exception:
-            pass
-        processed_events.append(ev)
-
     return {
         "session": session,
-        "messages": history,
-        "insights": processed_events
+        "messages": history
     }
 
 
@@ -324,46 +330,12 @@ async def delete_session(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _init_metrics_db(db_path: Path):
-    """metrics.db の初期化（テーブル作成）"""
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
-    cursor = conn.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS metrics (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ai_score REAL, task_summary TEXT, task_complexity REAL, delegation_count INTEGER, todo_used INTEGER, history_turns INTEGER, summary_depth INTEGER, prompt_specificity REAL, profile TEXT)")
-    cursor.execute("CREATE TABLE IF NOT EXISTS agent_executions (id INTEGER PRIMARY KEY AUTOINCREMENT, request_id INTEGER, agent_name TEXT, inline_score REAL, tokens_input INTEGER, tokens_output INTEGER, execution_time_ms INTEGER, error_message TEXT, summary_depth INTEGER, history_turns INTEGER, FOREIGN KEY (request_id) REFERENCES metrics (id))")
-    conn.commit()
-    conn.close()
-
-
 @app.get("/api/stats")
 async def get_stats(session_id: Optional[str] = None, scope: str = "all"):
     """統計データを取得"""
     try:
         from pathlib import Path
-        # DBパスの決定ロジック
-        work_dir = os.getenv("MOCO_WORKING_DIRECTORY")
-        db_path = None
-        
-        if work_dir:
-            db_path = Path(work_dir) / "data" / "optimizer" / "metrics.db"
-        
-        if not db_path or not db_path.exists():
-            curr = Path.cwd()
-            for _ in range(5):
-                target = curr / "data" / "optimizer" / "metrics.db"
-                if target.exists():
-                    db_path = target
-                    break
-                if curr.parent == curr: break
-                curr = curr.parent
-        
-        if not db_path or not db_path.exists():
-            alternative_path = Path(__file__).resolve().parent.parent.parent.parent / "data" / "optimizer" / "metrics.db"
-            if alternative_path.exists():
-                db_path = alternative_path
-        
-        if not db_path:
-            db_path = Path.cwd() / "data" / "optimizer" / "metrics.db"
+        db_path = Path(__file__).parent.parent.parent.parent / "data" / "optimizer" / "metrics.db"
         
         # デフォルトのレスポンス構造
         stats = {
@@ -390,10 +362,16 @@ async def get_stats(session_id: Optional[str] = None, scope: str = "all"):
         if scope == "session" and not session_id:
             return stats
 
-        # 初期化（存在しない場合のみ）
+        # ディレクトリ作成と初期化
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         if not db_path.exists():
-            _init_metrics_db(db_path)
-            # 作成直後はデータがないので空の統計を返す
+            # 新規作成時は空の統計を返す（テーブル作成後にデータがない状態と同じ）
+            conn = sqlite3.connect(str(db_path))
+            # ここでテーブル作成
+            cursor = conn.cursor()
+            cursor.execute("CREATE TABLE IF NOT EXISTS metrics (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ai_score REAL, task_summary TEXT, task_complexity REAL, delegation_count INTEGER, todo_used INTEGER, history_turns INTEGER, summary_depth INTEGER, prompt_specificity REAL, profile TEXT)")
+            cursor.execute("CREATE TABLE IF NOT EXISTS agent_executions (id INTEGER PRIMARY KEY AUTOINCREMENT, request_id INTEGER, agent_name TEXT, inline_score REAL, tokens_input INTEGER, tokens_output INTEGER, execution_time_ms INTEGER, error_message TEXT, summary_depth INTEGER, history_turns INTEGER, FOREIGN KEY (request_id) REFERENCES metrics (id))")
+            conn.commit()
             return stats
         
         conn = sqlite3.connect(str(db_path))
@@ -702,42 +680,31 @@ async def chat_stream(req: ChatRequest):
             if parts:
                 clean_name = parts[-1]
 
-        # インサイトパネル用のイベント送信 & 永続化
+        # インサイトパネル用のイベント送信
         if event_type == "recall":
             results = kwargs.get("results", [])
             for res in results:
-                q = detail or "Semantic Recall"
-                d = res.get("content", "") if isinstance(res, dict) else str(res)
-                event_data = {
+                event_queue.put({
                     "type": "recall",
                     "recall_type": "Memory",
-                    "query": q,
-                    "details": d
-                }
-                event_queue.put(event_data)
-                if session_id:
-                    session_logger.add_event(session_id, "insight", "memory", event_data)
+                    "query": detail or "Semantic Recall",
+                    "details": res.get("content", "") if isinstance(res, dict) else str(res)
+                })
         elif event_type == "delegate" and status == "running":
-            event_data = {
+            event_queue.put({
                 "type": "recall",
                 "recall_type": "Delegation",
                 "query": f"→ @{clean_name}",
                 "details": detail
-            }
-            event_queue.put(event_data)
-            if session_id:
-                session_logger.add_event(session_id, "insight", "delegation", event_data)
+            })
         elif event_type == "tool" and status == "completed":
             # ツール実行結果もインサイトに表示
-            event_data = {
+            event_queue.put({
                 "type": "recall",
                 "recall_type": "Tool",
                 "query": f"🛠️ {tool_name or clean_name}",
                 "details": result
-            }
-            event_queue.put(event_data)
-            if session_id:
-                session_logger.add_event(session_id, "insight", "tool", event_data)
+            })
 
         # app.js が期待する形式（agent, parent, tool, event, status）に統一
         data = {
@@ -858,17 +825,6 @@ async def chat_stream(req: ChatRequest):
             "X-Accel-Buffering": "no"  # Nginxなどのバッファリングを無効化
         }
     )
-
-@app.post("/api/debug/parse-json")
-async def debug_parse_json(req: dict):
-    """
-    汚れた JSON 文字列をクリーンアップしてパースするデバッグ用エンドポイント
-    """
-    text = req.get("text", "")
-    result = SmartJSONParser.parse(text)
-    if result is None:
-        raise HTTPException(status_code=400, detail="Failed to parse JSON")
-    return {"result": result}
 
 
 if __name__ == "__main__":
