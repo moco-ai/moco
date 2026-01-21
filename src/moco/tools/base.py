@@ -131,7 +131,19 @@ def read_file(path: str, offset: int = None, limit: int = None) -> str:
 
 def write_file(path: str, content: str, overwrite: bool = False) -> str:
     """
-    ファイルに内容を書き込みます。
+    ファイルに内容を書き込みます。新規ファイルを作成するか、既存ファイルを上書きします。
+
+    Args:
+        path (str): 書き込み先のファイルパス（相対パスまたは絶対パス）
+        content (str): ファイルに書き込む内容（テキスト全体）
+        overwrite (bool, optional): Trueの場合、既存ファイルを上書き。デフォルトはFalse。
+
+    Returns:
+        str: 成功時は書き込んだ行数、失敗時はエラーメッセージ
+
+    Example:
+        write_file("example.txt", "Hello, World!")
+        write_file("config.json", '{"key": "value"}', overwrite=True)
     """
     try:
         # パスを解決
@@ -181,6 +193,19 @@ def write_file(path: str, content: str, overwrite: bool = False) -> str:
 def edit_file(path: str, old_string: str, new_string: str) -> str:
     """
     ファイルの一部を置換して編集します（search/replace形式）。
+    既存ファイルの特定の文字列を新しい文字列に置き換えます。
+
+    Args:
+        path (str): 編集するファイルのパス
+        old_string (str): 置換対象の文字列（ファイル内で一意である必要があります）
+        new_string (str): 置換後の文字列
+
+    Returns:
+        str: 成功時は成功メッセージ、失敗時はエラーメッセージ
+
+    Note:
+        - old_stringがファイル内で複数回出現する場合はエラーになります
+        - 完全一致（インデント含む）が必要です
     """
     try:
         # パスを解決
