@@ -93,6 +93,11 @@ def _parse_todos_loose(value: str) -> Union[List[Dict[str, Any]], Dict[str, Any]
                 try:
                     obj = ast.literal_eval(s3)
                 except (ValueError, SyntaxError):
+                    # 最終フォールバック: プレーンテキストを単一タスクとして扱う
+                    # 例: "タスクの説明" → [{"id": "1", "content": "タスクの説明", "status": "pending"}]
+                    clean_text = s.strip()
+                    if clean_text and not clean_text.startswith(('[', '{')):
+                        return [{"id": "1", "content": clean_text, "status": "pending"}]
                     raise Exception(f"Failed to parse todos: {s}")
 
     # {"todos": [...]} のラップを許容
@@ -114,6 +119,21 @@ def get_current_session() -> Optional[str]:
 def todowrite(todos: Union[str, List[Dict[str, Any]]]) -> str:
     """
     Creates and manages a structured task list (todo list) for the current session.
+    
+    Args:
+        todos: A JSON array of todo objects. Each object must have:
+            - id: Unique identifier (string)
+            - content: Task description (string)
+            - status: One of "pending", "in_progress", "completed", "cancelled"
+    
+    Example:
+        [
+            {"id": "1", "content": "Research market data", "status": "pending"},
+            {"id": "2", "content": "Write report", "status": "in_progress"}
+        ]
+    
+    Returns:
+        Success or error message.
     """
     global _current_session_id
 
