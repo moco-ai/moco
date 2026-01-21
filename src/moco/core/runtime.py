@@ -1461,9 +1461,10 @@ class AgentRuntime:
 
         messages.append(types.Content(role="user", parts=[types.Part(text=user_input)]))
 
-        # Settings - enable thinking mode only for models that support it
-        # Thinking is supported by gemini-2.0-flash-thinking-exp and similar models
-        supports_thinking = "thinking" in self.model_name.lower()
+        # Settings - enable thinking mode for models that support it
+        # Gemini 3 series and gemini-2.0-flash-thinking-exp support thinking
+        model_lower = self.model_name.lower()
+        supports_thinking = "gemini-3" in model_lower or "thinking" in model_lower
         
         if supports_thinking:
             config = types.GenerateContentConfig(
@@ -1471,8 +1472,7 @@ class AgentRuntime:
                 tools=tools_config,
                 temperature=0.7,
                 thinking_config=types.ThinkingConfig(
-                    include_thoughts=True,
-                    thinking_budget=32768,  # Minimum value per API specs
+                    thinking_level="low",  # low/medium/high - use low for speed
                 ),
             )
         else:
