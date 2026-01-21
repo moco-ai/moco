@@ -12,9 +12,19 @@ class SmartJSONParser:
     """
     
     @staticmethod
-    def parse(text: str) -> Optional[Any]:
+    def parse(text: str, default: Optional[Any] = None) -> Any:
+        """
+        LLM の出力から JSON を抽出・解析する
+        
+        Args:
+            text: LLM の出力テキスト
+            default: パース失敗時に返すデフォルト値（None の場合は None を返す）
+        
+        Returns:
+            パースされた JSON オブジェクト、または default
+        """
         if not text:
-            return None
+            return default
             
         # 1. Markdown コードブロックの抽出
         # ```json ... ``` または ``` ... ```
@@ -52,7 +62,7 @@ class SmartJSONParser:
             return json.loads(fixed)
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse JSON even after cleanup. Error: {e}")
-            return None
+            return default
 
     @staticmethod
     def extract_and_parse(text: str, key: str = None) -> Any:
