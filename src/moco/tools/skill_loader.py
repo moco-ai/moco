@@ -174,6 +174,10 @@ class SkillLoader:
 
     def load_skills(self) -> Dict[str, SkillConfig]:
         """Load all skills from the profile's skills directory"""
+        # プロファイル変更に対応するため、毎回再計算
+        profiles_dir = _find_profiles_dir()
+        self.skills_dir = os.path.join(profiles_dir, self.profile, "skills")
+        
         skills = {}
 
         if not os.path.exists(self.skills_dir) or not os.path.isdir(self.skills_dir):

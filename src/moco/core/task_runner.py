@@ -203,9 +203,7 @@ class TaskRunner:
             with open(log_file, "r", errors="ignore") as f:
                 if file_size > read_size:
                     f.seek(file_size - read_size)
-                content = f.read()
-
-            # ツールコールのパターン
+                content = f.read()            # ツールコールのパターン
             patterns = [
                 (r'👤 delegate_to_agent\s*→\s*@?(\S+)', lambda m: f"delegating to @{m.group(1)}"),
                 (r'✏️ edit_file\s*→\s*(\S+)', lambda m: f"editing {self._truncate(m.group(1))}"),
@@ -230,9 +228,7 @@ class TaskRunner:
 
             if last_match:
                 match, formatter = last_match
-                return formatter(match)
-
-            return None
+                return formatter(match)            return None
 
         except Exception:
             return None

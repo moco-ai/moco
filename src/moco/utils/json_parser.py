@@ -43,6 +43,7 @@ class SmartJSONParser:
         start_arr = clean_text.find('[')
         
         start_idx = -1
+        end_idx = -1
         if start_obj != -1 and (start_arr == -1 or start_obj < start_arr):
             start_idx = start_obj
             end_idx = clean_text.rfind('}')
