@@ -665,7 +665,7 @@ class AgentRuntime:
         elif self.provider == LLMProvider.ZAI:
             self.model_name = os.environ.get("ZAI_MODEL", "glm-4.7")
         else:
-            self.model_name = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash-exp")
+            self.model_name = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
 
         # Initialization of client
         if self.provider == LLMProvider.OPENROUTER:
@@ -1461,16 +1461,26 @@ class AgentRuntime:
 
         messages.append(types.Content(role="user", parts=[types.Part(text=user_input)]))
 
-        # Settings (enable thinking mode)
-        config = types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            tools=tools_config,
-            temperature=0.7,
-            thinking_config=types.ThinkingConfig(
-                include_thoughts=True,
-                thinking_budget=32768,  # Minimum value per API specs
-            ),
-        )
+        # Settings - enable thinking mode only for models that support it
+        # Thinking is supported by gemini-2.0-flash-thinking-exp and similar models
+        supports_thinking = "thinking" in self.model_name.lower()
+        
+        if supports_thinking:
+            config = types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                tools=tools_config,
+                temperature=0.7,
+                thinking_config=types.ThinkingConfig(
+                    include_thoughts=True,
+                    thinking_budget=32768,  # Minimum value per API specs
+                ),
+            )
+        else:
+            config = types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                tools=tools_config,
+                temperature=0.7,
+            )
 
         while True:
             if session_id:
