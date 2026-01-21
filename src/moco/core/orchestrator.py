@@ -13,6 +13,7 @@ from ..cancellation import check_cancelled, clear_cancel_event, OperationCancell
 from .runtime import AgentRuntime, LLMProvider
 from ..storage.session_logger import SessionLogger
 from ..storage.semantic_memory import SemanticMemory
+from ..utils.json_parser import SmartJSONParser
 
 # Optimizer components
 from .optimizer import (
@@ -1023,15 +1024,9 @@ class Orchestrator:
                 temperature=0.3
             )
 
-            # JSONパース
-            result = result.strip()
-            if result.startswith('```json'):
-                result = result[7:]
-            if result.endswith('```'):
-                result = result[:-3]
-            result = result.strip()
-
-            eval_json = json.loads(result)
+            # JSONパース（result が None の場合も考慮）
+            result = (result or "").strip()
+            eval_json = SmartJSONParser.parse(result, default={})
 
             # 整数値のバリデーション（範囲チェック付き）
             for key in ["completion", "quality", "prompt_specificity"]:
@@ -1138,7 +1133,7 @@ class Orchestrator:
                     max_tokens=max_tokens,
                     temperature=temperature
                 )
-                return response.choices[0].message.content
+                return response.choices[0].message.content or ""
             except Exception as e:
                 errors.append(f"ZAI: {e}")
                 if "429" not in str(e) and "rate" not in str(e).lower():
@@ -1186,7 +1181,7 @@ class Orchestrator:
                     max_tokens=max_tokens,
                     temperature=temperature
                 )
-                return response.choices[0].message.content
+                return response.choices[0].message.content or ""
             except Exception as e:
                 errors.append(f"OpenRouter: {e}")
         
@@ -1213,7 +1208,7 @@ class Orchestrator:
                         max_tokens=max_tokens,
                         temperature=temperature
                     )
-                return response.choices[0].message.content
+                return response.choices[0].message.content or ""
             except Exception as e:
                 errors.append(f"OpenAI: {e}")
         
