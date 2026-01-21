@@ -1284,9 +1284,17 @@ class AgentRuntime:
                                         tc["function"]["name"] = tc_delta.function.name
                                     if getattr(tc_delta.function, "arguments", None):
                                         new_args = tc_delta.function.arguments
-                                        # 完全JSONなら上書き、断片なら連結
+                                        # 完全JSONかどうかを実際にパースして判定
                                         # Z.ai等は各チャンクで完全JSONを送る、OpenAI等は断片を送る
+                                        is_complete_json = False
                                         if new_args.strip().startswith("{") and new_args.strip().endswith("}"):
+                                            try:
+                                                json.loads(new_args)
+                                                is_complete_json = True
+                                            except json.JSONDecodeError:
+                                                pass
+                                        
+                                        if is_complete_json:
                                             tc["function"]["arguments"] = new_args  # 完全JSON→上書き
                                         else:
                                             tc["function"]["arguments"] += new_args  # 断片→連結

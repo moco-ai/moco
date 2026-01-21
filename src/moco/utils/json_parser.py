@@ -64,8 +64,44 @@ class SmartJSONParser:
             # 末尾のカンマを除去 (], または },)
             fixed = re.sub(r",\s*([\]}])", r"\1", clean_text)
             return json.loads(fixed)
+        except json.JSONDecodeError:
+            pass
+        
+        # 5. シングルクォートをダブルクォートに変換
+        try:
+            # シングルクォートで囲まれた文字列をダブルクォートに変換
+            # 注意: 文字列内のシングルクォートは考慮しない簡易実装
+            fixed = clean_text.replace("'", '"')
+            return json.loads(fixed)
+        except json.JSONDecodeError:
+            pass
+        
+        # 6. クォートされていないキー名にダブルクォートを追加
+        # 例: {path: "file.md"} → {"path": "file.md"}
+        try:
+            # { または , の後にある識別子（クォートなし）にダブルクォートを追加
+            fixed = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', clean_text)
+            # Python の True/False/None を JSON の true/false/null に変換
+            fixed = re.sub(r'\bTrue\b', 'true', fixed)
+            fixed = re.sub(r'\bFalse\b', 'false', fixed)
+            fixed = re.sub(r'\bNone\b', 'null', fixed)
+            return json.loads(fixed)
+        except json.JSONDecodeError:
+            pass
+        
+        # 7. シングルクォート変換とキー補完を組み合わせ
+        try:
+            fixed = clean_text.replace("'", '"')
+            fixed = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', fixed)
+            fixed = re.sub(r'\bTrue\b', 'true', fixed)
+            fixed = re.sub(r'\bFalse\b', 'false', fixed)
+            fixed = re.sub(r'\bNone\b', 'null', fixed)
+            # 末尾カンマも除去
+            fixed = re.sub(r",\s*([\]}])", r"\1", fixed)
+            return json.loads(fixed)
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse JSON even after cleanup. Error: {e}")
+            logger.debug(f"Original text: {clean_text[:200]}")
             return default
 
     @staticmethod
