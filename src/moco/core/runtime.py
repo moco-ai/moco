@@ -1472,7 +1472,8 @@ class AgentRuntime:
                 tools=tools_config,
                 temperature=0.7,
                 thinking_config=types.ThinkingConfig(
-                    thinking_level="low",  # low/medium/high - use low for speed
+                    include_thoughts=True,
+                    thinking_budget=-1,  # -1 = AUTO
                 ),
             )
         else:
