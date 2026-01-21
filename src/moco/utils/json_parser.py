@@ -23,7 +23,7 @@ class SmartJSONParser:
         Returns:
             パースされた JSON オブジェクト、または default
         """
-        if not text:
+        if not text or not text.strip():
             return default
             
         # 1. Markdown コードブロックの抽出
@@ -33,6 +33,10 @@ class SmartJSONParser:
             clean_text = json_match.group(1).strip()
         else:
             clean_text = text.strip()
+        
+        # 空になった場合は default を返す
+        if not clean_text:
+            return default
             
         # 2. 最初と最後の括弧を探して抽出 (JSON オブジェクトまたは配列のみ)
         start_obj = clean_text.find('{')
