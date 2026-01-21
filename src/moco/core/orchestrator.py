@@ -301,6 +301,10 @@ class Orchestrator:
         # セッションIDを保持
         self._current_session_id = session_id
 
+        # MemoryService の channel_id をセッションIDに更新（セッションごとの記憶分離）
+        if session_id and self.memory_service:
+            self.memory_service.channel_id = session_id
+
         # キャンセルチェック
         if session_id:
             check_cancelled(session_id)
@@ -424,16 +428,24 @@ class Orchestrator:
             )
             
             if analysis.get("should_learn") and analysis.get("content"):
+                # shared=True の場合は GLOBAL に保存（全セッションで共有）
+                # shared=False の場合はセッションごとに保存
+                is_shared = analysis.get("shared", False)
+                
                 # 学習実行
                 await asyncio.to_thread(
                     self.memory_service.learn,
                     content=analysis["content"],
                     memory_type=analysis.get("type", "knowledge"),
                     keywords=analysis.get("keywords", []),
-                    source="conversation"
+                    source="conversation",
+                    shared=is_shared,
+                    questions=analysis.get("questions", []),
+                    relations=analysis.get("relations", [])
                 )
                 if self.verbose:
-                    moco_log(f"[Memory] Learned: {analysis['content'][:50]}...", self.verbose)
+                    scope = "GLOBAL" if is_shared else "session"
+                    moco_log(f"[Memory] Learned ({scope}): {analysis['content'][:50]}...", self.verbose)
         except Exception as e:
             if self.verbose:
                 moco_log(f"[Memory] Learning failed: {e}", self.verbose)
