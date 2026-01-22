@@ -651,6 +651,8 @@ class AgentRuntime:
         
         # Tool call loop detection
         self.tool_tracker = ToolCallTracker(max_repeats=3, window_size=10)
+        # Track repeated invalid tool calls (e.g. missing required arguments)
+        self._invalid_tool_call_counts: Dict[str, int] = defaultdict(int)
         
         # Initialization of semantic memory
         self.semantic_memory = semantic_memory
@@ -908,20 +910,48 @@ class AgentRuntime:
             try:
                 _validate_arguments(self.available_tools[func_name], args_dict)
             except ValueError as e:
-                result = f"Error executing {func_name}: {e}"
-                # End notification only (do not emit "running" tool line)
-                if self.progress_callback:
-                    icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
-                    self.progress_callback(
-                        event_type="tool",
-                        name=f"{icon} {name}",
-                        detail=arg_str,
-                        agent_name=self.agent_name,
-                        parent_agent=self.parent_agent,
-                        status="completed",
-                        tool_name=func_name,
-                        result=result,
+                # Count invalid calls and return a stronger, structured message to prevent loops
+                self._invalid_tool_call_counts[func_name] += 1
+                count = self._invalid_tool_call_counts[func_name]
+                missing_msg = str(e)
+
+                # Provide a JSON template that the model can directly fill.
+                template = None
+                if func_name == "write_file":
+                    template = (
+                        '{\n'
+                        '  "path": "path/to/file.ext",\n'
+                        '  "content": "file contents with \\\\n escaped newlines",\n'
+                        '  "overwrite": false\n'
+                        '}'
                     )
+                elif func_name == "edit_file":
+                    template = (
+                        '{\n'
+                        '  "path": "path/to/file.ext",\n'
+                        '  "old_string": "include 3-5 lines before and after (use \\\\n for newlines)",\n'
+                        '  "new_string": "replacement text (use \\\\n for newlines)"\n'
+                        '}'
+                    )
+
+                if count >= 2:
+                    # Escalate to stop repeated invalid tool calls
+                    result = (
+                        f"Error executing {func_name}: {missing_msg}\n"
+                        f"STOP: You are repeating an invalid tool call ({count} times).\n"
+                        f"Do NOT call `{func_name}` again until you have a complete JSON object with all required keys.\n"
+                        f"Rebuild the arguments, then call `{func_name}` exactly once.\n"
+                    )
+                else:
+                    result = (
+                        f"Error executing {func_name}: {missing_msg}\n"
+                        f"Fix: call `{func_name}` with a single complete JSON object including all required keys.\n"
+                    )
+
+                if template:
+                    result += f"\nJSON template:\n{template}\n"
+                # Cursor-like: do not emit any tool UI events for invalid calls.
+                # (Showing a tool row like "🛠️ write_file" is noisy and looks like a real execution.)
                 return self._update_context_usage(result)
 
         # Log output (only after validation)
@@ -1364,8 +1394,13 @@ class AgentRuntime:
                             elif not (stripped.startswith("{") and stripped.endswith("}")):
                                 result = "Error: tool call arguments are incomplete JSON"
                             else:
-                                args_dict = SmartJSONParser.parse(raw_args, default={})
-                                result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
+                                # Do not execute tools until arguments are fully parseable JSON.
+                                # NOTE: Using default={} hides JSON parse failures and causes missing-required loops.
+                                args_dict = SmartJSONParser.parse(raw_args, default=None)
+                                if not isinstance(args_dict, dict):
+                                    result = "Error: tool call arguments are invalid JSON (expected a single JSON object)"
+                                else:
+                                    result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
 
                             messages.append({
                                 "role": "tool",
@@ -1455,9 +1490,12 @@ class AgentRuntime:
                 # Tool execution (parallelized)
                 async def execute_one(tc):
                     func_name = tc.function.name
-                    args_dict = SmartJSONParser.parse(tc.function.arguments, default={})
-                    
-                    result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
+                    # Do not execute tools until arguments are fully parseable JSON.
+                    args_dict = SmartJSONParser.parse(tc.function.arguments, default=None)
+                    if not isinstance(args_dict, dict):
+                        result = "Error: tool call arguments are invalid JSON (expected a single JSON object)"
+                    else:
+                        result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
                     return {
                         "role": "tool",
                         "tool_call_id": tc.id,
