@@ -79,6 +79,8 @@ class SkillConfig:
     - version: バージョン
     - allowed_tools: 許可されたツール（Claude互換: allowed-tools）
     - content: 知識・ルール本文
+    - is_logic: ロジック（JS/TS/Py）を含むか
+    - path: スキルディレクトリの絶対パス
     """
     name: str
     description: str
@@ -86,6 +88,8 @@ class SkillConfig:
     version: str
     content: str
     allowed_tools: List[str] = field(default_factory=list)
+    is_logic: bool = False
+    path: str = ""
 
     def matches_input(self, user_input: str) -> bool:
         """Check if this skill matches the user input based on triggers or description keywords"""
@@ -242,13 +246,25 @@ class SkillLoader:
         elif not isinstance(allowed_tools, list):
             allowed_tools = []
 
+        skill_dir = os.path.dirname(file_path)
+        # ロジック判定 (JS, TS, Py)
+        logic_files = ["index.js", "index.ts", "package.json"]
+        is_logic = any(os.path.exists(os.path.join(skill_dir, f)) for f in logic_files)
+        
+        # scripts ディレクトリや .py ファイルがある場合もロジックありとみなす
+        if not is_logic:
+            is_logic = os.path.exists(os.path.join(skill_dir, "scripts")) or \
+                       any(f.endswith(".py") for f in os.listdir(skill_dir) if f != "__init__.py")
+
         return SkillConfig(
             name=name,
             description=metadata.get("description", ""),
             triggers=triggers,
             version=metadata.get("version", "1.0.0"),
             content=body,
-            allowed_tools=allowed_tools
+            allowed_tools=allowed_tools,
+            is_logic=is_logic,
+            path=skill_dir
         )
 
     def match_skills(

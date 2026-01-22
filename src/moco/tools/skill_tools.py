@@ -200,9 +200,128 @@ def clear_loaded_skills() -> str:
     return f"Cleared {count} loaded skills from cache."
 
 
+def execute_skill(skill_name: str, tool_name: str, arguments: dict) -> str:
+    """Execute a logic-based skill (JS/TS/Python).
+    
+    Args:
+        skill_name: Name of the skill
+        tool_name: Function/Method name to call within the skill
+        arguments: Arguments for the tool
+        
+    Returns:
+        JSON result string
+    """
+    import subprocess
+    import os
+    import json
+    
+    loader = _get_loader()
+    local_skills = loader.load_skills()
+    
+    if skill_name not in local_skills:
+        return f"Error: Skill '{skill_name}' not found locally."
+    
+    skill = local_skills[skill_name]
+    if not skill.is_logic:
+        return f"Error: Skill '{skill_name}' does not have executable logic."
+    
+    skill_dir = skill.path
+    
+    # JavaScript/TypeScript (index.js / index.ts)
+    js_path = os.path.join(skill_dir, "index.js")
+    ts_path = os.path.join(skill_dir, "index.ts")
+    
+    if os.path.exists(js_path) or os.path.exists(ts_path):
+        target_path = js_path if os.path.exists(js_path) else ts_path
+        # JS ブリッジロジック
+        runner_script = f"""
+        const path = require('path');
+        try {{
+            const skillPath = path.resolve('{target_path}');
+            const skill = require(skillPath);
+            const tool = skill['{tool_name}'];
+            
+            if (typeof tool !== 'function') {{
+                console.error(JSON.stringify({{error: `Tool "${tool_name}" not found in ${{skillPath}}` }}));
+                process.exit(1);
+            }}
+            
+            Promise.resolve(tool({json.dumps(arguments)}))
+                .then(result => {{
+                    console.log(JSON.stringify(result));
+                }})
+                .catch(err => {{
+                    console.error(JSON.stringify({{error: err.message || err}}));
+                    process.exit(1);
+                }});
+        }} catch (e) {{
+            console.error(JSON.stringify({{error: e.message}}));
+            process.exit(1);
+        }}
+        """
+        try:
+            result = subprocess.run(
+                ["node", "-e", runner_script],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            return result.stdout.strip()
+        except subprocess.CalledProcessError as e:
+            return f"Error executing JS skill: {e.stderr}"
+
+    # Python スクリプトとしての実行
+    # 1. 直接的なツール名.py を探す
+    py_script = os.path.join(skill_dir, f"{tool_name}.py")
+    # 2. scripts/ツール名.py を探す
+    if not os.path.exists(py_script):
+        py_script = os.path.join(skill_dir, "scripts", f"{tool_name}.py")
+        
+    if os.path.exists(py_script):
+        try:
+            # 1. まず通常のコマンドライン引数として展開して渡す
+            args_list = ["python3", py_script]
+            
+            # target などの位置引数を特別扱いするか、一律に展開
+            for k, v in arguments.items():
+                if k in ("target", "input_file", "source", "path"): # positional arguments candidate
+                    args_list.append(str(v))
+                elif isinstance(v, bool):
+                    if v: args_list.append(f"--{k}")
+                else:
+                    args_list.extend([f"--{k}", str(v)])
+            
+            result = subprocess.run(
+                args_list,
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            
+            if result.returncode == 0:
+                return result.stdout.strip()
+            
+            # 2. 失敗した場合は、JSON文字列を単一引数として渡す（旧方式）
+            result_legacy = subprocess.run(
+                ["python3", py_script, json.dumps(arguments)],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            if result_legacy.returncode == 0:
+                return result_legacy.stdout.strip()
+                
+            return f"Error executing Python skill:\nSTDERR: {result.stderr}\nSTDOUT: {result.stdout}"
+        except Exception as e:
+            return f"Exception in execute_skill (Python): {str(e)}"
+            
+    return f"Error: No executable entry point found for {skill_name}:{tool_name}"
+
+
 # ツールのメタデータ（discover_tools で自動検出される形式）
 TOOLS = {
     "search_skills": search_skills,
     "load_skill": load_skill,
     "list_loaded_skills": list_loaded_skills,
+    "execute_skill": execute_skill,
 }
