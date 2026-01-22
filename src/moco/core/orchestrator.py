@@ -406,16 +406,18 @@ class Orchestrator:
 
         # MemoryService: 会話から学習
         # Fire-and-forget to avoid blocking the next user turn.
-        # Memory learning is best-effort; failures are logged in verbose mode.
-        import asyncio
-        task = asyncio.create_task(self._learn_from_conversation(user_input, response))
-        if self.verbose:
-            def _on_done(t: "asyncio.Task"):
-                try:
-                    t.result()
-                except Exception as e:
-                    moco_log(f"[Memory] Background learning failed: {e}", self.verbose)
-            task.add_done_callback(_on_done)
+        #
+        # NOTE:
+        # - Do NOT use asyncio.to_thread in a background task here because the event loop
+        #   can be closed immediately after the user exits (e.g., Ctrl+C), which can lead to:
+        #   "RuntimeError: Event loop is closed".
+        # - Instead, run the whole learning flow in a daemon thread synchronously.
+        import threading
+        threading.Thread(
+            target=self._learn_from_conversation_sync,
+            args=(user_input, response),
+            daemon=True,
+        ).start()
 
         return response
     
@@ -459,6 +461,30 @@ class Orchestrator:
         except Exception as e:
             if self.verbose:
                 moco_log(f"[Memory] Learning failed: {e}", self.verbose)
+
+    def _learn_from_conversation_sync(self, user_input: str, response: str) -> None:
+        """会話から学習（同期版: background thread 用）"""
+        if not self.memory_service:
+            return
+        try:
+            analysis = self.memory_service.analyze(user_input, response)
+            if analysis.get("should_learn") and analysis.get("content"):
+                is_shared = analysis.get("shared", False)
+                self.memory_service.learn(
+                    content=analysis["content"],
+                    memory_type=analysis.get("type", "knowledge"),
+                    keywords=analysis.get("keywords", []),
+                    source="conversation",
+                    shared=is_shared,
+                    questions=analysis.get("questions", []),
+                    relations=analysis.get("relations", []),
+                )
+                if self.verbose:
+                    scope = "GLOBAL" if is_shared else "session"
+                    moco_log(f"[Memory] Learned ({scope}): {analysis['content'][:50]}...", self.verbose)
+        except Exception as e:
+            if self.verbose:
+                moco_log(f"[Memory] Background learning failed: {e}", self.verbose)
     
     async def _record_execution_metrics(
         self,
