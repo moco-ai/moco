@@ -20,6 +20,7 @@ import subprocess
 import logging
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
+from .security_scanner import SecurityScanner
 
 try:
     import yaml
@@ -499,6 +500,20 @@ class SkillLoader:
             if not os.path.exists(skill_file):
                 return False, f"SKILL.md not found in {skill_name}"
 
+            # --- Security Scan (Pre-install) ---
+            scanner = SecurityScanner()
+            findings = scanner.scan_directory(source_path)
+            high_findings = [f for f in findings if f.get('severity') == 'high']
+            
+            if high_findings:
+                msg = f"CRITICAL SECURITY ALERT: Skill '{skill_name}' contains high-risk patterns and will NOT be installed.\n{scanner.generate_report(high_findings)}"
+                logger.error(msg)
+                return False, f"Security risk blocked: {len(high_findings)} high-severity issues found."
+            
+            if findings:
+                logger.warning(f"Security Warning for skill '{skill_name}':\n{scanner.generate_report(findings)}")
+            # -----------------------------------
+
             # インストール先
             dest_path = os.path.join(self.skills_dir, skill_name)
             if os.path.exists(dest_path):
@@ -560,6 +575,19 @@ class SkillLoader:
                         if not rel_path.startswith(category):
                             continue
 
+                    # --- Security Scan (Pre-install) ---
+                    scanner = SecurityScanner()
+                    findings = scanner.scan_directory(root)
+                    high_findings = [f for f in findings if f.get('severity') == 'high']
+                    
+                    if high_findings:
+                        logger.error(f"BLOCKING SKILL '{skill_name}': High-risk patterns detected.\n{scanner.generate_report(high_findings)}")
+                        continue # Skip this skill but continue with others
+                    
+                    if findings:
+                        logger.warning(f"Security Warning for skill '{skill_name}':\n{scanner.generate_report(findings)}")
+                    # -----------------------------------
+
                     dest_path = os.path.join(self.skills_dir, skill_name)
                     if os.path.exists(dest_path):
                         shutil.rmtree(dest_path)
@@ -607,6 +635,7 @@ class SkillLoader:
             "community": "alirezarezvani/claude-skills",
             "claude-code": "daymade/claude-code-skills",
             "collection": "abubakarsiddik31/claude-skills-collection",
+            "remotion": "remotion-dev/skills",
         }
 
         if registry not in registries:

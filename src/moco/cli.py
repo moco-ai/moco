@@ -838,6 +838,7 @@ def skills_info():
     registries = [
         ("anthropics", "anthropics/skills", "公式 Claude Skills"),
         ("community", "alirezarezvani/claude-skills", "コミュニティ Skills"),
+        ("remotion", "remotion-dev/skills", "Remotion 動画生成 Skills"),
         ("claude-code", "daymade/claude-code-skills", "Claude Code 特化"),
         ("collection", "abubakarsiddik31/claude-skills-collection", "キュレーション集"),
     ]
