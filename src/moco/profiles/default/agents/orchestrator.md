@@ -3,14 +3,19 @@ description: >-
   汎用タスクを処理するオーケストレーターエージェント。
 mode: primary
 tools:
-  bash: true
-  read: true
-  write: true
-  edit: true
-  glob: true
+  execute_bash: true
+  read_file: true
+  write_file: true
+  edit_file: true
+  list_dir: true
+  glob_search: true
   grep: true
+  ripgrep: true
   webfetch: true
-  task: true
+  websearch: true
+  read_lints: true
+  get_project_context: true
+  delegate_to_agent: true
   todowrite: true
   todoread: true
 ---

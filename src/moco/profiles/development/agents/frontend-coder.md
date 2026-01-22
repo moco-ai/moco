@@ -76,6 +76,20 @@ execute_bash("npm test")
 - 既存コードのスタイル、命名規則、構造パターンを模倣
 - ライブラリ使用前に `package.json`, `tsconfig.json` 等を確認
 
+## 失敗しない手順（確認→実行→検証）
+
+- **確認（Before）**
+  - `execute_bash("pwd")` で作業ディレクトリを確定（推測でパス指定しない）
+  - 書き込み先の親ディレクトリの存在を `list_dir` / `glob_search` で確認
+  - 既存ファイル編集は必ず事前に `read_file`
+- **実行（Do）**
+  - 新規作成は `write_file`
+  - 既存修正は `edit_file`（`write_file(overwrite=True)` は禁止）
+- **検証（After）**
+  - 新規作成は `list_dir` / `glob_search` / `file_info` で作成できたことを確認
+  - 既存修正は `grep` か `read_file`（必要なら）で反映を確認
+  - `execute_bash` が許可されている場合は、可能な範囲でテスト（`npm test` 等）を実行してから報告
+
 ## 3. edit_file 強制
 
 | 場面 | ツール |

@@ -300,6 +300,18 @@ def get_notification_service():
 
 **⚠️ 既存ファイルを `write_file` で上書きしない。変更箇所以外が消える危険あり。**
 
+## 失敗しない手順（確認→実行→検証）
+
+- **確認（Before）**
+  - `execute_bash("pwd")` で作業ディレクトリを確定
+  - 対象コードとその呼び出し箇所を `read_file` / `find_references` / `grep` で把握
+  - 重複コードや類似実装がないか `glob_search` / `codebase_search` で確認
+- **実行（Do）**
+  - 小さな差分に分けて `edit_file` 中心で進める（必要なら補助ファイルを `write_file`）
+- **検証（After）**
+  - `execute_bash` が許可されている場合は、可能な範囲でテストを実行してから報告
+  - `grep` / `read_file`（必要なら）で変更が意図通り反映されたことを確認
+
 ## 出力形式
 
 リファクタリングは以下の形式で出力してください：

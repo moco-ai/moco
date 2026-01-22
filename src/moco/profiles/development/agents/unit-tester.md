@@ -133,6 +133,18 @@ describe('functionToTest', () => {
 
 **⚠️ 既存ファイルを `write_file` で上書きしない。変更箇所以外が消える危険あり。**
 
+## 失敗しない手順（確認→実行→検証）
+
+- **確認（Before）**
+  - `execute_bash("pwd")` で作業ディレクトリを確定
+  - テスト対象コードと既存テストを `read_file` / `grep` / `find_definition` で把握
+  - 既存のテスト配置/命名を `list_dir` / `glob_search` で確認
+- **実行（Do）**
+  - 新規テストは `write_file`、既存テスト修正は `edit_file`
+- **検証（After）**
+  - `execute_bash` が許可されている場合は、可能な範囲で対象テストを実行してから報告
+  - `list_dir` / `glob_search` で作成したファイルが存在することを確認
+
 ## 他エージェントとの連携
 
 | 状況 | 連携先 | 依頼内容 |
