@@ -29,6 +29,7 @@ def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
         'cost': handle_cost,
         'tools': handle_tools,
         'agents': handle_agents,
+        'substream': handle_substream,
         'quit': handle_quit,
         'exit': handle_quit,
         'theme': handle_theme,
@@ -63,6 +64,35 @@ def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
         console = context.get('console', Console())
         console.print(f"[red]Unknown command: /{command}. Type /help for available commands.[/red]")
         return True
+
+def handle_substream(args: List[str], context: Dict[str, Any]) -> bool:
+    """Toggle sub-agent streamed text in CLI.
+
+    Usage:
+      /substream            -> show current state
+      /substream on|off     -> enable/disable
+    """
+    console = context.get('console', Console())
+    flags = context.get('stream_flags') or {}
+    current = bool(flags.get("show_subagent_stream", False))
+
+    if not args:
+        console.print(f"[dim]Sub-agent stream:[/dim] {'ON' if current else 'OFF'}")
+        console.print("[dim]Usage: /substream on|off[/dim]")
+        return True
+
+    val = args[0].lower()
+    if val in ("on", "true", "1", "yes"):
+        flags["show_subagent_stream"] = True
+        console.print("[green]Sub-agent stream: ON[/green]")
+        return True
+    if val in ("off", "false", "0", "no"):
+        flags["show_subagent_stream"] = False
+        console.print("[green]Sub-agent stream: OFF[/green]")
+        return True
+
+    console.print("[red]Usage: /substream on|off[/red]")
+    return True
 
 def handle_ls(args: List[str], context: Dict[str, Any]) -> bool:
     """Display contents of current directory"""

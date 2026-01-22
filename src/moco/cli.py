@@ -514,6 +514,7 @@ def chat(
     provider: Optional[str] = typer.Option(None, "--provider", "-P", help="LLMプロバイダ (gemini/openai/openrouter/zai) - 省略時は自動選択"),
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
     stream: bool = typer.Option(True, "--stream/--no-stream", help="ストリーミング出力（デフォルト: オン）"),
+    subagent_stream: bool = typer.Option(False, "--subagent-stream/--no-subagent-stream", help="サブエージェント本文のストリーミング表示（デフォルト: オフ）"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
     session: Optional[str] = typer.Option(None, "--session", "-s", help="セッション名（継続 or 新規）"),
     new_session: bool = typer.Option(False, "--new", help="新規セッションを強制開始"),
@@ -531,8 +532,23 @@ def chat(
 
     from .core.orchestrator import Orchestrator
     from .core.llm_provider import get_available_provider
+    from .core.runtime import _safe_stream_print
 
     console = Console()
+    stream_flags = {"show_subagent_stream": subagent_stream}
+
+    # Streaming callback for CLI:
+    # - tool/delegate logs are printed elsewhere (keep as-is)
+    # - print streamed chunks only for orchestrator by default
+    def progress_callback(event_type: str, content: str = None, agent_name: str = None, **kwargs):
+        if event_type == "chunk" and content:
+            name = agent_name or ""
+            if name == "orchestrator" or stream_flags.get("show_subagent_stream"):
+                _safe_stream_print(content)
+        elif event_type == "done":
+            # Add newline after the main response
+            if (agent_name or "") == "orchestrator":
+                _safe_stream_print("\n")
 
     # プロファイルの解決（指定なしの場合は対話選択）
     if profile is None:
@@ -552,6 +568,7 @@ def chat(
             stream=stream,
             verbose=verbose,
             use_optimizer=use_optimizer,
+            progress_callback=progress_callback if stream else None,
         )
 
     # Context for slash commands
@@ -559,6 +576,7 @@ def chat(
         'orchestrator': o,
         'console': console,
         'verbose': verbose,
+        'stream_flags': stream_flags,
     }
 
     # セッション管理
