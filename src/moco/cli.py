@@ -590,7 +590,7 @@ def chat(
                 console.print(f"[dim]{status or 'delegate'} {name}[/dim]")
             return
 
-        # Tool completion: show success/error so file ops are verifiable in-chat.
+        # Tool status: show running + success/error so file ops are verifiable in-chat.
         if event_type == "tool":
             if not stream_flags.get("show_tool_status", True):
                 return
@@ -599,14 +599,20 @@ def chat(
             detail = kwargs.get("detail") or ""
             result = kwargs.get("result")
 
-            # Avoid duplicating the "tool started" line which is already printed by runtime
-            # via _log_tool_use when verbose is False.
-            if status != "completed":
-                return
-
             if stream_state.get("mid_line"):
                 _safe_stream_print("\n")
                 stream_state["mid_line"] = False
+
+            # Running line (start)
+            if status == "running":
+                line = tool_name or "tool"
+                if detail:
+                    line += f" → {detail}"
+                console.print(f"[dim]→ {line}[/dim]")
+                return
+
+            if status != "completed":
+                return
 
             # Determine success/failure from result text
             result_str = "" if result is None else str(result)

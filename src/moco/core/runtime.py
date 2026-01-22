@@ -925,7 +925,12 @@ class AgentRuntime:
                 return self._update_context_usage(result)
 
         # Log output (only after validation)
-        _log_tool_use(func_name, args_dict, self.verbose)
+        #
+        # In streaming contexts (CLI `moco chat`, Web UI), we already emit tool status via
+        # progress_callback. Printing tool-start lines directly here can interleave with
+        # streamed assistant text and "break" the CLI output formatting.
+        if not self.progress_callback:
+            _log_tool_use(func_name, args_dict, self.verbose)
 
         # Start notification
         if self.progress_callback:
