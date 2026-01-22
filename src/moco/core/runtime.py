@@ -897,28 +897,51 @@ class AgentRuntime:
         Returns:
             Tool execution result
         """
-        # Log output
+        # Cancellation check
+        if session_id:
+            check_cancelled(session_id)
+
+        # Validate required args before logging/loop-detection (Cursor-like behavior)
+        # - Avoid noisy "📝 write_file" lines when the model emits empty args
+        # - Do not record invalid calls in loop-detection history
+        if func_name in self.available_tools:
+            try:
+                _validate_arguments(self.available_tools[func_name], args_dict)
+            except ValueError as e:
+                result = f"Error executing {func_name}: {e}"
+                # End notification only (do not emit "running" tool line)
+                if self.progress_callback:
+                    icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
+                    self.progress_callback(
+                        event_type="tool",
+                        name=f"{icon} {name}",
+                        detail=arg_str,
+                        agent_name=self.agent_name,
+                        parent_agent=self.parent_agent,
+                        status="completed",
+                        tool_name=func_name,
+                        result=result,
+                    )
+                return self._update_context_usage(result)
+
+        # Log output (only after validation)
         _log_tool_use(func_name, args_dict, self.verbose)
-        
+
         # Start notification
         if self.progress_callback:
             icon, name, arg_str, _ = _format_tool_log(func_name, args_dict)
             self.progress_callback(
-                event_type="tool", 
-                name=f"{icon} {name}", 
-                detail=arg_str, 
-                agent_name=self.agent_name, 
-                parent_agent=self.parent_agent, 
+                event_type="tool",
+                name=f"{icon} {name}",
+                detail=arg_str,
+                agent_name=self.agent_name,
+                parent_agent=self.parent_agent,
                 status="running",
-                tool_name=func_name
+                tool_name=func_name,
             )
-        
+
         if self.verbose:
             print(f"  args: {args_dict}")
-
-        # Cancellation check
-        if session_id:
-            check_cancelled(session_id)
 
         # Loop detection
         allowed, block_msg = self.tool_tracker.check_and_record(func_name, args_dict)
