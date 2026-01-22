@@ -51,8 +51,15 @@ class SmartJSONParser:
             start_idx = start_arr
             end_idx = clean_text.rfind(']')
             
-        if start_idx != -1 and end_idx != -1:
+        if start_idx != -1 and end_idx == -1:
+            # Opening brace/bracket exists but closing is missing: incomplete JSON fragment
+            return default
+        if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
             clean_text = clean_text[start_idx:end_idx+1]
+        elif start_idx == -1:
+            # { も [ もない場合は JSON ではない
+            logger.debug(f"No JSON structure found in text: {clean_text[:100]}")
+            return default
             
         # 3. 標準的な json.loads を試行
         try:
@@ -101,7 +108,7 @@ class SmartJSONParser:
             fixed = re.sub(r",\s*([\]}])", r"\1", fixed)
             return json.loads(fixed)
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse JSON even after cleanup. Error: {e}")
+            logger.debug(f"Failed to parse JSON even after cleanup. Error: {e}")
             logger.debug(f"Original text: {clean_text[:200]}")
             return default
 

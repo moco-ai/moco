@@ -1,11 +1,10 @@
 import os
 import re
-import json
 import asyncio
 import time
 import logging
 from pathlib import Path
-from typing import Dict, Optional, List, Callable, Any
+from typing import Dict, Optional, List, Any
 from ..tools.discovery import AgentLoader, AgentConfig, discover_tools
 from ..tools.skill_loader import SkillLoader, SkillConfig
 from ..tools.skill_tools import get_loaded_skills, clear_session_skills
@@ -27,10 +26,11 @@ from .optimizer import (
     SelectionResult
 )
 
+# Module-level logger (shared across this module)
+logger = logging.getLogger(__name__)
+
 try:
     from rich.console import Console
-    from rich.spinner import Spinner
-    from rich.live import Live
     _console = Console()
 
     def _log_delegation(agent_name: str, task_summary: str = ""):
@@ -763,7 +763,6 @@ class Orchestrator:
 
         # 委譲タスクがあれば並列実行
         delegation_results = {}  # {start_line_index: (sub_response, error)}
-        delegated_count = len(delegations)
 
         if delegations:
             # 各委譲タスクのコルーチンを作成
@@ -1157,7 +1156,6 @@ class Orchestrator:
             return eval_json
 
         except Exception as e:
-            logger = logging.getLogger(__name__)
             logger.warning(f"[Orchestrator] Failed to evaluate @{agent_name}: {e}")
             if self.verbose:
                 print(f"[Orchestrator] Failed to evaluate @{agent_name}: {e}")

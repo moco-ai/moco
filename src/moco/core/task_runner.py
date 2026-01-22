@@ -228,7 +228,8 @@ class TaskRunner:
 
             if last_match:
                 match, formatter = last_match
-                return formatter(match)            return None
+                return formatter(match)
+            return None
 
         except Exception:
             return None

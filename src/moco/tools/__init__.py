@@ -91,3 +91,12 @@ TOOL_MAP = {
     "get_project_context": get_project_context,
     # NOTE: browser_* ツールは discovery.py で自動的に読み込まれる
 }
+
+# Re-exported symbols (public API)
+__all__ = [
+    "TOOL_MAP",
+    "file_upload",
+    "file_upload_str",
+    "SkillLoader",
+    "SkillConfig",
+]

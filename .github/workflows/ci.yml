@@ -38,7 +38,7 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest tests/ -v --tb=short
+          pytest -v --tb=short
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 

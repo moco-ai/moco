@@ -1,10 +1,7 @@
-import sys
 import difflib
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional
 from rich.console import Console
-from rich.syntax import Syntax
-from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 

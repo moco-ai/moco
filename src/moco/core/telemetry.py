@@ -6,9 +6,8 @@ OpenTelemetry がインストールされていない場合は NoOp として動
 """
 
 import os
-import time
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Any, Dict, Generator
 from contextlib import contextmanager
 

@@ -3,7 +3,7 @@
 import os
 import re
 import subprocess
-from typing import List, Optional
+from typing import List
 from moco.utils.path import resolve_safe_path
 
 

@@ -3,7 +3,7 @@
 import os
 import glob as glob_module
 import json
-from typing import List, Optional
+from typing import List
 from moco.utils.path import resolve_safe_path
 from moco.tools.base import read_file as base_read_file
 

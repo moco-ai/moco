@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 import asyncio
 import os
 import json
@@ -5,8 +6,7 @@ import inspect
 import hashlib
 from ..cancellation import check_cancelled, OperationCancelled
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, List, Optional, Callable, Union, get_type_hints
-import sys
+from typing import Dict, Any, List, Optional, Callable, get_type_hints
 from collections import defaultdict
 
 from ..tools.skill_loader import SkillConfig
@@ -78,7 +78,7 @@ from google.genai import types
 
 # OpenAI
 try:
-    from openai import OpenAI, AsyncOpenAI
+    from openai import AsyncOpenAI
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
@@ -297,7 +297,7 @@ def _execute_tool_safely(func: Callable, args: Dict[str, Any]) -> Any:
     if asyncio.iscoroutine(result):
         try:
             # Python 3.10+: Check for a running loop using get_running_loop()
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # Execute in a new thread if within a running loop
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as pool:
@@ -1167,8 +1167,9 @@ class AgentRuntime:
 
                     # Process streaming response
                     collected_content = ""
-                    collected_tool_calls = []
-                    current_tool_call = None
+                    # Accumulate OpenAI tool call deltas by index (ai_manager style)
+                    # idx -> {"id": str, "name": str, "arguments": str}
+                    tool_calls_dict: Dict[int, Dict[str, str]] = {}
                     # Buffering thinking text (mitigation for fine chunks in GLM, etc.)
                     reasoning_buffer = ""
                     reasoning_header_shown = False
@@ -1259,45 +1260,24 @@ class AgentRuntime:
                                     agent_name=self.name
                                 )
 
-                        # Collecting tool calls
+                        # Collect tool call deltas (ai_manager style)
                         if delta.tool_calls:
                             for tc_delta in delta.tool_calls:
-                                # Index might be missing depending on the OpenAI SDK/model
-                                # In that case, treat as a single call with index=0
                                 idx = getattr(tc_delta, "index", None)
                                 if idx is None:
                                     idx = 0
 
-                                # New tool call or update existing
-                                while len(collected_tool_calls) <= idx:
-                                    collected_tool_calls.append({
-                                        "id": "",
-                                        "type": "function",
-                                        "function": {"name": "", "arguments": ""}
-                                    })
+                                if idx not in tool_calls_dict:
+                                    tool_calls_dict[idx] = {"id": "", "name": "", "arguments": ""}
 
-                                tc = collected_tool_calls[idx]
                                 if getattr(tc_delta, "id", None):
-                                    tc["id"] = tc_delta.id
+                                    tool_calls_dict[idx]["id"] = tc_delta.id
+
                                 if getattr(tc_delta, "function", None):
                                     if getattr(tc_delta.function, "name", None):
-                                        tc["function"]["name"] = tc_delta.function.name
+                                        tool_calls_dict[idx]["name"] += tc_delta.function.name
                                     if getattr(tc_delta.function, "arguments", None):
-                                        new_args = tc_delta.function.arguments
-                                        # 完全JSONかどうかを実際にパースして判定
-                                        # Z.ai等は各チャンクで完全JSONを送る、OpenAI等は断片を送る
-                                        is_complete_json = False
-                                        if new_args.strip().startswith("{") and new_args.strip().endswith("}"):
-                                            try:
-                                                json.loads(new_args)
-                                                is_complete_json = True
-                                            except json.JSONDecodeError:
-                                                pass
-                                        
-                                        if is_complete_json:
-                                            tc["function"]["arguments"] = new_args  # 完全JSON→上書き
-                                        else:
-                                            tc["function"]["arguments"] += new_args  # 断片→連結
+                                        tool_calls_dict[idx]["arguments"] += tc_delta.function.arguments
 
                     # Flush remaining thinking buffer (verbose only)
                     if reasoning_buffer and self.verbose and not self.progress_callback:
@@ -1312,23 +1292,43 @@ class AgentRuntime:
                     # Check for tool calls
                     # As tool_call_id might be missing in OpenAI streaming,
                     # determine based on the presence of function.name rather than the id
-                    if collected_tool_calls and any(tc.get("function", {}).get("name") for tc in collected_tool_calls):
-                        # Process tool calls
+                    if tool_calls_dict and any(tc.get("name") for tc in tool_calls_dict.values()):
+                        # Reconstruct tool_calls list (ai_manager style)
+                        tool_calls_list = []
+                        for idx in sorted(tool_calls_dict.keys()):
+                            tc = tool_calls_dict[idx]
+                            tc_id = tc.get("id") or f"call_{idx}"
+                            tool_calls_list.append({
+                                "id": tc_id,
+                                "type": "function",
+                                "function": {
+                                    "name": tc.get("name", ""),
+                                    "arguments": tc.get("arguments", ""),
+                                }
+                            })
+
                         messages.append({
                             "role": "assistant",
                             "content": collected_content or "",
-                            "tool_calls": collected_tool_calls
+                            "tool_calls": tool_calls_list
                         })
 
-                        for idx, tc in enumerate(collected_tool_calls):
+                        for tc in tool_calls_list:
                             func_name = tc["function"]["name"]
-                            args_dict = SmartJSONParser.parse(tc["function"]["arguments"], default={})
+                            raw_args = tc["function"].get("arguments") or ""
 
-                            result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
-
-                            # Complement tool_call_id if empty to allow proceeding
-                            if not tc.get("id"):
-                                tc["id"] = f"call_{idx}"
+                            # If tool args are incomplete (e.g. "{" only), do not execute the tool.
+                            # Return an error tool result so the model can retry properly.
+                            stripped = raw_args.strip()
+                            if not func_name:
+                                result = "Error: tool call has empty function name"
+                            elif not stripped:
+                                result = "Error: tool call has empty arguments"
+                            elif not (stripped.startswith("{") and stripped.endswith("}")):
+                                result = "Error: tool call arguments are incomplete JSON"
+                            else:
+                                args_dict = SmartJSONParser.parse(raw_args, default={})
+                                result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
 
                             messages.append({
                                 "role": "tool",

@@ -152,7 +152,8 @@ class SemanticMemory:
             cursor = conn.cursor()
             
             for i, idx in enumerate(indices[0]):
-                if idx == -1: continue
+                if idx == -1:
+                    continue
                 
                 doc_id = self.doc_ids[idx]
                 cursor.execute("SELECT doc_id, content, metadata FROM semantic_documents WHERE doc_id = ?", (doc_id,))

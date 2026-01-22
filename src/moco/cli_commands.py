@@ -1,9 +1,8 @@
 import shlex
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from rich.console import Console
 from rich.table import Table
-import typer
-from .ui.theme import THEMES, ThemeName
+from .ui.theme import ThemeName
 from .ui.layout import ui_state
 
 def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
@@ -29,6 +28,7 @@ def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
         'cost': handle_cost,
         'tools': handle_tools,
         'agents': handle_agents,
+        'substream': handle_substream,
         'quit': handle_quit,
         'exit': handle_quit,
         'theme': handle_theme,
@@ -63,6 +63,35 @@ def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
         console = context.get('console', Console())
         console.print(f"[red]Unknown command: /{command}. Type /help for available commands.[/red]")
         return True
+
+def handle_substream(args: List[str], context: Dict[str, Any]) -> bool:
+    """Toggle sub-agent streamed text in CLI.
+
+    Usage:
+      /substream            -> show current state
+      /substream on|off     -> enable/disable
+    """
+    console = context.get('console', Console())
+    flags = context.get('stream_flags') or {}
+    current = bool(flags.get("show_subagent_stream", False))
+
+    if not args:
+        console.print(f"[dim]Sub-agent stream:[/dim] {'ON' if current else 'OFF'}")
+        console.print("[dim]Usage: /substream on|off[/dim]")
+        return True
+
+    val = args[0].lower()
+    if val in ("on", "true", "1", "yes"):
+        flags["show_subagent_stream"] = True
+        console.print("[green]Sub-agent stream: ON[/green]")
+        return True
+    if val in ("off", "false", "0", "no"):
+        flags["show_subagent_stream"] = False
+        console.print("[green]Sub-agent stream: OFF[/green]")
+        return True
+
+    console.print("[red]Usage: /substream on|off[/red]")
+    return True
 
 def handle_ls(args: List[str], context: Dict[str, Any]) -> bool:
     """Display contents of current directory"""
@@ -181,7 +210,6 @@ def handle_clear(args: List[str], context: Dict[str, Any]) -> bool:
     console = context.get('console', Console())
     
     if orchestrator and session_id:
-        from .core.orchestrator import Orchestrator
         new_session_id = orchestrator.create_session(title="CLI Chat (Cleared)")
         context['session_id'] = new_session_id
         console.print("[green]✓ Conversation history cleared (New session started).[/green]")
@@ -200,7 +228,7 @@ def handle_theme(args: List[str], context: Dict[str, Any]) -> bool:
         available = ", ".join([t.value for t in ThemeName])
         console.print(f"[dim]Available themes: {available}[/dim]")
         console.print(f"[dim]Current theme: {ui_state.theme.value}[/dim]")
-        console.print(f"[dim]Usage: /theme <name>[/dim]")
+        console.print("[dim]Usage: /theme <name>[/dim]")
     else:
         new_theme_str = args[0].lower()
         try:
@@ -221,7 +249,7 @@ def handle_model(args: List[str], context: Dict[str, Any]) -> bool:
     if not args:
         current_model = getattr(orchestrator, 'model', 'default')
         console.print(f"[dim]Current model: {current_model}[/dim]")
-        console.print(f"[dim]Usage: /model <model_name>[/dim]")
+        console.print("[dim]Usage: /model <model_name>[/dim]")
     else:
         new_model = args[0]
         orchestrator.model = new_model
@@ -245,11 +273,11 @@ def handle_profile(args: List[str], context: Dict[str, Any]) -> bool:
         from .cli import get_available_profiles
         profiles = get_available_profiles()
         console.print(f"[bold]Current profile:[/bold] {orchestrator.profile}")
-        console.print(f"\n[bold]Available profiles:[/bold]")
+        console.print("\n[bold]Available profiles:[/bold]")
         for p in profiles:
             marker = "→" if p == orchestrator.profile else " "
             console.print(f"  {marker} {p}")
-        console.print(f"\n[dim]Usage: /profile <profile_name>[/dim]")
+        console.print("\n[dim]Usage: /profile <profile_name>[/dim]")
     else:
         new_profile = args[0]
         # Profile change requires re-initialization of Orchestrator
@@ -282,7 +310,7 @@ def handle_workdir(args: List[str], context: Dict[str, Any]) -> bool:
             try:
                 with open(bookmarks_file, 'r') as f:
                     return json.load(f)
-            except:
+            except Exception:
                 return {}
         return {}
 
@@ -300,12 +328,12 @@ def handle_workdir(args: List[str], context: Dict[str, Any]) -> bool:
             console.print("\n[bold]Bookmarks:[/bold]")
             for name, path in sorted(bookmarks.items()):
                 console.print(f"  [cyan]{name}[/cyan] -> {path}")
-        console.print(f"\n[dim]Usage:[/dim]")
-        console.print(f"  /workdir <path or bookmark>")
-        console.print(f"  /cd <path or bookmark>")
-        console.print(f"  /workdir add <name> [path]    (path defaults to current)")
-        console.print(f"  /workdir remove <name>")
-        console.print(f"  /workdir list")
+        console.print("\n[dim]Usage:[/dim]")
+        console.print("  /workdir <path or bookmark>")
+        console.print("  /cd <path or bookmark>")
+        console.print("  /workdir add <name> [path]    (path defaults to current)")
+        console.print("  /workdir remove <name>")
+        console.print("  /workdir list")
         return True
 
     cmd = args[0].lower()

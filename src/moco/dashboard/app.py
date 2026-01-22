@@ -5,10 +5,9 @@ moco ダッシュボード FastAPI アプリケーション。
 """
 
 import asyncio
-import json
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, List, Any, Set
@@ -19,10 +18,9 @@ logger = logging.getLogger(__name__)
 # FastAPI（オプション依存）
 try:
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Request
-    from fastapi.responses import HTMLResponse, JSONResponse
-    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import HTMLResponse
     from fastapi.templating import Jinja2Templates
-    from moco.common.schemas import LogEntry, SessionInfo
+    from moco.common.schemas import LogEntry
     from moco.common.errors import setup_exception_handlers
     FASTAPI_AVAILABLE = True
 except ImportError:

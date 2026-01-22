@@ -16,7 +16,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from enum import Enum
-from typing import Callable, Dict, List, Optional, Set, Any
+from typing import Callable, Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 

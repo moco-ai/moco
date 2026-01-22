@@ -3,7 +3,6 @@
 import os
 import ast
 import pickle
-import json
 import hashlib
 import logging
 import numpy as np
@@ -11,7 +10,6 @@ import faiss
 import tiktoken
 from typing import List, Dict, Any, Optional, Set
 from pathlib import Path
-from datetime import datetime
 from dotenv import load_dotenv, find_dotenv
 
 logger = logging.getLogger(__name__)

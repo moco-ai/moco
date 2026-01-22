@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 import fnmatch
 from collections import Counter
-from typing import List, Dict, Optional
+from typing import List, Dict
 from moco.utils.path import resolve_safe_path, get_working_directory
 
 def get_project_context(path: str = None, depth: int = 2) -> str:

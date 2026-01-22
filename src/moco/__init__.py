@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 import warnings
 # ========================================
 # Suppress warnings (Set before imports)
@@ -14,7 +15,6 @@ except Exception:
 # IMPORTANT: Loading .env must be the first thing to do
 # Other modules reference environment variables during import
 # ========================================
-import os
 from pathlib import Path
 from dotenv import load_dotenv, find_dotenv
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Moco CLI"""
 
+# ruff: noqa: E402
 import warnings
 # ========================================
 # 警告の抑制 (インポート前に設定)
@@ -38,7 +39,6 @@ _early_load_dotenv()
 import typer
 import time
 import sys
-import threading
 from datetime import datetime
 from typing import Optional, List
 from .ui.theme import ThemeName, THEMES
@@ -266,7 +266,6 @@ def run(
     # 実行（リトライ対応）
     start_time = time.time()
     result = None
-    last_error = None
 
     from .cancellation import create_cancel_event, request_cancel, clear_cancel_event, OperationCancelled
     create_cancel_event(session_id)
@@ -284,7 +283,6 @@ def run(
                     print(f"\nCancelled (Session: {session_id[:8]}...)")
                 raise typer.Exit(code=0)
             except Exception as e:
-                last_error = e
                 if attempt < auto_retry:
                     if rich_output:
                         console.print(f"[yellow]Error: {e}. Retrying in {retry_delay}s... ({attempt + 1}/{auto_retry})[/yellow]")
@@ -514,6 +512,7 @@ def chat(
     provider: Optional[str] = typer.Option(None, "--provider", "-P", help="LLMプロバイダ (gemini/openai/openrouter/zai) - 省略時は自動選択"),
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
     stream: bool = typer.Option(True, "--stream/--no-stream", help="ストリーミング出力（デフォルト: オン）"),
+    subagent_stream: bool = typer.Option(False, "--subagent-stream/--no-subagent-stream", help="サブエージェント本文のストリーミング表示（デフォルト: オフ）"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
     session: Optional[str] = typer.Option(None, "--session", "-s", help="セッション名（継続 or 新規）"),
     new_session: bool = typer.Option(False, "--new", help="新規セッションを強制開始"),
@@ -527,12 +526,26 @@ def chat(
 
     init_environment()
     from rich.console import Console
-    from rich.panel import Panel
 
     from .core.orchestrator import Orchestrator
     from .core.llm_provider import get_available_provider
+    from .core.runtime import _safe_stream_print
 
     console = Console()
+    stream_flags = {"show_subagent_stream": subagent_stream}
+
+    # Streaming callback for CLI:
+    # - tool/delegate logs are printed elsewhere (keep as-is)
+    # - print streamed chunks only for orchestrator by default
+    def progress_callback(event_type: str, content: str = None, agent_name: str = None, **kwargs):
+        if event_type == "chunk" and content:
+            name = agent_name or ""
+            if name == "orchestrator" or stream_flags.get("show_subagent_stream"):
+                _safe_stream_print(content)
+        elif event_type == "done":
+            # Add newline after the main response
+            if (agent_name or "") == "orchestrator":
+                _safe_stream_print("\n")
 
     # プロファイルの解決（指定なしの場合は対話選択）
     if profile is None:
@@ -552,6 +565,7 @@ def chat(
             stream=stream,
             verbose=verbose,
             use_optimizer=use_optimizer,
+            progress_callback=progress_callback if stream else None,
         )
 
     # Context for slash commands
@@ -559,6 +573,7 @@ def chat(
         'orchestrator': o,
         'console': console,
         'verbose': verbose,
+        'stream_flags': stream_flags,
     }
 
     # セッション管理
@@ -586,9 +601,9 @@ def chat(
 
     command_context['session_id'] = session_id
 
-    console.print(f"[bold cyan]🤖 Moco chat[/]")
+    console.print("[bold cyan]🤖 Moco chat[/]")
     console.print(f"[bold {theme_config.status}]Profile:[/] {profile}  [bold {theme_config.status}]Provider:[/] {provider}")
-    console.print(f"[dim]Type 'exit' to quit, '/help' for commands[/dim]")
+    console.print("[dim]Type 'exit' to quit, '/help' for commands[/dim]")
     console.print()
 
     # --- スラッシュコマンド対応 ---
@@ -628,7 +643,7 @@ def chat(
                 raise typer.Exit(code=0)
 
             try:
-                cancel_event = create_cancel_event(session_id)
+                create_cancel_event(session_id)
                 # シンプルにrun_syncを呼ぶだけ（streaming時はruntimeが直接出力）
                 reply = o.run_sync(text, session_id)
             except KeyboardInterrupt:
@@ -672,7 +687,7 @@ def skills_list(
 
     if not skills:
         console.print(f"[dim]No skills installed in profile '{profile}'[/dim]")
-        console.print(f"[dim]Try: moco skills sync anthropics[/dim]")
+        console.print("[dim]Try: moco skills sync anthropics[/dim]")
         return
 
     table = Table(title=f"Skills ({profile})", border_style=theme.tools)
@@ -1244,7 +1259,6 @@ def tasks_exec(
             completed_at=datetime.now().isoformat()
         )
     except Exception as e:
-        import sys
         print(f"Error in background task {task_id}: {e}", file=sys.stderr)
         store.update_task(
             task_id,
@@ -1265,7 +1279,7 @@ def ui(
     from rich.console import Console
     
     console = Console()
-    console.print(f"\n🚀 [bold cyan]Moco Web UI[/bold cyan] starting...")
+    console.print("\n🚀 [bold cyan]Moco Web UI[/bold cyan] starting...")
     console.print(f"   URL: [link]http://{host if host != '0.0.0.0' else 'localhost'}:{port}[/link]\n")
     
     uvicorn.run(

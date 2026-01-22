@@ -2,14 +2,15 @@
 FastAPI backend for Moco Web UI
 ChatGPT-like interface
 """
+# ruff: noqa: E402
 import os
 import re
 import asyncio
 import queue
 import threading
 import time
-from pathlib import Path
-from typing import Optional
+import uuid
+from typing import Optional, Any, Dict
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -17,7 +18,6 @@ from pydantic import BaseModel
 import json
 import sqlite3
 import logging
-from datetime import datetime, date
 from dotenv import load_dotenv, find_dotenv
 
 # .env を読み込む（親方向に自動探索）
@@ -72,6 +72,94 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 session_logger = SessionLogger()
 logger = logging.getLogger(__name__)
 
+# ===== Approval (tool execution gating) =====
+# Used by UI and by `src/moco/ui/test_approval.py`.
+pending_approvals: Dict[str, Dict[str, Any]] = {}
+pending_approvals_lock = threading.Lock()
+
+
+class ApprovalManager:
+    def __init__(self):
+        self.pending_approvals = pending_approvals
+        self.pending_approvals_lock = pending_approvals_lock
+        self.session_websockets: Dict[str, list[Any]] = {}
+
+    async def register_websocket(self, session_id: str, websocket: Any) -> None:
+        self.session_websockets.setdefault(session_id, []).append(websocket)
+
+    async def unregister_websocket(self, session_id: str, websocket: Any) -> None:
+        ws_list = self.session_websockets.get(session_id) or []
+        try:
+            ws_list.remove(websocket)
+        except ValueError:
+            return
+        if not ws_list:
+            self.session_websockets.pop(session_id, None)
+
+    async def _send_to_session(self, session_id: str, payload: Dict[str, Any]) -> bool:
+        ws_list = self.session_websockets.get(session_id) or []
+        if not ws_list:
+            return False
+        sent_any = False
+        for ws in list(ws_list):
+            try:
+                if hasattr(ws, "send_json"):
+                    await ws.send_json(payload)
+                    sent_any = True
+                elif hasattr(ws, "send_text"):
+                    await ws.send_text(json.dumps(payload, ensure_ascii=False))
+                    sent_any = True
+            except Exception:
+                continue
+        return sent_any
+
+    async def create_approval_request(self, approval_id: str, tool: str, args: Dict[str, Any], session_id: str) -> bool:
+        with self.pending_approvals_lock:
+            event = threading.Event()
+            self.pending_approvals[approval_id] = {
+                "event": event,
+                "decision": False,
+                "tool": tool,
+                "args": args or {},
+                "session_id": session_id,
+            }
+
+        await self._send_to_session(
+            session_id,
+            {"type": "approval_request", "approval_id": approval_id, "tool": tool, "args": args or {}},
+        )
+        return True
+
+    async def respond_to_approval(self, approval_id: str, approved: bool) -> bool:
+        with self.pending_approvals_lock:
+            item = self.pending_approvals.get(approval_id)
+            if not item:
+                return False
+            item["decision"] = bool(approved)
+            event = item.get("event")
+            if isinstance(event, threading.Event):
+                event.set()
+        return True
+
+    async def wait_for_decision(self, approval_id: str, timeout: float = 30.0) -> bool:
+        with self.pending_approvals_lock:
+            item = self.pending_approvals.get(approval_id)
+            if not item:
+                return False
+            event = item.get("event")
+            if not isinstance(event, threading.Event):
+                return False
+
+        decided = await asyncio.to_thread(event.wait, timeout)
+        with self.pending_approvals_lock:
+            item = self.pending_approvals.pop(approval_id, None)
+        if not decided or not item:
+            return False
+        return bool(item.get("decision"))
+
+
+approval_manager = ApprovalManager()
+
 
 def get_orchestrator(profile: str, provider: str = "gemini", verbose: bool = False, working_directory: str = None) -> Orchestrator:
     """Orchestratorインスタンスを新規生成"""
@@ -109,6 +197,16 @@ class FileResponse(BaseModel):
     line_count: int
     size: int
     path: str
+
+
+class ApproveSessionRequest(BaseModel):
+    tool: Optional[str] = None
+    args: Dict[str, Any] = {}
+    approved: Optional[bool] = None
+
+
+class ApprovalRespond(BaseModel):
+    approved: bool
 
 
 # === Routes ===
@@ -244,6 +342,54 @@ async def cancel_task(session_id: str):
     """実行中のタスクをキャンセル"""
     success = request_cancel(session_id)
     return {"status": "success" if success else "not_found", "session_id": session_id}
+
+
+@app.post("/api/sessions/{session_id}/approve")
+async def create_approval(session_id: str, req: Dict[str, Any]):
+    """
+    承認要求の作成、またはセッション単位の承認応答（UI互換）。
+
+    - tool/args がある場合: 承認要求を作成して approval_id を返す
+    - approved のみある場合: そのセッションの最新 pending を承認/拒否する（UI向け）
+    """
+    session = session_logger.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    tool = req.get("tool")
+    args = req.get("args") or {}
+    approved = req.get("approved")
+
+    if tool:
+        approval_id = str(uuid.uuid4())
+        await approval_manager.create_approval_request(approval_id, tool, args, session_id)
+        return {"status": "ok", "approval_id": approval_id, "tool": tool, "args": args}
+
+    if approved is not None:
+        # respond to latest pending approval for the session
+        with pending_approvals_lock:
+            candidates = [
+                (aid, item)
+                for aid, item in pending_approvals.items()
+                if item.get("session_id") == session_id
+            ]
+        if not candidates:
+            return {"status": "not_found", "session_id": session_id}
+
+        approval_id = candidates[-1][0]
+        ok = await approval_manager.respond_to_approval(approval_id, bool(approved))
+        return {"status": "ok" if ok else "not_found", "approval_id": approval_id, "decision": bool(approved)}
+
+    # mimic FastAPI validation failure behavior for tests
+    raise HTTPException(status_code=422, detail="tool field is required")
+
+
+@app.post("/api/approvals/{approval_id}/respond")
+async def respond_approval(approval_id: str, body: ApprovalRespond):
+    ok = await approval_manager.respond_to_approval(approval_id, body.approved)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Approval request not found or expired")
+    return {"status": "ok", "approval_id": approval_id, "decision": bool(body.approved)}
 
 
 @app.get("/api/sessions/{session_id}")

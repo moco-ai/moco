@@ -1,6 +1,5 @@
-from typing import List, Dict, Optional
+from typing import List, Dict
 import sqlite3
-import json
 
 try:
     import networkx as nx
