@@ -86,6 +86,9 @@ class SkillConfig:
     version: str
     content: str
     allowed_tools: List[str] = field(default_factory=list)
+    path: str = ""
+    is_logic: bool = False
+    exposed_tools: Dict[str, Any] = field(default_factory=dict)
 
     def matches_input(self, user_input: str) -> bool:
         """Check if this skill matches the user input based on triggers or description keywords"""
@@ -242,13 +245,24 @@ class SkillLoader:
         elif not isinstance(allowed_tools, list):
             allowed_tools = []
 
+        # ロジック型スキルの判定 (index.js, index.ts, package.json)
+        skill_dir = os.path.dirname(file_path)
+        is_logic = any(os.path.exists(os.path.join(skill_dir, f)) 
+                      for f in ["index.js", "index.ts", "package.json"])
+        
+        # 露出ツールの定義 (YAML内の tools セクション)
+        exposed_tools = metadata.get("tools", {})
+
         return SkillConfig(
             name=name,
             description=metadata.get("description", ""),
             triggers=triggers,
             version=metadata.get("version", "1.0.0"),
             content=body,
-            allowed_tools=allowed_tools
+            allowed_tools=allowed_tools,
+            path=skill_dir,
+            is_logic=is_logic,
+            exposed_tools=exposed_tools
         )
 
     def match_skills(
