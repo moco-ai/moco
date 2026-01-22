@@ -252,8 +252,11 @@ def _validate_arguments(func: Callable, args: Dict[str, Any]) -> Dict[str, Any]:
         hints = {}
 
     validated_args = {}
+    missing_required: List[str] = []
     for param_name, param in sig.parameters.items():
         if param_name in ("self", "cls"):
+            continue
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
             continue
         
         if param_name in args:
@@ -282,7 +285,13 @@ def _validate_arguments(func: Callable, args: Dict[str, Any]) -> Dict[str, Any]:
         elif param.default != inspect.Parameter.empty:
             # If there's a default value, do nothing (the default will be used in func(**validated_args))
             pass
+        else:
+            # Required parameter is missing
+            missing_required.append(param_name)
             
+    if missing_required:
+        raise ValueError(f"missing required arguments: {', '.join(missing_required)}")
+
     return validated_args
 
 

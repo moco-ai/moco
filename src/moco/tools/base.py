@@ -142,6 +142,11 @@ def write_file(path: str, content: str, overwrite: bool = False) -> str:
     Returns:
         str: 成功時は書き込んだ行数、失敗時はエラーメッセージ
 
+    IMPORTANT（必ず守る）:
+        - 必須: `path` と `content` を必ず渡す（片方でも欠けると実行されません）
+        - 引数は「JSONオブジェクト1つ」で渡す（途中で切れた `{` や複数JSONはNG）
+        - 改行は `\\n`、ダブルクォートは `\\"` に必ずエスケープする
+
     IMPORTANT - JSON arguments format:
         {
             "path": "ファイルパス",
@@ -216,6 +221,12 @@ def edit_file(path: str, old_string: str, new_string: str) -> str:
 
     Returns:
         str: 成功時は成功メッセージ、失敗時はエラーメッセージ
+
+    IMPORTANT（必ず守る）:
+        - 必須: `path`, `old_string`, `new_string` を必ず渡す（欠けると実行されません）
+        - old_string は対象箇所が一意に特定できるよう、前後の文脈を十分に含める
+        - 引数は「JSONオブジェクト1つ」で渡す（途中で切れた `{` や複数JSONはNG）
+        - 文字列内の改行は `\\n`、ダブルクォートは `\\"` にエスケープする
 
     Note:
         - old_stringがファイル内で複数回出現する場合はエラーになります
