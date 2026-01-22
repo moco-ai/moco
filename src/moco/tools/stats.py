@@ -113,16 +113,12 @@ def get_session_stats() -> str:
         return "セッションが開始されていません。"
     
     try:
-        from ..storage.session_logger import SessionLogger
-        
         # data ディレクトリのパスを解決
         data_dir = os.environ.get("MOCO_DATA_DIR")
         if not data_dir:
             data_dir = Path.cwd() / "data"
         else:
             data_dir = Path(data_dir)
-        
-        logger = SessionLogger(db_path=str(data_dir / "sessions.db"))
         
         # セッション内のメッセージからエージェント活動を集計
         import sqlite3

@@ -6,8 +6,7 @@ AutoTuner - 自動閾値調整
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Tuple
 
 from .quality_tracker import QualityTracker
 from .config import OptimizerConfig

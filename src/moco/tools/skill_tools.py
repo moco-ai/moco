@@ -5,8 +5,8 @@ from local and remote registries.
 """
 
 import json
-from typing import Optional, List
-from .skill_loader import SkillLoader, SkillConfig
+from typing import Optional
+from .skill_loader import SkillLoader
 
 # グローバルなスキルローダーとロード済みスキルのキャッシュ
 _skill_loader: Optional[SkillLoader] = None
@@ -83,7 +83,7 @@ def search_skills(query: str, include_remote: bool = True) -> str:
                             "source": "remote:anthropics",
                             "loaded": name in _loaded_skills
                         })
-        except Exception as e:
+        except Exception:
             # セマンティック検索失敗時はキーワード検索にフォールバック
             pass
     

@@ -2,13 +2,13 @@
 FastAPI backend for Moco Web UI
 ChatGPT-like interface
 """
+# ruff: noqa: E402
 import os
 import re
 import asyncio
 import queue
 import threading
 import time
-from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -17,7 +17,6 @@ from pydantic import BaseModel
 import json
 import sqlite3
 import logging
-from datetime import datetime, date
 from dotenv import load_dotenv, find_dotenv
 
 # .env を読み込む（親方向に自動探索）

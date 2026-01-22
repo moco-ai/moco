@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 import asyncio
 import os
 import json
@@ -5,8 +6,7 @@ import inspect
 import hashlib
 from ..cancellation import check_cancelled, OperationCancelled
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, List, Optional, Callable, Union, get_type_hints
-import sys
+from typing import Dict, Any, List, Optional, Callable, get_type_hints
 from collections import defaultdict
 
 from ..tools.skill_loader import SkillConfig
@@ -78,7 +78,7 @@ from google.genai import types
 
 # OpenAI
 try:
-    from openai import OpenAI, AsyncOpenAI
+    from openai import AsyncOpenAI
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
@@ -297,7 +297,7 @@ def _execute_tool_safely(func: Callable, args: Dict[str, Any]) -> Any:
     if asyncio.iscoroutine(result):
         try:
             # Python 3.10+: Check for a running loop using get_running_loop()
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # Execute in a new thread if within a running loop
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as pool:

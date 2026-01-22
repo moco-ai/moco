@@ -391,8 +391,8 @@ class SessionLogger:
             if not messages:
                 return []
 
-            # Check context health
-            health = self.context_monitor.check_health(messages)
+            # Check context health (keep for side effects/metrics)
+            self.context_monitor.check_health(messages)
 
             # セッション内は全件保持（Cursor方式）
             # 要約は context_compressor で 200K トークン超えた時のみ

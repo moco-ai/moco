@@ -2,10 +2,9 @@
 import subprocess
 import threading
 import time
-import re
 import os
 from collections import deque
-from typing import Dict, Optional, List
+from typing import Dict
 from dataclasses import dataclass, field
 try:
     from .base import is_dangerous_command

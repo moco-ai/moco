@@ -7,8 +7,8 @@ LLM API コスト追跡モジュール。
 import json
 import logging
 import threading
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone, timedelta
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, Callable, Any, Dict, List, Generator
 from contextlib import contextmanager

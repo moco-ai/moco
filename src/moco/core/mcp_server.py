@@ -9,15 +9,12 @@ import asyncio
 import inspect
 import json
 import logging
-import os
-import sys
 import hashlib
 import hmac
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Union, get_type_hints, TYPE_CHECKING
-from functools import wraps
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +25,7 @@ try:
     from mcp.types import (
         Tool as MCPTool,
         TextContent,
-        CallToolResult,
-        ListToolsResult,
         Resource,
-        ResourceTemplate,
         Prompt,
         PromptMessage,
         GetPromptResult,
@@ -313,7 +307,7 @@ class MCPServer:
             agent: AgentRuntime インスタンス
         """
         if not hasattr(agent, 'tool_map') or not agent.tool_map:
-            logger.warning(f"Agent has no tools to register")
+            logger.warning("Agent has no tools to register")
             return
         
         for tool_name, tool_func in agent.tool_map.items():

@@ -11,7 +11,6 @@ Supports:
 """
 
 import os
-import sys
 import re
 import glob
 import json
@@ -21,7 +20,6 @@ import subprocess
 import logging
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
-from pathlib import Path
 
 try:
     import yaml
@@ -193,7 +191,6 @@ class SkillLoader:
                 if skill:
                     skills[skill.name] = skill
             except Exception as e:
-                import sys
                 logger.warning(f"Failed to load skill from {file_path}: {e}")
 
         return skills

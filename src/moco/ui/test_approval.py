@@ -11,7 +11,7 @@ import asyncio
 import threading
 import uuid
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # APIモジュールのインポート
 import sys
@@ -82,7 +82,7 @@ class TestApprovalAPI:
             assert approval_id in pending_approvals
             assert pending_approvals[approval_id]["tool"] == "test_tool"
             assert pending_approvals[approval_id]["args"] == {"param": "value"}
-            assert pending_approvals[approval_id]["decision"] == False
+            assert not pending_approvals[approval_id]["decision"]
 
     def test_create_approval_session_not_found(self, client):
         """承認要求の作成 - セッション不存在"""
@@ -132,11 +132,11 @@ class TestApprovalAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
-        assert data["decision"] == True
+        assert data["decision"]
         
         # 承認要求のdecisionがTrueになっているか確認
         with pending_approvals_lock:
-            assert pending_approvals[approval_id]["decision"] == True
+            assert pending_approvals[approval_id]["decision"]
             assert pending_approvals[approval_id]["event"].is_set()
 
     def test_respond_approval_reject(self, client, setup_approval):
@@ -151,11 +151,11 @@ class TestApprovalAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
-        assert data["decision"] == False
+        assert not data["decision"]
         
         # 承認要求のdecisionがFalseになっているか確認
         with pending_approvals_lock:
-            assert pending_approvals[approval_id]["decision"] == False
+            assert not pending_approvals[approval_id]["decision"]
             assert pending_approvals[approval_id]["event"].is_set()
 
     def test_respond_approval_twice(self, client, setup_approval):
@@ -248,7 +248,7 @@ class TestApprovalManager:
             result = await approval_mgr.create_approval_request(
                 approval_id, "test_tool", {"param": "value"}, session_id
             )
-            assert result == True
+            assert result
         
         # 別タスクで承認応答
         async def respond():
@@ -256,10 +256,10 @@ class TestApprovalManager:
             await approval_mgr.respond_to_approval(approval_id, True)
         
         # 承認待機
-        respond_task = asyncio.create_task(respond())
+        asyncio.create_task(respond())
         decision = await approval_mgr.wait_for_decision(approval_id, timeout=1.0)
         
-        assert decision == True
+        assert decision
         assert approval_id not in approval_mgr.pending_approvals  # クリーンアップ済み
 
     @pytest.mark.asyncio
@@ -278,10 +278,10 @@ class TestApprovalManager:
             await asyncio.sleep(0.1)
             await approval_mgr.respond_to_approval(approval_id, False)
         
-        respond_task = asyncio.create_task(respond())
+        asyncio.create_task(respond())
         decision = await approval_mgr.wait_for_decision(approval_id, timeout=1.0)
         
-        assert decision == False
+        assert not decision
 
     @pytest.mark.asyncio
     async def test_wait_for_decision_timeout(self, approval_mgr):
@@ -298,19 +298,19 @@ class TestApprovalManager:
         decision = await approval_mgr.wait_for_decision(approval_id, timeout=0.1)
         
         # タイムアウト時はFalse（却下扱い）
-        assert decision == False
+        assert not decision
 
     @pytest.mark.asyncio
     async def test_respond_to_nonexistent_approval(self, approval_mgr):
         """存在しない承認要求への応答"""
         result = await approval_mgr.respond_to_approval("non-existent", True)
-        assert result == False
+        assert not result
 
     @pytest.mark.asyncio
     async def test_wait_for_nonexistent_approval(self, approval_mgr):
         """存在しない承認要求の待機"""
         decision = await approval_mgr.wait_for_decision("non-existent", timeout=0.1)
-        assert decision == False
+        assert not decision
 
     @pytest.mark.asyncio
     async def test_websocket_registration(self, approval_mgr):
@@ -346,7 +346,7 @@ class TestApprovalManager:
             "non-existent-session",
             {"type": "test"}
         )
-        assert result == False
+        assert not result
 
 
 if __name__ == "__main__":

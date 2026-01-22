@@ -26,7 +26,7 @@ vercel-labs/agent-browser (https://github.com/vercel-labs/agent-browser) をベ�
 import subprocess
 import shutil
 import os
-from typing import Optional, List
+from typing import Optional
 
 
 def _find_node_bin_dir() -> Optional[str]:

@@ -10,7 +10,6 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
 from rich.spinner import Spinner
-from rich.text import Text
 
 from .console import console
 from .theme import THEMES, ThemeName
@@ -155,7 +154,7 @@ class UIState:
         # --- 最下部: 詳細ログ (verbose) ---
         if self.verbose_logs:
             # 最後の数行を逆順に（最新が下）またはそのまま表示
-            log_content = "\n".join([f"[dim]{escape(l)}[/dim]" for l in self.verbose_logs])
+            log_content = "\n".join([f"[dim]{escape(line)}[/dim]" for line in self.verbose_logs])
         else:
             log_content = f"[{theme.muted}]詳細ログはありません[/]"
 

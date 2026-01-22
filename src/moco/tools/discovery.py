@@ -3,7 +3,7 @@ import sys
 import logging
 import importlib.util
 import inspect
-from typing import Dict, Callable, Optional, List, Any
+from typing import Dict, Callable, Optional, List
 import yaml
 import glob
 from dataclasses import dataclass
@@ -89,7 +89,6 @@ def _load_tools_from_dir(tools_dir: str) -> Dict[str, Callable]:
     指定されたディレクトリからツールを読み込むヘルパー関数
     相対インポートが動作するよう、パッケージとして読み込む
     """
-    import sys
     tool_map = {}
     if not os.path.isdir(tools_dir):
         return tool_map

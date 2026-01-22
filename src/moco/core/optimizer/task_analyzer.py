@@ -5,7 +5,6 @@ TaskAnalyzer - LLMベースのタスク分析
 キーワードマッチではなくAI判断による汎用的な分析。
 """
 
-import json
 import re
 import asyncio
 from typing import TypedDict, Optional, Any, Callable
@@ -137,7 +136,6 @@ JSON形式で回答（説明不要）:
             task = task[:max_length] + "..."
         
         # 制御文字を除去
-        import re
         task = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', task)
         
         return task
@@ -154,7 +152,7 @@ JSON形式で回答（説明不要）:
         try:
             # 既存のイベントループがあるか確認
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
                 # 既にループ内にいる場合は新しいスレッドで実行
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as pool:

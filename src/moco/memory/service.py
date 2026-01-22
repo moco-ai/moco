@@ -32,7 +32,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from .db import init_db, get_conn
-from .embeddings import GENAI_AVAILABLE, build_genai_client, embed_text
+from .embeddings import build_genai_client, embed_text
 from .serialization import serialize_embedding, deserialize_embedding, deserialize_keywords
 from .similarity import cos_sim
 from ..utils.json_parser import SmartJSONParser

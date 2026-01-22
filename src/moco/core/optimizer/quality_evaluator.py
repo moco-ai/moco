@@ -5,8 +5,6 @@ QualityEvaluator - LLMベースの実行結果品質評価
 TaskAnalyzerと同様に、AIによる多角的な評価を行う。
 """
 
-import json
-import re
 import asyncio
 import concurrent.futures
 from typing import TypedDict, Optional, Any, Callable
@@ -143,7 +141,7 @@ JSON形式で回答（説明不要）:
     def evaluate_sync(self, task: str, result: str, profile: str = "default") -> QualityScores:
         """実行結果を評価してスコアを返す（同期）"""
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # 既にイベントループがある場合
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(asyncio.run, self.evaluate(task, result, profile))
