@@ -37,6 +37,11 @@ dependencies = [
     "networkx"
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
+
 [project.scripts]
 moco = "moco.cli:main"
 
