@@ -405,7 +405,17 @@ class Orchestrator:
         await self._record_execution_metrics(session_id, user_input, response)
 
         # MemoryService: 会話から学習
-        await self._learn_from_conversation(user_input, response)
+        # Fire-and-forget to avoid blocking the next user turn.
+        # Memory learning is best-effort; failures are logged in verbose mode.
+        import asyncio
+        task = asyncio.create_task(self._learn_from_conversation(user_input, response))
+        if self.verbose:
+            def _on_done(t: "asyncio.Task"):
+                try:
+                    t.result()
+                except Exception as e:
+                    moco_log(f"[Memory] Background learning failed: {e}", self.verbose)
+            task.add_done_callback(_on_done)
 
         return response
     
