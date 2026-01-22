@@ -89,7 +89,8 @@ def read_file(path: str, offset: int = None, limit: int = None) -> str:
             return "Error: Invalid offset or limit. They must be integers."
 
         # キャッシュのチェック (全文読み取り時のみキャッシュ機能を利用/保存する)
-        is_full_read = (start_line == 1 and (limit is None or limit >= DEFAULT_MAX_LINES))
+        # NOTE: limit が文字列で渡されることがあるため、比較は int にキャスト済みの max_lines を使う
+        is_full_read = (start_line == 1 and (limit is None or max_lines >= DEFAULT_MAX_LINES))
         
         raw_content = None
         if is_full_read:
@@ -141,9 +142,22 @@ def write_file(path: str, content: str, overwrite: bool = False) -> str:
     Returns:
         str: 成功時は書き込んだ行数、失敗時はエラーメッセージ
 
-    Example:
-        write_file("example.txt", "Hello, World!")
-        write_file("config.json", '{"key": "value"}', overwrite=True)
+    IMPORTANT - JSON arguments format:
+        {
+            "path": "ファイルパス",
+            "content": "ファイル内容（改行は\\nでエスケープ）",
+            "overwrite": false
+        }
+
+    Example JSON calls:
+        {"path": "hello.txt", "content": "Hello World!"}
+        {"path": "script.py", "content": "def main():\\n    print('hello')\\n"}
+        {"path": "config.yaml", "content": "name: test\\nversion: 1.0\\n", "overwrite": true}
+
+    注意:
+        - content内の改行は必ず \\n でエスケープすること
+        - content内のダブルクォートは \\" でエスケープすること
+        - 全てのキーと文字列値はダブルクォートで囲むこと
     """
     try:
         # パスを解決

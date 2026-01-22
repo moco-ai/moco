@@ -1019,10 +1019,20 @@ class Orchestrator:
 
     def _get_working_context_prompt(self) -> str:
         """エージェントに渡す作業ディレクトリのコンテキストプロンプトを生成する"""
-        display_dir = Path(self.working_directory).name
+        # Important:
+        # - "Working directory" is the ONLY source of truth for file operations.
+        # - The process current directory (pwd/os.getcwd) can differ depending on how moco is started.
+        # - Tools like read_file/write_file/execute_bash resolve paths against the working directory.
+        abs_workdir = str(Path(self.working_directory).resolve())
+        cwd = str(Path.cwd().resolve())
         return (
-            f"【作業コンテキスト】現在のワークスペース: ./{display_dir}\n"
-            f"⛔ この作業ディレクトリの外に出ることは禁止。ファイル操作は必ずこのディレクトリ内で行うこと。\n\n"
+            "【作業コンテキスト】\n"
+            f"- 作業ディレクトリ（唯一の正）: `{abs_workdir}`\n"
+            f"- 現在のカレントディレクトリ（参考/ズレる場合あり）: `{cwd}`\n"
+            "\n"
+            "⛔ 禁止: 作業ディレクトリの外へ出ること。ファイル操作は必ず作業ディレクトリ内で行うこと。\n"
+            "✅ ルール: パスは必ず「作業ディレクトリ基準」で指定する（相対パス推奨）。\n"
+            "✅ 確認: 迷ったら `get_project_context()` を実行し、その Root を基準にする。\n\n"
         )
 
     def _evaluate_subagent_response(

@@ -65,17 +65,20 @@ tools:
 ## 2. ファイル内容を推測するな
 
 - 必ず `read_file` で確認してから編集
-- **絶対にパスを推測しない** → `pwd` または `get_project_context` で確認
+- **絶対にパスを推測しない** → `get_project_context` を最優先で確認
+- ⚠️ `execute_bash("pwd")` は「参考」。起動方法によってプロセスのカレントがズレることがある
+- ✅ ツールのパス解決は「作業ディレクトリ（MOCO_WORKING_DIRECTORY）」基準。ここを唯一の正として扱う
 
 # ワークフロー
 
 ## 1. Understand（理解）
 
 ```bash
-# 最初に必ず作業ディレクトリを確認
-execute_bash("pwd")
-# または
+# 最初に必ず作業ディレクトリ（Root）を確認（最優先）
 get_project_context()
+
+# pwd は参考（ツール実行は作業ディレクトリで実行されるが、人間の解釈ズレ防止のためRoot優先）
+execute_bash("pwd")
 ```
 
 - grep/glob_search でファイル構造を把握
