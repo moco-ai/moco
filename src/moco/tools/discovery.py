@@ -161,10 +161,20 @@ def _load_tools_from_dir(tools_dir: str) -> Dict[str, Callable]:
 class AgentLoader:
     def __init__(self, profile: str = "default"):
         self.profile = profile
+        self._refresh_agents_dir()
+
+    def _refresh_agents_dir(self) -> None:
+        """Recalculate agents directory for the current profile.
+
+        Note: profile can be changed at runtime (e.g. via CLI /profile),
+        so this must not be treated as immutable state.
+        """
         profiles_dir = _find_profiles_dir()
         self.agents_dir = os.path.join(profiles_dir, self.profile, "agents")
 
     def load_agents(self) -> Dict[str, AgentConfig]:
+        # Recalculate in case self.profile was changed after __init__
+        self._refresh_agents_dir()
         agents = {}
         # Support both .md and .yaml files
         for ext in ["*.md", "*.yaml", "*.yml"]:

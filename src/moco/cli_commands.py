@@ -29,6 +29,7 @@ def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
         'tools': handle_tools,
         'agents': handle_agents,
         'substream': handle_substream,
+        'toolstatus': handle_toolstatus,
         'quit': handle_quit,
         'exit': handle_quit,
         'theme': handle_theme,
@@ -63,6 +64,35 @@ def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
         console = context.get('console', Console())
         console.print(f"[red]Unknown command: /{command}. Type /help for available commands.[/red]")
         return True
+
+def handle_toolstatus(args: List[str], context: Dict[str, Any]) -> bool:
+    """Toggle tool/delegation status lines in CLI.
+
+    Usage:
+      /toolstatus            -> show current state
+      /toolstatus on|off     -> enable/disable
+    """
+    console = context.get('console', Console())
+    flags = context.get('stream_flags') or {}
+    current = bool(flags.get("show_tool_status", True))
+
+    if not args:
+        console.print(f"[dim]Tool status display:[/dim] {'ON' if current else 'OFF'}")
+        console.print("[dim]Usage: /toolstatus on|off[/dim]")
+        return True
+
+    val = args[0].lower()
+    if val in ("on", "true", "1", "yes"):
+        flags["show_tool_status"] = True
+        console.print("[green]Tool status display: ON[/green]")
+        return True
+    if val in ("off", "false", "0", "no"):
+        flags["show_tool_status"] = False
+        console.print("[green]Tool status display: OFF[/green]")
+        return True
+
+    console.print("[red]Usage: /toolstatus on|off[/red]")
+    return True
 
 def handle_substream(args: List[str], context: Dict[str, Any]) -> bool:
     """Toggle sub-agent streamed text in CLI.
@@ -179,6 +209,7 @@ def handle_help(args: List[str], context: Dict[str, Any]) -> bool:
         ("/cost", "Show estimated cost for this session"),
         ("/tools", "List available tools"),
         ("/agents", "List available agents"),
+        ("/toolstatus on|off", "Toggle tool/delegation status lines"),
         ("/quit", "Exit chat"),
     ]
     for cmd, desc in commands:
@@ -282,12 +313,15 @@ def handle_profile(args: List[str], context: Dict[str, Any]) -> bool:
         new_profile = args[0]
         # Profile change requires re-initialization of Orchestrator
         console.print(f"[dim]Changing profile to '{new_profile}'...[/dim]")
-        orchestrator.profile = new_profile
-        orchestrator.loader.profile = new_profile
-        orchestrator.skill_loader.profile = new_profile
-        if hasattr(orchestrator, 'optimizer_config'):
-            orchestrator.optimizer_config.profile = new_profile
-        orchestrator.reload_agents()
+        if hasattr(orchestrator, "set_profile"):
+            orchestrator.set_profile(new_profile)
+        else:
+            orchestrator.profile = new_profile
+            orchestrator.loader.profile = new_profile
+            orchestrator.skill_loader.profile = new_profile
+            if hasattr(orchestrator, 'optimizer_config'):
+                orchestrator.optimizer_config.profile = new_profile
+            orchestrator.reload_agents()
         console.print(f"[green]Profile changed to: {new_profile}[/green]")
     return True
 

@@ -206,6 +206,42 @@ class Orchestrator:
                     memory_service=self.memory_service
                 )
 
+    def set_profile(self, profile: str) -> None:
+        """Switch active profile and reload agents/tools accordingly.
+
+        This is used by the interactive CLI (`moco chat`) when `/profile <name>` is issued.
+        """
+        profile = (profile or "").strip()
+        if not profile:
+            return
+
+        # Update profile string
+        self.profile = profile
+
+        # Re-initialize loaders to ensure profile-specific directories are recomputed
+        self.loader = AgentLoader(profile=self.profile)
+        self.skill_loader.profile = self.profile
+
+        # Optimizer config (if present)
+        if hasattr(self, "optimizer_config"):
+            self.optimizer_config.profile = self.profile
+
+        # Profile-scoped memory (channel_id)
+        if hasattr(self, "memory_service") and self.memory_service:
+            try:
+                self.memory_service.channel_id = self.profile
+            except Exception:
+                pass
+
+        # Refresh tool map for the new profile
+        self.tool_map = discover_tools(profile=self.profile)
+
+        # Clear sub-session cache since available agents may differ by profile
+        self._sub_sessions = {}
+
+        # Reload agents/runtimes/skills
+        self.reload_agents()
+
     def _create_delegate_tool(self, available_agents: list):
         """delegate_to_agent ツールを動的に作成"""
         orchestrator = self

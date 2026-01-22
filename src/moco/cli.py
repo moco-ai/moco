@@ -513,6 +513,7 @@ def chat(
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
     stream: bool = typer.Option(True, "--stream/--no-stream", help="ストリーミング出力（デフォルト: オン）"),
     subagent_stream: bool = typer.Option(False, "--subagent-stream/--no-subagent-stream", help="サブエージェント本文のストリーミング表示（デフォルト: オフ）"),
+    tool_status: bool = typer.Option(True, "--tool-status/--no-tool-status", help="ツール/委譲の結果を表示（デフォルト: オン）"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
     session: Optional[str] = typer.Option(None, "--session", "-s", help="セッション名（継続 or 新規）"),
     new_session: bool = typer.Option(False, "--new", help="新規セッションを強制開始"),
@@ -532,20 +533,104 @@ def chat(
     from .core.runtime import _safe_stream_print
 
     console = Console()
-    stream_flags = {"show_subagent_stream": subagent_stream}
+    stream_flags = {"show_subagent_stream": subagent_stream, "show_tool_status": tool_status}
+    # Track whether we have printed any streamed text without a newline recently.
+    # Used to avoid mixing tool logs into the middle of a line.
+    stream_state = {"mid_line": False}
 
     # Streaming callback for CLI:
     # - tool/delegate logs are printed elsewhere (keep as-is)
     # - print streamed chunks only for orchestrator by default
-    def progress_callback(event_type: str, content: str = None, agent_name: str = None, **kwargs):
+    def progress_callback(
+        event_type: str,
+        content: str = None,
+        agent_name: str = None,
+        **kwargs
+    ):
+        """
+        CLI progress callback.
+
+        Notes:
+        - We keep chunk streaming behavior as-is.
+        - We additionally surface tool/delegate completion so users can see whether
+          write_file/edit_file actually succeeded (or failed).
+        """
+        # Streamed text chunks
         if event_type == "chunk" and content:
             name = agent_name or ""
             if name == "orchestrator" or stream_flags.get("show_subagent_stream"):
                 _safe_stream_print(content)
-        elif event_type == "done":
-            # Add newline after the main response
+                stream_state["mid_line"] = True
+            return
+
+        # Ensure newline after orchestrator main response
+        if event_type == "done":
             if (agent_name or "") == "orchestrator":
                 _safe_stream_print("\n")
+                stream_state["mid_line"] = False
+            return
+
+        # Delegation status (running/completed)
+        if event_type == "delegate":
+            if not stream_flags.get("show_tool_status", True):
+                return
+            status = (kwargs.get("status") or "").lower()
+            name = kwargs.get("name") or agent_name or ""
+            if name and not str(name).startswith("@"):
+                name = f"@{name}"
+            # If we're mid-stream, start a fresh line to keep logs readable.
+            if stream_state.get("mid_line"):
+                _safe_stream_print("\n")
+                stream_state["mid_line"] = False
+            if status == "running":
+                console.print(f"[dim]→ {name}[/dim]")
+            elif status == "completed":
+                console.print(f"[green]✓ {name}[/green]")
+            else:
+                console.print(f"[dim]{status or 'delegate'} {name}[/dim]")
+            return
+
+        # Tool completion: show success/error so file ops are verifiable in-chat.
+        if event_type == "tool":
+            if not stream_flags.get("show_tool_status", True):
+                return
+            status = (kwargs.get("status") or "").lower()
+            tool_name = kwargs.get("tool_name") or kwargs.get("tool") or ""
+            detail = kwargs.get("detail") or ""
+            result = kwargs.get("result")
+
+            # Avoid duplicating the "tool started" line which is already printed by runtime
+            # via _log_tool_use when verbose is False.
+            if status != "completed":
+                return
+
+            if stream_state.get("mid_line"):
+                _safe_stream_print("\n")
+                stream_state["mid_line"] = False
+
+            # Determine success/failure from result text
+            result_str = "" if result is None else str(result)
+            is_error = result_str.startswith("Error") or result_str.startswith("ERROR:")
+
+            # Keep the displayed result compact (first line, then truncate)
+            summary = ""
+            if result_str:
+                summary = result_str.splitlines()[0].strip()
+                if len(summary) > 140:
+                    summary = summary[:137] + "..."
+
+            # Build a concise line, e.g. "✓ write_file → MOBILE_SPEC.md"
+            line = tool_name or "tool"
+            if detail:
+                line += f" → {detail}"
+            if summary:
+                line += f" ({summary})"
+
+            if is_error:
+                console.print(f"[red]✗ {line}[/red]")
+            else:
+                console.print(f"[green]✓ {line}[/green]")
+            return
 
     # プロファイルの解決（指定なしの場合は対話選択）
     if profile is None:
