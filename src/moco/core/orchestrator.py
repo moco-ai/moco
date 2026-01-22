@@ -15,9 +15,6 @@ from ..storage.semantic_memory import SemanticMemory
 from ..memory import MemoryService
 from ..utils.json_parser import SmartJSONParser
 
-# Module-level logger (shared across this module)
-logger = logging.getLogger(__name__)
-
 # Optimizer components
 from .optimizer import (
     TaskAnalyzer,
@@ -28,6 +25,9 @@ from .optimizer import (
     ExecutionMetrics,
     SelectionResult
 )
+
+# Module-level logger (shared across this module)
+logger = logging.getLogger(__name__)
 
 try:
     from rich.console import Console
