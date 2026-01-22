@@ -15,6 +15,9 @@ from ..storage.semantic_memory import SemanticMemory
 from ..memory import MemoryService
 from ..utils.json_parser import SmartJSONParser
 
+# Module-level logger (shared across this module)
+logger = logging.getLogger(__name__)
+
 # Optimizer components
 from .optimizer import (
     TaskAnalyzer,
@@ -1153,7 +1156,6 @@ class Orchestrator:
             return eval_json
 
         except Exception as e:
-            logger = logging.getLogger(__name__)
             logger.warning(f"[Orchestrator] Failed to evaluate @{agent_name}: {e}")
             if self.verbose:
                 print(f"[Orchestrator] Failed to evaluate @{agent_name}: {e}")
