@@ -82,6 +82,7 @@ class SkillConfig:
     - content: 知識・ルール本文
     - is_logic: ロジック（JS/TS/Py）を含むか
     - path: スキルディレクトリの絶対パス
+    - exposed_tools: スキルが露出するツール定義
     """
     name: str
     description: str
@@ -89,8 +90,9 @@ class SkillConfig:
     version: str
     content: str
     allowed_tools: List[str] = field(default_factory=list)
-    is_logic: bool = False
     path: str = ""
+    is_logic: bool = False
+    exposed_tools: Dict[str, Any] = field(default_factory=dict)
 
     def matches_input(self, user_input: str) -> bool:
         """Check if this skill matches the user input based on triggers or description keywords"""
@@ -257,6 +259,9 @@ class SkillLoader:
             is_logic = os.path.exists(os.path.join(skill_dir, "scripts")) or \
                        any(f.endswith(".py") for f in os.listdir(skill_dir) if f != "__init__.py")
 
+        # 露出ツールの定義 (YAML内の tools セクション)
+        exposed_tools = metadata.get("tools", {})
+
         return SkillConfig(
             name=name,
             description=metadata.get("description", ""),
@@ -264,8 +269,9 @@ class SkillLoader:
             version=metadata.get("version", "1.0.0"),
             content=body,
             allowed_tools=allowed_tools,
+            path=skill_dir,
             is_logic=is_logic,
-            path=skill_dir
+            exposed_tools=exposed_tools
         )
 
     def match_skills(
@@ -965,7 +971,7 @@ class SkillLoader:
         registry: str,
         top_k: int = 5
     ) -> List[Dict[str, Any]]:
-        """Search remote registry using embedding-based semantic matching."""
+        """Search remote registry using embedding-based someantic matching."""
         cache = self._get_registry_cache(registry)
         if not cache:
             return []

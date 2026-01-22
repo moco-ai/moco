@@ -82,6 +82,21 @@ def discover_tools(profile: str) -> Dict[str, Callable]:
         from .project_context import get_project_context
         tool_map["get_project_context"] = get_project_context
         
+    # 3. JS版 Skills のロジック型ツールを読み込む
+    from .skill_loader import SkillLoader
+    from .js_bridge import wrap_js_tool
+    
+    loader = SkillLoader(profile=profile)
+    skills = loader.load_skills()
+    
+    for skill in skills.values():
+        if skill.is_logic and skill.exposed_tools:
+            for tool_name, tool_def in skill.exposed_tools.items():
+                desc = tool_def.get("description", "")
+                # Python関数としてラップして登録
+                tool_map[tool_name] = wrap_js_tool(skill.path, tool_name, desc)
+                logger.info(f"Loaded JS skill tool: {tool_name} from {skill.name}")
+
     return tool_map
 
 def _load_tools_from_dir(tools_dir: str) -> Dict[str, Callable]:
@@ -161,10 +176,20 @@ def _load_tools_from_dir(tools_dir: str) -> Dict[str, Callable]:
 class AgentLoader:
     def __init__(self, profile: str = "default"):
         self.profile = profile
+        self._refresh_agents_dir()
+
+    def _refresh_agents_dir(self) -> None:
+        """Recalculate agents directory for the current profile.
+
+        Note: profile can be changed at runtime (e.g. via CLI /profile),
+        so this must not be treated as immutable state.
+        """
         profiles_dir = _find_profiles_dir()
         self.agents_dir = os.path.join(profiles_dir, self.profile, "agents")
 
     def load_agents(self) -> Dict[str, AgentConfig]:
+        # Recalculate in case self.profile was changed after __init__
+        self._refresh_agents_dir()
         agents = {}
         # Support both .md and .yaml files
         for ext in ["*.md", "*.yaml", "*.yml"]:
