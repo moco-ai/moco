@@ -1,5 +1,5 @@
 <div align="center">
-  <video src="docs/assets/moco-intro.mp4" width="100%" autoplay loop muted playsinline></video>
+  <video src="https://raw.githubusercontent.com/moco-ai/moco/feat/skill-logic-execution/docs/assets/moco-intro.mp4" width="100%" autoplay loop muted playsinline></video>
 </div>
 
 > **M**ulti-agent **O**rchestration **CO**re
