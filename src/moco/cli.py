@@ -513,7 +513,7 @@ def chat(
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
     stream: bool = typer.Option(True, "--stream/--no-stream", help="ストリーミング出力（デフォルト: オン）"),
     subagent_stream: bool = typer.Option(False, "--subagent-stream/--no-subagent-stream", help="サブエージェント本文のストリーミング表示（デフォルト: オフ）"),
-    tool_status: bool = typer.Option(True, "--tool-status/--no-tool-status", help="ツール/委譲の結果を表示（デフォルト: オン）"),
+    tool_status: bool = typer.Option(False, "--tool-status/--no-tool-status", help="ツール/委譲の結果を表示（デフォルト: オフ）"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
     session: Optional[str] = typer.Option(None, "--session", "-s", help="セッション名（継続 or 新規）"),
     new_session: bool = typer.Option(False, "--new", help="新規セッションを強制開始"),
