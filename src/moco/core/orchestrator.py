@@ -93,6 +93,11 @@ class Orchestrator:
         use_optimizer: bool = False,
         working_directory: Optional[str] = None
     ):
+        # Ensure global skill tools use the active profile.
+        # skill_tools._get_loader() relies on MOCO_PROFILE and keeps a global loader cache,
+        # so we must keep the environment in sync with the orchestrator's profile.
+        os.environ["MOCO_PROFILE"] = profile
+
         self.profile = profile
         self.provider = provider  # None = 環境変数から決定
         self.model = model        # None = プロバイダーのデフォルト
@@ -214,6 +219,9 @@ class Orchestrator:
         profile = (profile or "").strip()
         if not profile:
             return
+
+        # Keep environment in sync for skill tools (load_skill/search_skills).
+        os.environ["MOCO_PROFILE"] = profile
 
         # Update profile string
         self.profile = profile
@@ -958,28 +966,37 @@ class Orchestrator:
             # 評価指示は追加しない（オーケストレーターが事後評価を行うため）
             enhanced_query = query_with_workdir
             
-            # Skills 注入: Orchestrator がツールでロードしたスキルをサブエージェントに共有
+            # Skills 管理: Orchestrator がロードしたスキルの情報をサブエージェントに共有
+            # 自動注入はせず、サブエージェントが自分で load_skill を使うことを推奨するプロンプトを付与
             loaded_skills = get_loaded_skills()
+            available_skills_hint = ""
+            if self._all_skills:
+                skill_names = ", ".join(self._all_skills.keys())
+                available_skills_hint = f"\n\n[Available Skills Hint]\nYou can use 'load_skill' to access specialized knowledge. Available local skills: {skill_names}\n"
+
+            enhanced_query = query_with_workdir + available_skills_hint
+            
+            # ロード済みスキルがある場合のみ、コンテキストとして注入（マッチするものに限定）
             if loaded_skills:
-                # タスクに関連するスキルを選択
                 relevant_skills = []
                 for name, skill in loaded_skills.items():
                     if skill.matches_input(query):
                         relevant_skills.append(skill)
                 
-                # マッチしなくても全スキルを渡す（Orchestrator が選んだもの）
-                if not relevant_skills:
-                    relevant_skills = list(loaded_skills.values())[:3]  # 最大3つ
-                
+                # 自動的に全注入せず、関連性が高いもののみ
                 if relevant_skills:
                     runtime.skills = relevant_skills
                     if self.verbose:
-                        print(f"[Skills] Injected {len(relevant_skills)} skills from pool to @{agent_name}: {[s.name for s in relevant_skills]}")
+                        print(f"[Skills] Context-injected {len(relevant_skills)} skills to @{agent_name}: {[s.name for s in relevant_skills]}")
+                else:
+                    # 以前はここで無理やり 3 つ渡していたが、
+                    # サブエージェントに load_skill を使わせる方針のため、空にする（注入しない）
+                    runtime.skills = []
             
             # 実行時間計測開始
             agent_start_time = time.time()
             
-            response = await runtime.run(enhanced_query, history=sub_history)
+            response = await runtime.run(enhanced_query, history=sub_history, session_id=sub_session_id)
             
             # 実行時間計測終了
             agent_execution_time_ms = int((time.time() - agent_start_time) * 1000)

@@ -513,7 +513,8 @@ def chat(
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
     stream: bool = typer.Option(True, "--stream/--no-stream", help="ストリーミング出力（デフォルト: オン）"),
     subagent_stream: bool = typer.Option(False, "--subagent-stream/--no-subagent-stream", help="サブエージェント本文のストリーミング表示（デフォルト: オフ）"),
-    tool_status: bool = typer.Option(True, "--tool-status/--no-tool-status", help="ツール/委譲の結果を表示（デフォルト: オン）"),
+    tool_status: bool = typer.Option(True, "--tool-status/--no-tool-status", help="ツール/委譲の短いステータス行を表示（デフォルト: オン）"),
+    todo_pane: bool = typer.Option(False, "--todo-pane/--no-todo-pane", help="Todo を右ペインに常時表示（デフォルト: オフ）"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
     session: Optional[str] = typer.Option(None, "--session", "-s", help="セッション名（継続 or 新規）"),
     new_session: bool = typer.Option(False, "--new", help="新規セッションを強制開始"),
@@ -538,6 +539,107 @@ def chat(
     # Used to avoid mixing tool logs into the middle of a line.
     stream_state = {"mid_line": False}
 
+    # Optional: side pane for Todos (Rich Live layout)
+    pane_state = {
+        "enabled": bool(todo_pane),
+        "live": None,
+        "layout": None,
+        "lines": [],
+        "max_lines": 500,
+    }
+
+    def _pane_append(line: str) -> None:
+        if not pane_state["enabled"]:
+            return
+        if line is None:
+            return
+        s = str(line)
+        if not s:
+            return
+        # Split to keep rendering stable
+        parts = s.splitlines() or [s]
+        pane_state["lines"].extend(parts)
+        # Trim
+        if len(pane_state["lines"]) > pane_state["max_lines"]:
+            pane_state["lines"] = pane_state["lines"][-pane_state["max_lines"] :]
+
+    def _pane_update_chat_panel() -> None:
+        if not pane_state["enabled"]:
+            return
+        live = pane_state.get("live")
+        layout = pane_state.get("layout")
+        if not live or not layout:
+            return
+        try:
+            from rich.panel import Panel
+            from rich.text import Text
+            from rich import box
+
+            text = Text()
+            # Render last lines; allow Rich markup for minimal coloring
+            for ln in pane_state["lines"][-pane_state["max_lines"] :]:
+                try:
+                    text.append_text(Text.from_markup(ln))
+                except Exception:
+                    text.append(ln)
+                text.append("\n")
+
+            layout["chat"].update(
+                Panel(
+                    text,
+                    title="Chat",
+                    border_style=theme_config.status,
+                    box=box.ROUNDED,
+                )
+            )
+            live.refresh()
+        except Exception:
+            return
+
+    def _pane_update_todo_panel(session_id: Optional[str]) -> None:
+        if not pane_state["enabled"]:
+            return
+        live = pane_state.get("live")
+        layout = pane_state.get("layout")
+        if not live or not layout:
+            return
+        try:
+            from rich.panel import Panel
+            from rich.text import Text
+            from rich import box
+            from moco.tools.todo import todoread_all, set_current_session
+
+            if session_id:
+                set_current_session(session_id)
+            raw = todoread_all()
+            todo_text = Text(raw or "(no todos)", style="default")
+            layout["todo"].update(
+                Panel(
+                    todo_text,
+                    title="Todos",
+                    border_style=theme_config.tools,
+                    box=box.ROUNDED,
+                )
+            )
+            live.refresh()
+        except Exception as e:
+            try:
+                from rich.panel import Panel
+                from rich.text import Text
+                from rich import box
+
+                layout["todo"].update(
+                    Panel(
+                        Text(f"(todo pane error) {e}", style="dim"),
+                        title="Todos",
+                        border_style=theme_config.tools,
+                        box=box.ROUNDED,
+                    )
+                )
+                live.refresh()
+            except Exception:
+                return
+
     # Streaming callback for CLI:
     # - tool/delegate logs are printed elsewhere (keep as-is)
     # - print streamed chunks only for orchestrator by default
@@ -555,17 +657,67 @@ def chat(
         - We additionally surface tool/delegate completion so users can see whether
           write_file/edit_file actually succeeded (or failed).
         """
+        def _safe_stream_print_styled(text: str, style: str) -> None:
+            """Print streamed text with color without breaking streaming."""
+            if not text:
+                return
+            try:
+                from rich.text import Text
+                console.print(Text(text, style=style), end="")
+            except BrokenPipeError:
+                return
+            except OSError as e:
+                if getattr(e, "errno", None) == 32:
+                    return
+                _safe_stream_print(text)
+            except Exception:
+                _safe_stream_print(text)
+
+        # Start marker for orchestrator output (helps distinguish from user input)
+        if event_type == "start" and (agent_name or "") == "orchestrator":
+            if pane_state["enabled"]:
+                _pane_append("[bold]🤖[/bold] ")
+                _pane_update_chat_panel()
+                return
+            if stream_state.get("mid_line"):
+                _safe_stream_print("\n")
+                stream_state["mid_line"] = False
+            _safe_stream_print_styled("🤖 ", f"bold {theme_config.result}")
+            stream_state["mid_line"] = True
+            return
+
         # Streamed text chunks
         if event_type == "chunk" and content:
             name = agent_name or ""
             if name == "orchestrator" or stream_flags.get("show_subagent_stream"):
-                _safe_stream_print(content)
+                if pane_state["enabled"]:
+                    # Append to last line (create if needed)
+                    if not pane_state["lines"]:
+                        pane_state["lines"].append("🤖 ")
+                    chunk = str(content)
+                    parts = chunk.split("\n")
+                    # First part appends to current last line
+                    pane_state["lines"][-1] = (pane_state["lines"][-1] or "") + parts[0]
+                    # Remaining parts become new lines
+                    for p in parts[1:]:
+                        pane_state["lines"].append(p)
+                    # Trim
+                    if len(pane_state["lines"]) > pane_state["max_lines"]:
+                        pane_state["lines"] = pane_state["lines"][-pane_state["max_lines"] :]
+                    _pane_update_chat_panel()
+                    return
+                # Color the assistant output to visually separate it from the user's input line.
+                _safe_stream_print_styled(content, theme_config.result)
                 stream_state["mid_line"] = True
             return
 
         # Ensure newline after orchestrator main response
         if event_type == "done":
             if (agent_name or "") == "orchestrator":
+                if pane_state["enabled"]:
+                    _pane_append("")  # spacing
+                    _pane_update_chat_panel()
+                    return
                 _safe_stream_print("\n")
                 stream_state["mid_line"] = False
             return
@@ -578,6 +730,17 @@ def chat(
             name = kwargs.get("name") or agent_name or ""
             if name and not str(name).startswith("@"):
                 name = f"@{name}"
+            if pane_state["enabled"]:
+                # Keep default output compact: show only completion unless verbose.
+                if status == "running" and verbose:
+                    _pane_append(f"[dim]→ {name}[/dim]")
+                elif status == "completed":
+                    _pane_append(f"[green]✓ {name}[/green]")
+                else:
+                    if verbose:
+                        _pane_append(f"[dim]{status or 'delegate'} {name}[/dim]")
+                _pane_update_chat_panel()
+                return
             # If we're mid-stream, start a fresh line to keep logs readable.
             if stream_state.get("mid_line"):
                 _safe_stream_print("\n")
@@ -590,7 +753,7 @@ def chat(
                 console.print(f"[dim]{status or 'delegate'} {name}[/dim]")
             return
 
-        # Tool completion: show success/error so file ops are verifiable in-chat.
+        # Tool status: show running + success/error so file ops are verifiable in-chat.
         if event_type == "tool":
             if not stream_flags.get("show_tool_status", True):
                 return
@@ -599,32 +762,66 @@ def chat(
             detail = kwargs.get("detail") or ""
             result = kwargs.get("result")
 
-            # Avoid duplicating the "tool started" line which is already printed by runtime
-            # via _log_tool_use when verbose is False.
-            if status != "completed":
+            if pane_state["enabled"]:
+                # Default: one line per tool (completed only). Running line only in verbose.
+                if status == "running":
+                    if verbose:
+                        line = tool_name or "tool"
+                        if detail:
+                            line += f" → {detail}"
+                        _pane_append(f"[dim]→ {line}[/dim]")
+                        _pane_update_chat_panel()
+                    return
+                if status != "completed":
+                    return
+
+                result_str = "" if result is None else str(result)
+                is_error = result_str.startswith("Error") or result_str.startswith("ERROR:")
+                line = tool_name or "tool"
+                if detail:
+                    line += f" → {detail}"
+                # (No long summary here; keep compact. Verbose summary stays in normal mode.)
+                if is_error:
+                    _pane_append(f"[red]✗ {line}[/red]")
+                else:
+                    _pane_append(f"[green]✓ {line}[/green]")
+                _pane_update_chat_panel()
                 return
 
             if stream_state.get("mid_line"):
                 _safe_stream_print("\n")
                 stream_state["mid_line"] = False
 
+            # Running line (start)
+            if status == "running":
+                # Default: keep tool-status output compact (one line per tool).
+                # Show the "running" line only in verbose mode.
+                if verbose:
+                    line = tool_name or "tool"
+                    if detail:
+                        line += f" → {detail}"
+                    console.print(f"[dim]→ {line}[/dim]")
+                return
+
+            if status != "completed":
+                return
+
             # Determine success/failure from result text
             result_str = "" if result is None else str(result)
             is_error = result_str.startswith("Error") or result_str.startswith("ERROR:")
-
-            # Keep the displayed result compact (first line, then truncate)
-            summary = ""
-            if result_str:
-                summary = result_str.splitlines()[0].strip()
-                if len(summary) > 140:
-                    summary = summary[:137] + "..."
 
             # Build a concise line, e.g. "✓ write_file → MOBILE_SPEC.md"
             line = tool_name or "tool"
             if detail:
                 line += f" → {detail}"
-            if summary:
-                line += f" ({summary})"
+            # Only show the (potentially long) tool result summary in verbose mode.
+            # This keeps default tool-status output short (no "Successfully edited ... (+22)" etc.).
+            if verbose and result_str:
+                summary = result_str.splitlines()[0].strip()
+                if len(summary) > 140:
+                    summary = summary[:137] + "..."
+                if summary:
+                    line += f" ({summary})"
 
             if is_error:
                 console.print(f"[red]✗ {line}[/red]")
@@ -686,10 +883,61 @@ def chat(
 
     command_context['session_id'] = session_id
 
-    console.print("[bold cyan]🤖 Moco chat[/]")
-    console.print(f"[bold {theme_config.status}]Profile:[/] {profile}  [bold {theme_config.status}]Provider:[/] {provider}")
-    console.print("[dim]Type 'exit' to quit, '/help' for commands[/dim]")
-    console.print()
+    # --- Dashboard Display ---
+    from .ui.welcome import show_welcome_dashboard
+    show_welcome_dashboard(o, theme_config)
+    # -------------------------
+
+    # If todo pane is enabled, set up a 2-pane Rich layout
+    live_ctx = None
+    if todo_pane:
+        try:
+            from rich.layout import Layout
+            from rich.live import Live
+            from rich.panel import Panel
+            from rich.text import Text
+            from rich import box
+            from moco.tools.todo import set_current_session
+
+            set_current_session(session_id)
+
+            root = Layout(name="root")
+            width = getattr(console, "size", None).width if getattr(console, "size", None) else 120
+
+            if width >= 120:
+                root.split_row(
+                    Layout(name="chat", ratio=3),
+                    Layout(name="todo", ratio=1, minimum_size=36),
+                )
+            else:
+                # Fallback for narrow terminals: place todo below
+                root.split_column(
+                    Layout(name="chat", ratio=3),
+                    Layout(name="todo", ratio=1),
+                )
+
+            pane_state["enabled"] = True
+            pane_state["layout"] = root
+
+            # Initial render
+            root["chat"].update(
+                Panel(Text("(waiting for output...)", style="dim"), title="Chat", border_style=theme_config.status, box=box.ROUNDED)
+            )
+            root["todo"].update(
+                Panel(Text("(loading...)", style="dim"), title="Todos", border_style=theme_config.tools, box=box.ROUNDED)
+            )
+
+            live_ctx = Live(root, console=console, auto_refresh=False)
+            live_ctx.__enter__()
+            pane_state["live"] = live_ctx
+
+            _pane_update_todo_panel(session_id)
+            _pane_update_chat_panel()
+        except Exception as e:
+            pane_state["enabled"] = False
+            pane_state["live"] = None
+            pane_state["layout"] = None
+            console.print(f"[yellow]Todo pane disabled (failed to initialize): {e}[/yellow]")
 
     # --- スラッシュコマンド対応 ---
     from .cli_commands import handle_slash_command
@@ -702,6 +950,9 @@ def chat(
             theme_config = THEMES[ui_state.theme]
 
             try:
+                if pane_state["enabled"]:
+                    _pane_update_todo_panel(command_context.get("session_id"))
+                    _pane_update_chat_panel()
                 text = console.input(f"[bold {theme_config.status}]> [/bold {theme_config.status}]")
             except EOFError:
                 break
@@ -751,6 +1002,12 @@ def chat(
                 console.print()
     except KeyboardInterrupt:
         console.print("\n[dim]Bye![/dim]")
+    finally:
+        if live_ctx is not None:
+            try:
+                live_ctx.__exit__(None, None, None)
+            except Exception:
+                pass
 
 
 # ========== Skills Commands ==========

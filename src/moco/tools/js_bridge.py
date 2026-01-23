@@ -56,7 +56,7 @@ def execute_js_skill(skill_path: str, tool_name: str, args: Dict[str, Any]) -> A
         try:
             err_data = json.loads(e.stderr.strip().split('\n')[-1])
             return err_data
-        except:
+        except Exception:
             return {"error": e.stderr.strip() or "Process failed"}
     except Exception as e:
         return {"error": str(e)}
