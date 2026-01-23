@@ -272,7 +272,8 @@ def execute_skill(skill_name: str, tool_name: str, arguments: dict) -> str:
                 if k in ("target", "input_file", "source", "path"): # positional arguments candidate
                     args_list.append(str(v))
                 elif isinstance(v, bool):
-                    if v: args_list.append(f"--{k}")
+                    if v:
+                        args_list.append(f"--{k}")
                 else:
                     args_list.extend([f"--{k}", str(v)])
             
