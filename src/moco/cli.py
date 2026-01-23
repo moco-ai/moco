@@ -676,7 +676,12 @@ def chat(
                 return
             try:
                 from rich.text import Text
-                console.print(Text(text, style=style), end="")
+                # In async-input mode (prompt_toolkit), avoid emitting ANSI styles because
+                # some terminals/recorders show escape sequences literally.
+                if async_input:
+                    _safe_stream_print(text)
+                else:
+                    console.print(Text(text, style=style), end="")
             except BrokenPipeError:
                 return
             except OSError as e:
@@ -695,7 +700,10 @@ def chat(
             if stream_state.get("mid_line"):
                 _safe_stream_print("\n")
                 stream_state["mid_line"] = False
-            _safe_stream_print_styled("🤖 ", f"bold {theme_config.result}")
+            if async_input:
+                _safe_stream_print("🤖 ")
+            else:
+                _safe_stream_print_styled("🤖 ", f"bold {theme_config.result}")
             stream_state["mid_line"] = True
             return
 
@@ -720,7 +728,10 @@ def chat(
                     _pane_update_chat_panel()
                     return
                 # Color the assistant output to visually separate it from the user's input line.
-                _safe_stream_print_styled(content, theme_config.result)
+                if async_input:
+                    _safe_stream_print(content)
+                else:
+                    _safe_stream_print_styled(content, theme_config.result)
                 stream_state["mid_line"] = True
             return
 
@@ -759,11 +770,20 @@ def chat(
                 _safe_stream_print("\n")
                 stream_state["mid_line"] = False
             if status == "running":
-                console.print(f"[dim]→ {name}[/dim]")
+                if async_input:
+                    _safe_stream_print(f"→ {name}\n")
+                else:
+                    console.print(f"[dim]→ {name}[/dim]")
             elif status == "completed":
-                console.print(f"[green]✓ {name}[/green]")
+                if async_input:
+                    _safe_stream_print(f"✓ {name}\n")
+                else:
+                    console.print(f"[green]✓ {name}[/green]")
             else:
-                console.print(f"[dim]{status or 'delegate'} {name}[/dim]")
+                if async_input:
+                    _safe_stream_print(f"{status or 'delegate'} {name}\n")
+                else:
+                    console.print(f"[dim]{status or 'delegate'} {name}[/dim]")
             return
 
         # Tool status: show running + success/error so file ops are verifiable in-chat.
@@ -813,7 +833,10 @@ def chat(
                     line = tool_name or "tool"
                     if detail:
                         line += f" → {detail}"
-                    console.print(f"[dim]→ {line}[/dim]")
+                    if async_input:
+                        _safe_stream_print(f"→ {line}\n")
+                    else:
+                        console.print(f"[dim]→ {line}[/dim]")
                 return
 
             if status != "completed":
@@ -837,9 +860,15 @@ def chat(
                     line += f" ({summary})"
 
             if is_error:
-                console.print(f"[red]✗ {line}[/red]")
+                if async_input:
+                    _safe_stream_print(f"✗ {line}\n")
+                else:
+                    console.print(f"[red]✗ {line}[/red]")
             else:
-                console.print(f"[green]✓ {line}[/green]")
+                if async_input:
+                    _safe_stream_print(f"✓ {line}\n")
+                else:
+                    console.print(f"[green]✓ {line}[/green]")
             return
 
     # プロファイルの解決（指定なしの場合は対話選択）
@@ -972,6 +1001,7 @@ def chat(
             import threading
             import queue
             from datetime import datetime as _dt
+            from prompt_toolkit.shortcuts import print_formatted_text
 
             pending: "queue.Queue[str | None]" = queue.Queue()
             busy_lock = threading.Lock()
@@ -997,16 +1027,17 @@ def chat(
                         create_cancel_event(session_id)
                         result = o.run_sync(item, session_id)
                         if result and not stream:
-                            console.print()
-                            _print_result(console, result, theme_name=ui_state.theme, verbose=verbose)
-                            console.print()
+                            # Prefer plain output in async-input mode to avoid ANSI artifacts.
+                            print_formatted_text("")
+                            print_formatted_text(result)
+                            print_formatted_text("")
                     except KeyboardInterrupt:
                         request_cancel(session_id)
-                        console.print("\n[yellow]Interrupted.[/yellow]")
+                        print_formatted_text("\nInterrupted.")
                     except OperationCancelled:
-                        console.print("\n[yellow]Operation cancelled.[/yellow]")
+                        print_formatted_text("\nOperation cancelled.")
                     except Exception as e:  # noqa: BLE001
-                        console.print(f"[red]Error: {e}[/red]")
+                        print_formatted_text(f"Error: {e}")
                     finally:
                         clear_cancel_event(session_id)
                         _set_busy(False)
@@ -1023,7 +1054,7 @@ def chat(
                 # If running, cancel current task; otherwise exit.
                 if _is_busy():
                     request_cancel(session_id)
-                    console.print("[yellow](cancel requested)[/yellow]")
+                    print_formatted_text("(cancel requested)")
                 else:
                     stop_requested["stop"] = True
                     pending.put(None)
@@ -1051,7 +1082,7 @@ def chat(
                     if text.strip().startswith("/"):
                         # Avoid session-changing commands while busy (they can desync current run)
                         if _is_busy() and text.strip().split()[0].lower() in ("/profile", "/session", "/clear"):
-                            console.print("[yellow]That command is blocked while a task is running. Try again after completion.[/yellow]")
+                            print_formatted_text("That command is blocked while a task is running. Try again after completion.")
                             continue
 
                         if not handle_slash_command(text, command_context):
@@ -1078,7 +1109,8 @@ def chat(
                     pending.put(text)
                     qsize = pending.qsize()
                     if _is_busy() or qsize > 0:
-                        console.print(f"[dim](queued {qsize} @ {_dt.now().strftime('%H:%M:%S')})[/dim]")
+                        # Plain text to avoid ANSI escape artifacts in some terminals/recorders
+                        print_formatted_text(f"(queued {qsize} @ {_dt.now().strftime('%H:%M:%S')})")
 
             # Wait briefly for worker to exit (best-effort)
             worker.join(timeout=2)
