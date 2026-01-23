@@ -555,11 +555,37 @@ def chat(
         - We additionally surface tool/delegate completion so users can see whether
           write_file/edit_file actually succeeded (or failed).
         """
+        def _safe_stream_print_styled(text: str, style: str) -> None:
+            """Print streamed text with color without breaking streaming."""
+            if not text:
+                return
+            try:
+                from rich.text import Text
+                console.print(Text(text, style=style), end="")
+            except BrokenPipeError:
+                return
+            except OSError as e:
+                if getattr(e, "errno", None) == 32:
+                    return
+                _safe_stream_print(text)
+            except Exception:
+                _safe_stream_print(text)
+
+        # Start marker for orchestrator output (helps distinguish from user input)
+        if event_type == "start" and (agent_name or "") == "orchestrator":
+            if stream_state.get("mid_line"):
+                _safe_stream_print("\n")
+                stream_state["mid_line"] = False
+            _safe_stream_print_styled("🤖 ", f"bold {theme_config.result}")
+            stream_state["mid_line"] = True
+            return
+
         # Streamed text chunks
         if event_type == "chunk" and content:
             name = agent_name or ""
             if name == "orchestrator" or stream_flags.get("show_subagent_stream"):
-                _safe_stream_print(content)
+                # Color the assistant output to visually separate it from the user's input line.
+                _safe_stream_print_styled(content, theme_config.result)
                 stream_state["mid_line"] = True
             return
 
@@ -692,10 +718,10 @@ def chat(
 
     command_context['session_id'] = session_id
 
-    console.print("[bold cyan]🤖 Moco chat[/]")
-    console.print(f"[bold {theme_config.status}]Profile:[/] {profile}  [bold {theme_config.status}]Provider:[/] {provider}")
-    console.print("[dim]Type 'exit' to quit, '/help' for commands[/dim]")
-    console.print()
+    # --- Dashboard Display ---
+    from .ui.welcome import show_welcome_dashboard
+    show_welcome_dashboard(o, theme_config)
+    # -------------------------
 
     # --- スラッシュコマンド対応 ---
     from .cli_commands import handle_slash_command

@@ -115,7 +115,36 @@ def discover_tools(profile: str) -> Dict[str, Callable]:
         from .project_context import get_project_context
         tool_map["get_project_context"] = get_project_context
         
-    # 3. Skills のロジック型ツールを読み込む（SKILL.md の tools: で宣言されたもののみ）
+    # 3. MCP ツールを読み込む（profile.yaml の mcp_servers から）
+    mcp_servers_config = profile_config.get("mcp_servers", []) if isinstance(profile_config, dict) else []
+    if mcp_servers_config:
+        try:
+            from ..core.mcp_client import get_mcp_client, MCPConfig, MCPServerConfig
+
+            servers = []
+            for s in mcp_servers_config:
+                if isinstance(s, dict) and s.get("name") and s.get("command"):
+                    servers.append(
+                        MCPServerConfig(
+                            name=str(s["name"]),
+                            command=str(s["command"]),
+                            args=list(s.get("args", []) or []),
+                            env=dict(s.get("env", {}) or {}),
+                        )
+                    )
+
+            if servers:
+                mcp_config = MCPConfig(enabled=True, servers=servers)
+                mcp_client = get_mcp_client(mcp_config)
+                mcp_tools = mcp_client.create_tool_functions()
+                tool_map.update(mcp_tools)
+                logger.info(f"Loaded {len(mcp_tools)} MCP tools from {len(servers)} servers")
+        except ImportError:
+            logger.warning("MCP dependencies not found. Skipping MCP tools loading.")
+        except Exception as e:
+            logger.error(f"Error loading MCP tools: {e}")
+
+    # 4. Skills のロジック型ツールを読み込む（SKILL.md の tools: で宣言されたもののみ）
     from .skill_loader import SkillLoader
     from .skill_tools import execute_skill
     
