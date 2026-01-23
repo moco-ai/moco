@@ -27,9 +27,12 @@ def clear_session_skills():
 def _get_loader() -> SkillLoader:
     """Get or create the global skill loader."""
     global _skill_loader
-    if _skill_loader is None:
-        import os
-        profile = os.environ.get("MOCO_PROFILE", "development")
+    import os
+    profile = os.environ.get("MOCO_PROFILE", "development")
+
+    # Recreate loader if profile changed.
+    # NOTE: Web UI / Orchestrator can switch profiles per request/session.
+    if _skill_loader is None or getattr(_skill_loader, "profile", None) != profile:
         _skill_loader = SkillLoader(profile=profile, use_semantic=True)
     return _skill_loader
 
@@ -201,7 +204,11 @@ def clear_loaded_skills() -> str:
 
 
 def execute_skill(skill_name: str, tool_name: str, arguments: dict) -> str:
-    """Execute a logic-based skill (JS/TS/Python).
+    """Execute a declared logic-based skill tool (JS/TS/Python).
+
+    IMPORTANT:
+    - Only tools explicitly declared in the skill's SKILL.md frontmatter `tools:` section
+      are executable.
     
     Args:
         skill_name: Name of the skill
@@ -224,6 +231,13 @@ def execute_skill(skill_name: str, tool_name: str, arguments: dict) -> str:
     skill = local_skills[skill_name]
     if not skill.is_logic:
         return f"Error: Skill '{skill_name}' does not have executable logic."
+
+    declared_tools = skill.exposed_tools or {}
+    if tool_name not in declared_tools:
+        return (
+            f"Error: Tool '{tool_name}' is not declared in SKILL.md tools: for skill '{skill_name}'. "
+            f"Declare it under frontmatter `tools:` to make it executable."
+        )
     
     skill_dir = skill.path
     
@@ -232,46 +246,17 @@ def execute_skill(skill_name: str, tool_name: str, arguments: dict) -> str:
     ts_path = os.path.join(skill_dir, "index.ts")
     
     if os.path.exists(js_path) or os.path.exists(ts_path):
-        target_path = js_path if os.path.exists(js_path) else ts_path
-        # JS ブリッジロジック
-        runner_script = f"""
-        const path = require('path');
-        try {{
-            const skillPath = path.resolve('{target_path}');
-            const skill = require(skillPath);
-            const tool = skill['{tool_name}'];
-            
-            if (typeof tool !== 'function') {{
-                console.error(JSON.stringify({{error: `Tool "${tool_name}" not found in ${{skillPath}}` }}));
-                process.exit(1);
-            }}
-            
-            Promise.resolve(tool({json.dumps(arguments)}))
-                .then(result => {{
-                    console.log(JSON.stringify(result));
-                }})
-                .catch(err => {{
-                    console.error(JSON.stringify({{error: err.message || err}}));
-                    process.exit(1);
-                }});
-        }} catch (e) {{
-            console.error(JSON.stringify({{error: e.message}}));
-            process.exit(1);
-        }}
-        """
+        # Execute only the declared tool via JS bridge.
+        # Node will resolve the skill directory to index.js/index.ts.
+        from .js_bridge import execute_js_skill
         try:
-            result = subprocess.run(
-                ["node", "-e", runner_script],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            return result.stdout.strip()
-        except subprocess.CalledProcessError as e:
-            return f"Error executing JS skill: {e.stderr}"
+            res = execute_js_skill(skill_dir, tool_name, arguments or {})
+            return json.dumps(res, ensure_ascii=False)
+        except Exception as e:
+            return f"Error executing JS skill tool '{skill_name}.{tool_name}': {e}"
 
     # Python スクリプトとしての実行
-    # 1. 直接的なツール名.py を探す
+    # 1. 直接的なツール名.py を探す（宣言された tool_name のみ）
     py_script = os.path.join(skill_dir, f"{tool_name}.py")
     # 2. scripts/ツール名.py を探す
     if not os.path.exists(py_script):
@@ -299,7 +284,13 @@ def execute_skill(skill_name: str, tool_name: str, arguments: dict) -> str:
             )
             
             if result.returncode == 0:
-                return result.stdout.strip()
+                out = (result.stdout or "").strip()
+                # If the output is JSON, return as-is to preserve structure.
+                try:
+                    json.loads(out)
+                    return out
+                except Exception:
+                    return out
             
             # 2. 失敗した場合は、JSON文字列を単一引数として渡す（旧方式）
             result_legacy = subprocess.run(
@@ -309,13 +300,21 @@ def execute_skill(skill_name: str, tool_name: str, arguments: dict) -> str:
                 check=False
             )
             if result_legacy.returncode == 0:
-                return result_legacy.stdout.strip()
+                out = (result_legacy.stdout or "").strip()
+                try:
+                    json.loads(out)
+                    return out
+                except Exception:
+                    return out
                 
             return f"Error executing Python skill:\nSTDERR: {result.stderr}\nSTDOUT: {result.stdout}"
         except Exception as e:
             return f"Exception in execute_skill (Python): {str(e)}"
             
-    return f"Error: No executable entry point found for {skill_name}:{tool_name}"
+    return (
+        f"Error: Declared tool '{tool_name}' for skill '{skill_name}' has no executable entry point. "
+        f"Expected one of: {tool_name}.py, scripts/{tool_name}.py, or index.js/index.ts"
+    )
 
 
 # ツールのメタデータ（discover_tools で自動検出される形式）

@@ -399,7 +399,7 @@ Markdown で「delegate_to_agent: @name」と書くのではなく、実際に�
 - `search_skills(query: str, include_remote: bool = True)`: スキル候補を検索（ローカル/リモート）。
 - `load_skill(skill_name: str, source: str = "auto")`: スキル本文（ガイド/知識）をロードして参照。
 - `list_loaded_skills()`: 現在ロード済みのスキル一覧を表示。
-- `execute_skill(skill_name: str, tool_name: str, arguments: dict)`: ロジック型スキル（JS/TS/Python）のツールを実行。
+- `execute_skill(skill_name: str, tool_name: str, arguments: dict)`: ロジック型スキル（JS/TS/Python）の **宣言済みツール**を実行（`SKILL.md` の frontmatter `tools:` に定義されているもののみ）。
 
 注意:
 - ロード済みスキルのキャッシュは **ユーザー入力ごとにクリアされる**ため、毎ターン必要なら再度 `load_skill` してください。

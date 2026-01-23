@@ -93,6 +93,11 @@ class Orchestrator:
         use_optimizer: bool = False,
         working_directory: Optional[str] = None
     ):
+        # Ensure global skill tools use the active profile.
+        # skill_tools._get_loader() relies on MOCO_PROFILE and keeps a global loader cache,
+        # so we must keep the environment in sync with the orchestrator's profile.
+        os.environ["MOCO_PROFILE"] = profile
+
         self.profile = profile
         self.provider = provider  # None = 環境変数から決定
         self.model = model        # None = プロバイダーのデフォルト
@@ -214,6 +219,9 @@ class Orchestrator:
         profile = (profile or "").strip()
         if not profile:
             return
+
+        # Keep environment in sync for skill tools (load_skill/search_skills).
+        os.environ["MOCO_PROFILE"] = profile
 
         # Update profile string
         self.profile = profile

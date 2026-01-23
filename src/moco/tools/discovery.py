@@ -115,20 +115,29 @@ def discover_tools(profile: str) -> Dict[str, Callable]:
         from .project_context import get_project_context
         tool_map["get_project_context"] = get_project_context
         
-    # 3. JS版 Skills のロジック型ツールを読み込む
+    # 3. Skills のロジック型ツールを読み込む（SKILL.md の tools: で宣言されたもののみ）
     from .skill_loader import SkillLoader
-    from .js_bridge import wrap_js_tool
+    from .skill_tools import execute_skill
     
     loader = SkillLoader(profile=profile)
     skills = loader.load_skills()
     
+    def _wrap_declared_skill_tool(skill_name: str, tool_name: str, description: str = ""):
+        """Wrap a declared skill tool as a normal Python tool."""
+        def _tool(**kwargs):
+            return execute_skill(skill_name=skill_name, tool_name=tool_name, arguments=kwargs)
+
+        _tool.__name__ = tool_name
+        _tool.__doc__ = description or f"Skill tool: {skill_name}.{tool_name}"
+        return _tool
+
     for skill in skills.values():
         if skill.is_logic and skill.exposed_tools:
             for tool_name, tool_def in skill.exposed_tools.items():
                 desc = tool_def.get("description", "")
-                # Python関数としてラップして登録
-                tool_map[tool_name] = wrap_js_tool(skill.path, tool_name, desc)
-                logger.info(f"Loaded JS skill tool: {tool_name} from {skill.name}")
+                # Python関数としてラップして登録（JS/TS/Python は execute_skill 側で分岐）
+                tool_map[tool_name] = _wrap_declared_skill_tool(skill.name, tool_name, desc)
+                logger.info(f"Loaded declared skill tool: {tool_name} from {skill.name}")
 
     return tool_map
 
