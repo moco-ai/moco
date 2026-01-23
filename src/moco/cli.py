@@ -575,9 +575,35 @@ def chat(
             from rich.text import Text
             from rich import box
 
+            # Auto-follow: render only the bottom-most lines that fit in the panel.
+            # (If we render the whole buffer, Rich will show from the top and the latest
+            # conversation scrolls out of view.)
+            try:
+                chat_w = max(20, int(getattr(layout["chat"], "size", None).width or console.size.width) - 4)
+                chat_h = max(6, int(getattr(layout["chat"], "size", None).height or console.size.height) - 4)
+            except Exception:
+                chat_w = max(20, console.size.width - 4)
+                chat_h = max(6, console.size.height - 4)
+
+            # Build visible lines from bottom up, accounting for wrapping.
+            visible_lines = []
+            used_rows = 0
+            for ln in reversed(pane_state["lines"][-pane_state["max_lines"] :]):
+                try:
+                    t = Text.from_markup(ln)
+                    plain = t.plain
+                except Exception:
+                    plain = str(ln)
+                # Approximate wrap rows
+                rows = max(1, (len(plain) + max(1, chat_w) - 1) // max(1, chat_w))
+                if used_rows + rows > chat_h:
+                    break
+                visible_lines.append(ln)
+                used_rows += rows
+            visible_lines.reverse()
+
             text = Text()
-            # Render last lines; allow Rich markup for minimal coloring
-            for ln in pane_state["lines"][-pane_state["max_lines"] :]:
+            for ln in visible_lines:
                 try:
                     text.append_text(Text.from_markup(ln))
                 except Exception:
