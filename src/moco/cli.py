@@ -1003,6 +1003,10 @@ def chat(
             from datetime import datetime as _dt
             from prompt_toolkit.shortcuts import print_formatted_text
 
+            # Tell slash commands to avoid Rich markup (prevents raw ANSI escapes in some terminals).
+            command_context["plain_output"] = True
+            command_context["plain_print"] = print_formatted_text
+
             pending: "queue.Queue[str | None]" = queue.Queue()
             busy_lock = threading.Lock()
             busy = {"running": False}
