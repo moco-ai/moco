@@ -515,6 +515,7 @@ def chat(
     subagent_stream: bool = typer.Option(False, "--subagent-stream/--no-subagent-stream", help="サブエージェント本文のストリーミング表示（デフォルト: オフ）"),
     tool_status: bool = typer.Option(True, "--tool-status/--no-tool-status", help="ツール/委譲の短いステータス行を表示（デフォルト: オン）"),
     todo_pane: bool = typer.Option(False, "--todo-pane/--no-todo-pane", help="Todo を右ペインに常時表示（デフォルト: オフ）"),
+    async_input: bool = typer.Option(False, "--async-input/--no-async-input", help="処理中も入力を受け付けてキューイング（Gemini CLI風）"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
     session: Optional[str] = typer.Option(None, "--session", "-s", help="セッション名（継続 or 新規）"),
     new_session: bool = typer.Option(False, "--new", help="新規セッションを強制開始"),
@@ -538,6 +539,18 @@ def chat(
     # Track whether we have printed any streamed text without a newline recently.
     # Used to avoid mixing tool logs into the middle of a line.
     stream_state = {"mid_line": False}
+
+    # Async-input mode (Gemini CLI style):
+    # - allow typing next prompts while the current one is processing
+    # - enqueue prompts and execute sequentially in a worker thread
+    if async_input and todo_pane:
+        console.print("[yellow]--async-input is currently incompatible with --todo-pane. Disabling --async-input.[/yellow]")
+        async_input = False
+    if async_input:
+        import sys
+        if not sys.stdin.isatty():
+            console.print("[yellow]--async-input requires an interactive TTY stdin. Disabling --async-input.[/yellow]")
+            async_input = False
 
     # Optional: side pane for Todos (Rich Live layout)
     pane_state = {
@@ -945,6 +958,132 @@ def chat(
     # ---
 
     try:
+        # If async_input is enabled, run orchestration in a background worker and keep reading input.
+        if async_input:
+            try:
+                from prompt_toolkit import PromptSession
+                from prompt_toolkit.patch_stdout import patch_stdout
+                from prompt_toolkit.key_binding import KeyBindings
+            except Exception as e:
+                console.print(f"[yellow]--async-input requires prompt_toolkit. ({e})[/yellow]")
+                async_input = False
+
+        if async_input:
+            import threading
+            import queue
+            from datetime import datetime as _dt
+
+            pending: "queue.Queue[str | None]" = queue.Queue()
+            busy_lock = threading.Lock()
+            busy = {"running": False}
+            stop_requested = {"stop": False}
+
+            def _set_busy(val: bool) -> None:
+                with busy_lock:
+                    busy["running"] = val
+
+            def _is_busy() -> bool:
+                with busy_lock:
+                    return bool(busy["running"])
+
+            def _worker() -> None:
+                while True:
+                    item = pending.get()
+                    if item is None:
+                        return
+
+                    _set_busy(True)
+                    try:
+                        create_cancel_event(session_id)
+                        result = o.run_sync(item, session_id)
+                        if result and not stream:
+                            console.print()
+                            _print_result(console, result, theme_name=ui_state.theme, verbose=verbose)
+                            console.print()
+                    except KeyboardInterrupt:
+                        request_cancel(session_id)
+                        console.print("\n[yellow]Interrupted.[/yellow]")
+                    except OperationCancelled:
+                        console.print("\n[yellow]Operation cancelled.[/yellow]")
+                    except Exception as e:  # noqa: BLE001
+                        console.print(f"[red]Error: {e}[/red]")
+                    finally:
+                        clear_cancel_event(session_id)
+                        _set_busy(False)
+                        if stop_requested["stop"]:
+                            return
+
+            worker = threading.Thread(target=_worker, daemon=True)
+            worker.start()
+
+            kb = KeyBindings()
+
+            @kb.add("c-c")
+            def _(event):  # noqa: ANN001
+                # If running, cancel current task; otherwise exit.
+                if _is_busy():
+                    request_cancel(session_id)
+                    console.print("[yellow](cancel requested)[/yellow]")
+                else:
+                    stop_requested["stop"] = True
+                    pending.put(None)
+                    event.app.exit()
+
+            prompt = PromptSession(key_bindings=kb)
+
+            with patch_stdout():
+                while True:
+                    # 最新のテーマ設定を反映
+                    theme_config = THEMES[ui_state.theme]
+
+                    try:
+                        text = prompt.prompt("> ")
+                    except (EOFError, KeyboardInterrupt):
+                        # EOF / Ctrl+C while idle -> exit
+                        stop_requested["stop"] = True
+                        pending.put(None)
+                        break
+
+                    if not (text or "").strip():
+                        continue
+
+                    # Slash commands are processed immediately in the main thread.
+                    if text.strip().startswith("/"):
+                        # Avoid session-changing commands while busy (they can desync current run)
+                        if _is_busy() and text.strip().split()[0].lower() in ("/profile", "/session", "/clear"):
+                            console.print("[yellow]That command is blocked while a task is running. Try again after completion.[/yellow]")
+                            continue
+
+                        if not handle_slash_command(text, command_context):
+                            stop_requested["stop"] = True
+                            pending.put(None)
+                            break
+
+                        if "pending_prompt" in command_context:
+                            text = command_context.pop("pending_prompt")
+                        else:
+                            session_id = command_context["session_id"]
+                            continue
+
+                    lowered = text.strip().lower()
+                    if lowered in ("exit", "quit"):
+                        stop_requested["stop"] = True
+                        # Ask current run to stop, then exit after worker finishes.
+                        if _is_busy():
+                            request_cancel(session_id)
+                        pending.put(None)
+                        break
+
+                    # Enqueue normal prompts.
+                    pending.put(text)
+                    qsize = pending.qsize()
+                    if _is_busy() or qsize > 0:
+                        console.print(f"[dim](queued {qsize} @ {_dt.now().strftime('%H:%M:%S')})[/dim]")
+
+            # Wait briefly for worker to exit (best-effort)
+            worker.join(timeout=2)
+            return
+
         while True:
             # 最新のテーマ設定を反映
             theme_config = THEMES[ui_state.theme]
