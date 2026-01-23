@@ -953,7 +953,25 @@ def chat(
                 if pane_state["enabled"]:
                     _pane_update_todo_panel(command_context.get("session_id"))
                     _pane_update_chat_panel()
+                # Liveが有効だと入力プロンプトが再描画で見えなくなるので、
+                # 入力中は一時的に Live を停止して端末の制御を戻す。
+                if pane_state["enabled"] and live_ctx is not None:
+                    try:
+                        live_ctx.stop()
+                    except Exception:
+                        pass
+
                 text = console.input(f"[bold {theme_config.status}]> [/bold {theme_config.status}]")
+
+                # 入力が終わったら Live を再開し、左ペインにもユーザー入力を残す
+                if pane_state["enabled"] and live_ctx is not None:
+                    try:
+                        live_ctx.start()
+                    except Exception:
+                        pass
+                    if text and text.strip():
+                        _pane_append(f"[bold {theme_config.status}]User:[/bold {theme_config.status}] {text.strip()}")
+                        _pane_update_chat_panel()
             except EOFError:
                 break
 
