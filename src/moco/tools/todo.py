@@ -4,6 +4,7 @@ import json
 import re
 import sys
 import os
+from contextvars import ContextVar
 
 # 動的インポート対応: 相対インポートが使えない場合は絶対パスでインポート
 try:
@@ -16,7 +17,7 @@ except ImportError:
     from storage.session_logger import SessionLogger
 
 # グローバルセッションID（Orchestratorが設定する）
-_current_session_id: Optional[str] = None
+_current_session_id_var: ContextVar[Optional[str]] = ContextVar("_current_session_id", default=None)
 
 _CODE_FENCE_RE = re.compile(
     r"^\s*```(?:json|python|txt)?\s*\n(?P<body>[\s\S]*?)\n```\s*$",
@@ -109,12 +110,11 @@ def _parse_todos_loose(value: str) -> Union[List[Dict[str, Any]], Dict[str, Any]
 
 def set_current_session(session_id: str) -> None:
     """現在のセッションIDを設定（Orchestratorから呼ばれる）"""
-    global _current_session_id
-    _current_session_id = session_id
+    _current_session_id_var.set(session_id)
 
 def get_current_session() -> Optional[str]:
     """現在のセッションIDを取得"""
-    return _current_session_id
+    return _current_session_id_var.get()
 
 def todowrite(todos: Union[str, List[Dict[str, Any]]]) -> str:
     """
@@ -135,9 +135,9 @@ def todowrite(todos: Union[str, List[Dict[str, Any]]]) -> str:
     Returns:
         Success or error message.
     """
-    global _current_session_id
+    session_id = get_current_session()
 
-    if not _current_session_id:
+    if not session_id:
         return "Error: No active session. This tool must be called during an orchestration session."
 
     logger = SessionLogger()
@@ -153,7 +153,7 @@ def todowrite(todos: Union[str, List[Dict[str, Any]]]) -> str:
         if any(not isinstance(t, dict) for t in todos):
             return "Error: Invalid JSON format for todos"
 
-        logger.save_todos(_current_session_id, todos)
+        logger.save_todos(session_id, todos)
         return f"Todo list updated successfully. {len(todos)} items saved to session."
     except Exception as e:
         return f"Error updating todo list: {e}"

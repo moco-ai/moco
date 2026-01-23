@@ -631,10 +631,13 @@ def chat(
 
             # Running line (start)
             if status == "running":
-                line = tool_name or "tool"
-                if detail:
-                    line += f" → {detail}"
-                console.print(f"[dim]→ {line}[/dim]")
+                # Default: keep tool-status output compact (one line per tool).
+                # Show the "running" line only in verbose mode.
+                if verbose:
+                    line = tool_name or "tool"
+                    if detail:
+                        line += f" → {detail}"
+                    console.print(f"[dim]→ {line}[/dim]")
                 return
 
             if status != "completed":
