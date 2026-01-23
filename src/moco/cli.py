@@ -911,6 +911,12 @@ def chat(
         console.print(f"[dim]New session: {session_id[:8]}...[/dim]")
 
     command_context['session_id'] = session_id
+    # Optional: allow slash commands to interact with the todo-pane
+    # (so `/todo` can refresh the right pane without printing raw text to the terminal).
+    command_context["pane_enabled"] = bool(pane_state.get("enabled"))
+    command_context["pane_append"] = _pane_append
+    command_context["pane_refresh_chat"] = _pane_update_chat_panel
+    command_context["pane_refresh_todo"] = lambda: _pane_update_todo_panel(command_context.get("session_id"))
 
     # --- Dashboard Display ---
     from .ui.welcome import show_welcome_dashboard

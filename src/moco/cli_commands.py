@@ -28,6 +28,7 @@ def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
         'cost': handle_cost,
         'tools': handle_tools,
         'agents': handle_agents,
+        'todo': handle_todo,
         'substream': handle_substream,
         'toolstatus': handle_toolstatus,
         'quit': handle_quit,
@@ -64,6 +65,53 @@ def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
         console = context.get('console', Console())
         console.print(f"[red]Unknown command: /{command}. Type /help for available commands.[/red]")
         return True
+
+
+def handle_todo(args: List[str], context: Dict[str, Any]) -> bool:
+    """Show current todo list for this chat session.
+
+    Usage:
+      /todo          -> show hierarchical todos (orchestrator + subagents)
+      /todo refresh  -> refresh todo pane (when --todo-pane is enabled)
+    """
+    console = context.get('console', Console())
+    session_id = context.get("session_id")
+
+    pane_enabled = bool(context.get("pane_enabled"))
+    pane_append = context.get("pane_append")
+    pane_refresh_chat = context.get("pane_refresh_chat")
+    pane_refresh_todo = context.get("pane_refresh_todo")
+
+    # Refresh-only mode (useful when todo-pane is enabled)
+    if args and args[0].lower() in ("refresh", "r"):
+        if pane_enabled and callable(pane_refresh_todo):
+            pane_refresh_todo()
+            if callable(pane_append) and callable(pane_refresh_chat):
+                pane_append("[dim]✓ Todos refreshed[/dim]")
+                pane_refresh_chat()
+        else:
+            console.print("[dim](todo pane is not enabled)[/dim]")
+        return True
+
+    try:
+        from moco.tools.todo import set_current_session, todoread_all
+        if session_id:
+            set_current_session(session_id)
+        out = todoread_all()
+    except Exception as e:
+        out = f"Error: failed to read todos: {e}"
+
+    if pane_enabled and callable(pane_append) and callable(pane_refresh_chat):
+        pane_append("[bold]Todos[/bold]")
+        for ln in (out or "").splitlines():
+            pane_append(ln)
+        pane_refresh_chat()
+        if callable(pane_refresh_todo):
+            pane_refresh_todo()
+        return True
+
+    console.print(out)
+    return True
 
 def handle_toolstatus(args: List[str], context: Dict[str, Any]) -> bool:
     """Toggle tool/delegation status lines in CLI.
@@ -209,6 +257,7 @@ def handle_help(args: List[str], context: Dict[str, Any]) -> bool:
         ("/cost", "Show estimated cost for this session"),
         ("/tools", "List available tools"),
         ("/agents", "List available agents"),
+        ("/todo", "Show current Todo list for this session"),
         ("/toolstatus on|off", "Toggle tool/delegation status lines"),
         ("/quit", "Exit chat"),
     ]
