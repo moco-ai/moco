@@ -260,7 +260,37 @@ class SkillLoader:
                        any(f.endswith(".py") for f in os.listdir(skill_dir) if f != "__init__.py")
 
         # 露出ツールの定義 (YAML内の tools セクション)
-        exposed_tools = metadata.get("tools", {})
+        exposed_tools_raw = metadata.get("tools", {}) or {}
+        # Normalize to dict:
+        # - dict: {tool_name: {description, parameters,...}}
+        # - list: [{name: tool_name, ...}, ...]  (seen in some local skills)
+        exposed_tools: Dict[str, Any] = {}
+        if isinstance(exposed_tools_raw, dict):
+            exposed_tools = exposed_tools_raw
+        elif isinstance(exposed_tools_raw, list):
+            for item in exposed_tools_raw:
+                # Common format: {name: "...", description: "...", ...}
+                if isinstance(item, dict):
+                    name_val = item.get("name")
+                    if isinstance(name_val, str) and name_val.strip():
+                        tool_name = name_val.strip()
+                        # Keep the rest of the fields as tool definition
+                        tool_def = dict(item)
+                        tool_def.pop("name", None)
+                        exposed_tools[tool_name] = tool_def
+                        continue
+                    # Alternate compact format: {tool_name: {...}}
+                    if len(item) == 1:
+                        k = next(iter(item.keys()))
+                        v = item.get(k)
+                        if isinstance(k, str) and k.strip():
+                            exposed_tools[k.strip()] = v if isinstance(v, dict) else {"value": v}
+                            continue
+                # Fallback: string tool names
+                if isinstance(item, str) and item.strip():
+                    exposed_tools[item.strip()] = {}
+        else:
+            exposed_tools = {}
 
         return SkillConfig(
             name=name,
