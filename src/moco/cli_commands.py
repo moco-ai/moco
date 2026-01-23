@@ -530,6 +530,14 @@ def handle_tools(args: List[str], context: Dict[str, Any]) -> bool:
     if not orchestrator:
         return True
 
+    # Async-input / plain output mode: avoid Rich tables (ANSI artifacts in some terminals).
+    if context.get("plain_output"):
+        _print_out(context, "Available Tools:")
+        if hasattr(orchestrator, 'tool_map'):
+            for tool_name in sorted(orchestrator.tool_map.keys()):
+                _print_out(context, f"  - {tool_name}")
+        return True
+
     table = Table(title="Available Tools", border_style="green")
     table.add_column("Tool Name", style="cyan")
     
@@ -545,6 +553,18 @@ def handle_agents(args: List[str], context: Dict[str, Any]) -> bool:
     console = context.get('console', Console())
     orchestrator = context.get('orchestrator')
     if not orchestrator:
+        return True
+
+    # Async-input / plain output mode: avoid Rich tables (ANSI artifacts in some terminals).
+    if context.get("plain_output"):
+        _print_out(context, "Available Agents:")
+        if hasattr(orchestrator, 'agents'):
+            for name, config in orchestrator.agents.items():
+                desc = getattr(config, "description", "") or ""
+                desc = desc.replace("\n", " ").strip()
+                if len(desc) > 120:
+                    desc = desc[:117] + "..."
+                _print_out(context, f"  - {name}: {desc}")
         return True
 
     table = Table(title="Available Agents", border_style="magenta")
