@@ -163,9 +163,9 @@ def todoread() -> str:
     Reads the current todo list for the active session.
     If called by the orchestrator, it shows todos from all sub-agents as well.
     """
-    global _current_session_id
+    session_id = get_current_session()
 
-    if not _current_session_id:
+    if not session_id:
         return "Error: No active session. This tool must be called during an orchestration session."
 
     logger = SessionLogger()
@@ -175,7 +175,7 @@ def todoread() -> str:
     try:
         conn = logger._get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT metadata FROM sessions WHERE session_id = ?", (_current_session_id,))
+        cursor.execute("SELECT metadata FROM sessions WHERE session_id = ?", (session_id,))
         row = cursor.fetchone()
         conn.close()
         if row and row[0]:
@@ -190,7 +190,7 @@ def todoread() -> str:
         return todoread_all()
 
     # Otherwise, show only the current agent's todos
-    todos = logger.get_todos(_current_session_id)
+    todos = logger.get_todos(session_id)
 
     if not todos:
         return "No todos found for current session."
@@ -213,9 +213,9 @@ def todoread_all() -> str:
     """
     現在のセッションと全サブエージェントの todo リストを階層的に表示します。
     """
-    global _current_session_id
+    session_id = get_current_session()
 
-    if not _current_session_id:
+    if not session_id:
         return "Error: No active session."
 
     logger = SessionLogger()
@@ -227,7 +227,7 @@ def todoread_all() -> str:
     }
 
     all_lines = []
-    main_todos = logger.get_todos(_current_session_id)
+    main_todos = logger.get_todos(session_id)
     all_lines.append("=== orchestrator ===")
     if main_todos:
         for t in main_todos:
@@ -243,7 +243,7 @@ def todoread_all() -> str:
             SELECT session_id, title FROM sessions
             WHERE metadata LIKE ?
             ORDER BY created_at
-        """, (f'%"parent_session_id": "{_current_session_id}"%',))
+        """, (f'%"parent_session_id": "{session_id}"%',))
         sub_sessions = cursor.fetchall()
         conn.close()
 
