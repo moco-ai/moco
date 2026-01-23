@@ -15,6 +15,38 @@ _MOCO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # プロジェクトルート（server_monitor_ai）
 _PROJECT_ROOT = os.path.dirname(_MOCO_ROOT)
 
+# Tools that should be available to all agents implicitly.
+# NOTE:
+# - AgentRuntime only enables tools listed in each agent config (`config.tools`).
+# - These are safe, non-destructive meta-tools for skills discovery/usage.
+_IMPLICIT_SKILL_TOOLS = [
+    "search_skills",
+    "load_skill",
+    "list_loaded_skills",
+    "execute_skill",
+]
+
+
+def _with_implicit_skill_tools(tools: List[str]) -> List[str]:
+    """Add implicit skill tools while preserving order and avoiding duplicates."""
+    # Normalize
+    tools = [t for t in (tools or []) if isinstance(t, str) and t.strip()]
+    seen = set()
+    merged: List[str] = []
+
+    for t in tools:
+        if t not in seen:
+            merged.append(t)
+            seen.add(t)
+
+    for t in _IMPLICIT_SKILL_TOOLS:
+        if t not in seen:
+            merged.append(t)
+            seen.add(t)
+
+    return merged
+
+
 @dataclass
 class AgentConfig:
     name: str
@@ -73,10 +105,11 @@ def discover_tools(profile: str) -> Dict[str, Callable]:
         tool_map["todoread"] = todoread
         
         # skill_tools も静的インポート（グローバルキャッシュを持つ）
-        from .skill_tools import search_skills, load_skill, list_loaded_skills
+        from .skill_tools import search_skills, load_skill, list_loaded_skills, execute_skill
         tool_map["search_skills"] = search_skills
         tool_map["load_skill"] = load_skill
         tool_map["list_loaded_skills"] = list_loaded_skills
+        tool_map["execute_skill"] = execute_skill
         
         # project_context
         from .project_context import get_project_context
@@ -243,12 +276,21 @@ class AgentLoader:
                 prompt_parts.append("Quality Standards:\n- " + "\n- ".join(qs))
         
         system_prompt = "\n\n".join(prompt_parts)
+
+        raw_tools = data.get("tools", [])
+        if isinstance(raw_tools, dict):
+            tools = [k for k, v in raw_tools.items() if v]
+        elif isinstance(raw_tools, list):
+            tools = raw_tools
+        else:
+            tools = []
+        tools = _with_implicit_skill_tools(tools)
         
         return AgentConfig(
             name=name,
             description=data.get("description", f"Strategy agent: {name}"),
             system_prompt=system_prompt,
-            tools=data.get("tools", []),
+            tools=tools,
             mode=agent_info.get("type") or "chat"
         )
 
@@ -277,6 +319,7 @@ class AgentLoader:
             tools = raw_tools
         else:
             tools = []
+        tools = _with_implicit_skill_tools(tools)
         
         return AgentConfig(
             name=agent_name,

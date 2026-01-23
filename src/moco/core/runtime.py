@@ -392,6 +392,18 @@ COMMON_AGENT_RULES = """
 `delegate_to_agent` でサブエージェントに委譲するときは、**必ずツール呼び出し（JSON形式）で実行**してください。
 Markdown で「delegate_to_agent: @name」と書くのではなく、実際にツールを呼び出してください。
 
+## 🧠 Skills（スキル）ツール
+
+このシステムでは、スキルは **自動ロードされません**。必要なときにツールで明示的にロードしてください。
+
+- `search_skills(query: str, include_remote: bool = True)`: スキル候補を検索（ローカル/リモート）。
+- `load_skill(skill_name: str, source: str = "auto")`: スキル本文（ガイド/知識）をロードして参照。
+- `list_loaded_skills()`: 現在ロード済みのスキル一覧を表示。
+- `execute_skill(skill_name: str, tool_name: str, arguments: dict)`: ロジック型スキル（JS/TS/Python）のツールを実行。
+
+注意:
+- ロード済みスキルのキャッシュは **ユーザー入力ごとにクリアされる**ため、毎ターン必要なら再度 `load_skill` してください。
+
 ## ⛔ ツール呼び出し上限時のルール
 
 ### When you reach the limit yourself

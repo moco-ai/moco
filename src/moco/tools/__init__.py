@@ -19,7 +19,7 @@ from .process import (
     send_input,
 )
 from .skill_loader import SkillLoader, SkillConfig
-from .skill_tools import search_skills, load_skill, list_loaded_skills
+from .skill_tools import search_skills, load_skill, list_loaded_skills, execute_skill
 from .project_context import get_project_context
 
 logger = logging.getLogger(__name__)
@@ -87,6 +87,7 @@ TOOL_MAP = {
     "search_skills": search_skills,
     "load_skill": load_skill,
     "list_loaded_skills": list_loaded_skills,
+    "execute_skill": execute_skill,
     # プロジェクトコンテキスト
     "get_project_context": get_project_context,
     # NOTE: browser_* ツールは discovery.py で自動的に読み込まれる
