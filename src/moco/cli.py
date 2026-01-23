@@ -540,6 +540,9 @@ def chat(
     # Used to avoid mixing tool logs into the middle of a line.
     stream_state = {"mid_line": False}
 
+    # prompt_toolkit printing helpers (used in --async-input mode)
+    pt_ansi_print = None
+
     # Async-input mode (Gemini CLI style):
     # - allow typing next prompts while the current one is processing
     # - enqueue prompts and execute sequentially in a worker thread
@@ -752,6 +755,7 @@ def chat(
                 return
             status = (kwargs.get("status") or "").lower()
             name = kwargs.get("name") or agent_name or ""
+            detail = (kwargs.get("detail") or "").strip()
             if name and not str(name).startswith("@"):
                 name = f"@{name}"
             if pane_state["enabled"]:
@@ -770,18 +774,25 @@ def chat(
                 _safe_stream_print("\n")
                 stream_state["mid_line"] = False
             if status == "running":
-                if async_input:
-                    _safe_stream_print(f"→ {name}\n")
+                if async_input and pt_ansi_print:
+                    # Show agent + truncated task text with colors (Gemini CLI style)
+                    msg = f"\x1b[2m→\x1b[0m \x1b[36m{name}\x1b[0m"
+                    if detail:
+                        d = detail.replace("\n", " ").strip()
+                        if len(d) > 90:
+                            d = d[:87] + "..."
+                        msg += f" \x1b[2m{d}\x1b[0m"
+                    pt_ansi_print(msg)
                 else:
                     console.print(f"[dim]→ {name}[/dim]")
             elif status == "completed":
-                if async_input:
-                    _safe_stream_print(f"✓ {name}\n")
+                if async_input and pt_ansi_print:
+                    pt_ansi_print(f"\x1b[32m✓\x1b[0m \x1b[36m{name}\x1b[0m")
                 else:
                     console.print(f"[green]✓ {name}[/green]")
             else:
-                if async_input:
-                    _safe_stream_print(f"{status or 'delegate'} {name}\n")
+                if async_input and pt_ansi_print:
+                    pt_ansi_print(f"\x1b[2m{status or 'delegate'}\x1b[0m \x1b[36m{name}\x1b[0m")
                 else:
                     console.print(f"[dim]{status or 'delegate'} {name}[/dim]")
             return
@@ -833,8 +844,8 @@ def chat(
                     line = tool_name or "tool"
                     if detail:
                         line += f" → {detail}"
-                    if async_input:
-                        _safe_stream_print(f"→ {line}\n")
+                    if async_input and pt_ansi_print:
+                        pt_ansi_print(f"\x1b[2m→\x1b[0m \x1b[36m{line}\x1b[0m")
                     else:
                         console.print(f"[dim]→ {line}[/dim]")
                 return
@@ -860,13 +871,13 @@ def chat(
                     line += f" ({summary})"
 
             if is_error:
-                if async_input:
-                    _safe_stream_print(f"✗ {line}\n")
+                if async_input and pt_ansi_print:
+                    pt_ansi_print(f"\x1b[31m✗\x1b[0m \x1b[36m{line}\x1b[0m")
                 else:
                     console.print(f"[red]✗ {line}[/red]")
             else:
-                if async_input:
-                    _safe_stream_print(f"✓ {line}\n")
+                if async_input and pt_ansi_print:
+                    pt_ansi_print(f"\x1b[32m✓\x1b[0m \x1b[36m{line}\x1b[0m")
                 else:
                     console.print(f"[green]✓ {line}[/green]")
             return
@@ -1002,10 +1013,21 @@ def chat(
             import queue
             from datetime import datetime as _dt
             from prompt_toolkit.shortcuts import print_formatted_text
+            from prompt_toolkit.formatted_text import ANSI
 
             # Tell slash commands to avoid Rich markup (prevents raw ANSI escapes in some terminals).
             command_context["plain_output"] = True
             command_context["plain_print"] = print_formatted_text
+
+            # Use ANSI-aware printing for progress output (tool/delegate) to keep colors without mojibake.
+            def _pt_ansi_print(s: str) -> None:
+                try:
+                    print_formatted_text(ANSI(s))
+                except Exception:
+                    # fall back to plain stdout
+                    _safe_stream_print(str(s) + "\n")
+
+            pt_ansi_print = _pt_ansi_print
 
             pending: "queue.Queue[str | None]" = queue.Queue()
             busy_lock = threading.Lock()
