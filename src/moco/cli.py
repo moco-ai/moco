@@ -515,6 +515,7 @@ def chat(
     subagent_stream: bool = typer.Option(False, "--subagent-stream/--no-subagent-stream", help="サブエージェント本文のストリーミング表示（デフォルト: オフ）"),
     tool_status: bool = typer.Option(True, "--tool-status/--no-tool-status", help="ツール/委譲の短いステータス行を表示（デフォルト: オン）"),
     todo_pane: bool = typer.Option(False, "--todo-pane/--no-todo-pane", help="Todo を右ペインに常時表示（デフォルト: オフ）"),
+    async_input: bool = typer.Option(False, "--async-input/--no-async-input", help="処理中も入力を受け付けてキューイング（Gemini CLI風）"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
     session: Optional[str] = typer.Option(None, "--session", "-s", help="セッション名（継続 or 新規）"),
     new_session: bool = typer.Option(False, "--new", help="新規セッションを強制開始"),
@@ -538,6 +539,18 @@ def chat(
     # Track whether we have printed any streamed text without a newline recently.
     # Used to avoid mixing tool logs into the middle of a line.
     stream_state = {"mid_line": False}
+
+    # Async-input mode (Gemini CLI style):
+    # - allow typing next prompts while the current one is processing
+    # - enqueue prompts and execute sequentially in a worker thread
+    if async_input and todo_pane:
+        console.print("[yellow]--async-input is currently incompatible with --todo-pane. Disabling --async-input.[/yellow]")
+        async_input = False
+    if async_input:
+        import sys
+        if not sys.stdin.isatty():
+            console.print("[yellow]--async-input requires an interactive TTY stdin. Disabling --async-input.[/yellow]")
+            async_input = False
 
     # Optional: side pane for Todos (Rich Live layout)
     pane_state = {
@@ -663,7 +676,12 @@ def chat(
                 return
             try:
                 from rich.text import Text
-                console.print(Text(text, style=style), end="")
+                # In async-input mode (prompt_toolkit), avoid emitting ANSI styles because
+                # some terminals/recorders show escape sequences literally.
+                if async_input:
+                    _safe_stream_print(text)
+                else:
+                    console.print(Text(text, style=style), end="")
             except BrokenPipeError:
                 return
             except OSError as e:
@@ -682,7 +700,10 @@ def chat(
             if stream_state.get("mid_line"):
                 _safe_stream_print("\n")
                 stream_state["mid_line"] = False
-            _safe_stream_print_styled("🤖 ", f"bold {theme_config.result}")
+            if async_input:
+                _safe_stream_print("🤖 ")
+            else:
+                _safe_stream_print_styled("🤖 ", f"bold {theme_config.result}")
             stream_state["mid_line"] = True
             return
 
@@ -707,7 +728,10 @@ def chat(
                     _pane_update_chat_panel()
                     return
                 # Color the assistant output to visually separate it from the user's input line.
-                _safe_stream_print_styled(content, theme_config.result)
+                if async_input:
+                    _safe_stream_print(content)
+                else:
+                    _safe_stream_print_styled(content, theme_config.result)
                 stream_state["mid_line"] = True
             return
 
@@ -746,11 +770,20 @@ def chat(
                 _safe_stream_print("\n")
                 stream_state["mid_line"] = False
             if status == "running":
-                console.print(f"[dim]→ {name}[/dim]")
+                if async_input:
+                    _safe_stream_print(f"→ {name}\n")
+                else:
+                    console.print(f"[dim]→ {name}[/dim]")
             elif status == "completed":
-                console.print(f"[green]✓ {name}[/green]")
+                if async_input:
+                    _safe_stream_print(f"✓ {name}\n")
+                else:
+                    console.print(f"[green]✓ {name}[/green]")
             else:
-                console.print(f"[dim]{status or 'delegate'} {name}[/dim]")
+                if async_input:
+                    _safe_stream_print(f"{status or 'delegate'} {name}\n")
+                else:
+                    console.print(f"[dim]{status or 'delegate'} {name}[/dim]")
             return
 
         # Tool status: show running + success/error so file ops are verifiable in-chat.
@@ -800,7 +833,10 @@ def chat(
                     line = tool_name or "tool"
                     if detail:
                         line += f" → {detail}"
-                    console.print(f"[dim]→ {line}[/dim]")
+                    if async_input:
+                        _safe_stream_print(f"→ {line}\n")
+                    else:
+                        console.print(f"[dim]→ {line}[/dim]")
                 return
 
             if status != "completed":
@@ -824,9 +860,15 @@ def chat(
                     line += f" ({summary})"
 
             if is_error:
-                console.print(f"[red]✗ {line}[/red]")
+                if async_input:
+                    _safe_stream_print(f"✗ {line}\n")
+                else:
+                    console.print(f"[red]✗ {line}[/red]")
             else:
-                console.print(f"[green]✓ {line}[/green]")
+                if async_input:
+                    _safe_stream_print(f"✓ {line}\n")
+                else:
+                    console.print(f"[green]✓ {line}[/green]")
             return
 
     # プロファイルの解決（指定なしの場合は対話選択）
@@ -945,6 +987,139 @@ def chat(
     # ---
 
     try:
+        # If async_input is enabled, run orchestration in a background worker and keep reading input.
+        if async_input:
+            try:
+                from prompt_toolkit import PromptSession
+                from prompt_toolkit.patch_stdout import patch_stdout
+                from prompt_toolkit.key_binding import KeyBindings
+            except Exception as e:
+                console.print(f"[yellow]--async-input requires prompt_toolkit. ({e})[/yellow]")
+                async_input = False
+
+        if async_input:
+            import threading
+            import queue
+            from datetime import datetime as _dt
+            from prompt_toolkit.shortcuts import print_formatted_text
+
+            # Tell slash commands to avoid Rich markup (prevents raw ANSI escapes in some terminals).
+            command_context["plain_output"] = True
+            command_context["plain_print"] = print_formatted_text
+
+            pending: "queue.Queue[str | None]" = queue.Queue()
+            busy_lock = threading.Lock()
+            busy = {"running": False}
+            stop_requested = {"stop": False}
+
+            def _set_busy(val: bool) -> None:
+                with busy_lock:
+                    busy["running"] = val
+
+            def _is_busy() -> bool:
+                with busy_lock:
+                    return bool(busy["running"])
+
+            def _worker() -> None:
+                while True:
+                    item = pending.get()
+                    if item is None:
+                        return
+
+                    _set_busy(True)
+                    try:
+                        create_cancel_event(session_id)
+                        result = o.run_sync(item, session_id)
+                        if result and not stream:
+                            # Prefer plain output in async-input mode to avoid ANSI artifacts.
+                            print_formatted_text("")
+                            print_formatted_text(result)
+                            print_formatted_text("")
+                    except KeyboardInterrupt:
+                        request_cancel(session_id)
+                        print_formatted_text("\nInterrupted.")
+                    except OperationCancelled:
+                        print_formatted_text("\nOperation cancelled.")
+                    except Exception as e:  # noqa: BLE001
+                        print_formatted_text(f"Error: {e}")
+                    finally:
+                        clear_cancel_event(session_id)
+                        _set_busy(False)
+                        if stop_requested["stop"]:
+                            return
+
+            worker = threading.Thread(target=_worker, daemon=True)
+            worker.start()
+
+            kb = KeyBindings()
+
+            @kb.add("c-c")
+            def _(event):  # noqa: ANN001
+                # If running, cancel current task; otherwise exit.
+                if _is_busy():
+                    request_cancel(session_id)
+                    print_formatted_text("(cancel requested)")
+                else:
+                    stop_requested["stop"] = True
+                    pending.put(None)
+                    event.app.exit()
+
+            prompt = PromptSession(key_bindings=kb)
+
+            with patch_stdout():
+                while True:
+                    # 最新のテーマ設定を反映
+                    theme_config = THEMES[ui_state.theme]
+
+                    try:
+                        text = prompt.prompt("> ")
+                    except (EOFError, KeyboardInterrupt):
+                        # EOF / Ctrl+C while idle -> exit
+                        stop_requested["stop"] = True
+                        pending.put(None)
+                        break
+
+                    if not (text or "").strip():
+                        continue
+
+                    # Slash commands are processed immediately in the main thread.
+                    if text.strip().startswith("/"):
+                        # Avoid session-changing commands while busy (they can desync current run)
+                        if _is_busy() and text.strip().split()[0].lower() in ("/profile", "/session", "/clear"):
+                            print_formatted_text("That command is blocked while a task is running. Try again after completion.")
+                            continue
+
+                        if not handle_slash_command(text, command_context):
+                            stop_requested["stop"] = True
+                            pending.put(None)
+                            break
+
+                        if "pending_prompt" in command_context:
+                            text = command_context.pop("pending_prompt")
+                        else:
+                            session_id = command_context["session_id"]
+                            continue
+
+                    lowered = text.strip().lower()
+                    if lowered in ("exit", "quit"):
+                        stop_requested["stop"] = True
+                        # Ask current run to stop, then exit after worker finishes.
+                        if _is_busy():
+                            request_cancel(session_id)
+                        pending.put(None)
+                        break
+
+                    # Enqueue normal prompts.
+                    pending.put(text)
+                    qsize = pending.qsize()
+                    if _is_busy() or qsize > 0:
+                        # Plain text to avoid ANSI escape artifacts in some terminals/recorders
+                        print_formatted_text(f"(queued {qsize} @ {_dt.now().strftime('%H:%M:%S')})")
+
+            # Wait briefly for worker to exit (best-effort)
+            worker.join(timeout=2)
+            return
+
         while True:
             # 最新のテーマ設定を反映
             theme_config = THEMES[ui_state.theme]
