@@ -812,6 +812,9 @@ def chat(
                 else:
                     _pane_append(f"[green]✓ {line}[/green]")
                 _pane_update_chat_panel()
+                # Refresh todo pane immediately when todos might have changed.
+                if tool_name in ("todowrite", "todoread", "todoread_all"):
+                    _pane_update_todo_panel(command_context.get("session_id"))
                 return
 
             if stream_state.get("mid_line"):
