@@ -100,9 +100,10 @@ def discover_tools(profile: str) -> Dict[str, Callable]:
         tool_map.update(_load_tools_from_dir(base_tools_dir))
         
         # todo.py はグローバル状態を持つため、静的インポートしたものを使用
-        from .todo import todowrite, todoread
+        from .todo import todowrite, todoread, todoread_all
         tool_map["todowrite"] = todowrite
         tool_map["todoread"] = todoread
+        tool_map["todoread_all"] = todoread_all
         
         # skill_tools も静的インポート（グローバルキャッシュを持つ）
         from .skill_tools import search_skills, load_skill, list_loaded_skills, execute_skill

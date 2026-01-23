@@ -513,7 +513,7 @@ def chat(
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
     stream: bool = typer.Option(True, "--stream/--no-stream", help="ストリーミング出力（デフォルト: オン）"),
     subagent_stream: bool = typer.Option(False, "--subagent-stream/--no-subagent-stream", help="サブエージェント本文のストリーミング表示（デフォルト: オフ）"),
-    tool_status: bool = typer.Option(False, "--tool-status/--no-tool-status", help="ツール/委譲の結果を表示（デフォルト: オフ）"),
+    tool_status: bool = typer.Option(True, "--tool-status/--no-tool-status", help="ツール/委譲の短いステータス行を表示（デフォルト: オン）"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
     session: Optional[str] = typer.Option(None, "--session", "-s", help="セッション名（継続 or 新規）"),
     new_session: bool = typer.Option(False, "--new", help="新規セッションを強制開始"),
@@ -644,19 +644,18 @@ def chat(
             result_str = "" if result is None else str(result)
             is_error = result_str.startswith("Error") or result_str.startswith("ERROR:")
 
-            # Keep the displayed result compact (first line, then truncate)
-            summary = ""
-            if result_str:
-                summary = result_str.splitlines()[0].strip()
-                if len(summary) > 140:
-                    summary = summary[:137] + "..."
-
             # Build a concise line, e.g. "✓ write_file → MOBILE_SPEC.md"
             line = tool_name or "tool"
             if detail:
                 line += f" → {detail}"
-            if summary:
-                line += f" ({summary})"
+            # Only show the (potentially long) tool result summary in verbose mode.
+            # This keeps default tool-status output short (no "Successfully edited ... (+22)" etc.).
+            if verbose and result_str:
+                summary = result_str.splitlines()[0].strip()
+                if len(summary) > 140:
+                    summary = summary[:137] + "..."
+                if summary:
+                    line += f" ({summary})"
 
             if is_error:
                 console.print(f"[red]✗ {line}[/red]")

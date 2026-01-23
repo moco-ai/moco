@@ -161,6 +161,7 @@ def todowrite(todos: Union[str, List[Dict[str, Any]]]) -> str:
 def todoread() -> str:
     """
     Reads the current todo list for the active session.
+    If called by the orchestrator, it shows todos from all sub-agents as well.
     """
     global _current_session_id
 
@@ -168,6 +169,27 @@ def todoread() -> str:
         return "Error: No active session. This tool must be called during an orchestration session."
 
     logger = SessionLogger()
+
+    # Check if this is a sub-agent session
+    is_sub_agent = False
+    try:
+        conn = logger._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT metadata FROM sessions WHERE session_id = ?", (_current_session_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if row and row[0]:
+            metadata = json.loads(row[0])
+            if metadata.get("parent_session_id"):
+                is_sub_agent = True
+    except Exception:
+        pass
+
+    # If it's the orchestrator (no parent session), show all todos hierarchically
+    if not is_sub_agent:
+        return todoread_all()
+
+    # Otherwise, show only the current agent's todos
     todos = logger.get_todos(_current_session_id)
 
     if not todos:

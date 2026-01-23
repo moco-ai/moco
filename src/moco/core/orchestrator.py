@@ -996,7 +996,7 @@ class Orchestrator:
             # 実行時間計測開始
             agent_start_time = time.time()
             
-            response = await runtime.run(enhanced_query, history=sub_history)
+            response = await runtime.run(enhanced_query, history=sub_history, session_id=sub_session_id)
             
             # 実行時間計測終了
             agent_execution_time_ms = int((time.time() - agent_start_time) * 1000)

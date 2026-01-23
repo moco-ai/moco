@@ -1048,6 +1048,14 @@ class AgentRuntime:
         # Save session ID
         self._current_session_id = session_id
 
+        # Set session for todo tool if available
+        if session_id:
+            try:
+                from moco.tools import todo
+                todo.set_current_session(session_id)
+            except (ImportError, AttributeError):
+                pass
+
         # Reset context limit management
         self._accumulated_tokens = 0
         self._tool_call_count = 0
