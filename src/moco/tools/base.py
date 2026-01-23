@@ -1,6 +1,7 @@
 import subprocess
 import os
 import re
+import difflib
 from typing import Tuple, Final
 try:
     from ..utils.path import resolve_safe_path, get_working_directory
@@ -186,13 +187,31 @@ def write_file(path: str, content: str, overwrite: bool = False) -> str:
                 return "Edit mode not implemented yet, write cancelled."
 
         # 既存ファイルのガード
-        if os.path.exists(abs_path) and not overwrite:
-            file_size = os.path.getsize(abs_path)
-            return (
-                f"Error: File already exists: {path} ({file_size} bytes)\n"
-                f"To overwrite, use: write_file(path, content, overwrite=True)\n"
-                f"Or read the file first with: read_file('{path}')"
-            )
+        if os.path.exists(abs_path):
+            try:
+                with open(abs_path, 'r', encoding='utf-8', errors='replace') as f:
+                    existing_lines = sum(1 for _ in f)
+            except Exception:
+                existing_lines = 0
+
+            new_lines = content.count('\n') + 1
+
+            # 既存ファイルが5行以上、または書き込む内容が5行以上の場合は
+            # write_file による全上書きを制限し、edit_file を推奨する。
+            if existing_lines >= 5 or new_lines >= 5:
+                # 警告メッセージ。overwrite=True が指定されていても拒否する。
+                return (
+                    f"Error: Substantial file content detected (Existing: {existing_lines} lines, New: {new_lines} lines).\n"
+                    "Overwriting large files with write_file is prohibited to prevent accidental data loss.\n"
+                    "Please use edit_file(path, old_string, new_string) for partial modifications."
+                )
+
+            if not overwrite:
+                file_size = os.path.getsize(abs_path)
+                return (
+                    f"Error: File already exists: {path} ({file_size} bytes)\n"
+                    "To overwrite (only for small files < 5 lines), use: overwrite=True"
+                )
 
         if os.path.dirname(abs_path):
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
@@ -222,15 +241,9 @@ def edit_file(path: str, old_string: str, new_string: str) -> str:
     Returns:
         str: 成功時は成功メッセージ、失敗時はエラーメッセージ
 
-    IMPORTANT（必ず守る）:
-        - 必須: `path`, `old_string`, `new_string` を必ず渡す（欠けると実行されません）
-        - old_string は対象箇所が一意に特定できるよう、前後の文脈を十分に含める
-        - 引数は「JSONオブジェクト1つ」で渡す（途中で切れた `{` や複数JSONはNG）
-        - 文字列内の改行は `\\n`、ダブルクォートは `\\"` にエスケープする
-
     Note:
-        - old_stringがファイル内で複数回出現する場合はエラーになります
-        - 完全一致（インデント含む）が必要です
+        - 最初に完全一致を試行し、失敗した場合はインデントや空白を無視したスマートマッチを試行します。
+        - 置換箇所が複数見つかった場合はエラーとなります。
     """
     try:
         # パスを解決
@@ -250,67 +263,109 @@ def edit_file(path: str, old_string: str, new_string: str) -> str:
         with open(abs_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        # old_string がファイル内に存在するか確認
+        # --- ステップ1: 完全一致の試行 ---
         count = content.count(old_string)
-
-        if count == 0:
-            # 部分一致を探してヒントを出す
-            lines = old_string.split('\n')
-            first_line = lines[0].strip() if lines else ""
-            hints = []
-
-            # 最初の行で部分一致を探す
-            if first_line and first_line in content:
-                hints.append(f"'{first_line}' は見つかりましたが、完全一致しません。")
-                hints.append("インデントや空白、コメントを確認してください。")
-
-            # 空白を無視してマッチを探す
-            old_normalized = ' '.join(old_string.split())
-            content_normalized = ' '.join(content.split())
-            if old_normalized in content_normalized:
-                hints.append("空白を正規化すると一致します。インデントが異なる可能性があります。")
-
-            # 推奨アクション
-            hints.append(f"\n推奨: read_file('{path}') で実際の内容を確認してから、正確な文字列をコピペしてください。")
-
-            hint_str = "\n".join(hints) if hints else ""
-            return f"Error: old_string not found in {path}\n{hint_str}"
-
-        if count > 1:
+        
+        if count == 1:
+            new_content = content.replace(old_string, new_string, 1)
+        elif count > 1:
             return f"Error: old_string found {count} times in {path}. Please provide a more specific string."
+        else:
+            # --- ステップ2: スマートマッチ (空白・インデント無視) の試行 ---
+            # 各行を正規化（前後の空白削除）して比較
+            content_lines = content.splitlines(keepends=True)
+            old_lines = old_string.splitlines()
+            
+            def normalize(s):
+                return "".join(s.split())
 
-        # 置換実行
-        new_content = content.replace(old_string, new_string, 1)
+            old_norm_lines = [normalize(line) for line in old_lines if line.strip()]
+            
+            match_indices = []
+            for i in range(len(content_lines) - len(old_norm_lines) + 1):
+                # content側の空白行を飛ばしつつ、old_linesの有効な行数分を比較
+                window = []
+                curr_idx = i
+                while len(window) < len(old_norm_lines) and curr_idx < len(content_lines):
+                    line = content_lines[curr_idx].strip()
+                    if line:
+                        window.append(normalize(line))
+                    curr_idx += 1
+                
+                if window == old_norm_lines:
+                    # マッチした範囲（i から curr_idx まで）を記録
+                    match_indices.append((i, curr_idx))
 
-        # インタラクティブパッチUIの呼び出し
+            if len(match_indices) == 0:
+                # 診断レポートの作成
+                diff = difflib.ndiff(old_string.splitlines(), content.splitlines())
+                nearby_matches = [line for line in diff if line.startswith('  ')] # 共通行
+                
+                msg = f"Error: old_string not found in {path}\n"
+                msg += "ヒント: 完全一致もスマートマッチも見つかりませんでした。\n"
+                if len(old_lines) > 5:
+                    msg += "範囲が広すぎる可能性があります。修正したい箇所の前後2-3行に絞ってみてください。"
+                return msg
+            
+            if len(match_indices) > 1:
+                return f"Error: multiple fuzzy matches found ({len(match_indices)}). Please be more specific."
+
+            # 置換実行（スマートマッチ成功）
+            start, end = match_indices[0]
+            
+            # 元のインデントを維持するための簡易的な推測
+            # 最初の非空行のインデントを取得
+            original_indent = ""
+            for idx in range(start, end):
+                if content_lines[idx].strip():
+                    original_indent = content_lines[idx][:len(content_lines[idx]) - len(content_lines[idx].lstrip())]
+                    break
+            
+            # new_string の各行にベースインデントを付与
+            # new_string 内の最小インデントを計算し、それを original_indent に置き換える
+            new_lines_raw = new_string.splitlines()
+            
+            # new_string 本体の最小インデント幅を特定
+            new_indents = []
+            for l in new_lines_raw:
+                if l.strip():
+                    new_indents.append(len(l) - len(l.lstrip()))
+            min_new_indent = min(new_indents) if new_indents else 0
+
+            adjusted_new_lines = []
+            for line in new_lines_raw:
+                if line.strip():
+                    # 自身の相対インデントを維持しつつ、ベースインデントを付与
+                    relative_indent = line[:len(line) - len(line.lstrip())][min_new_indent:]
+                    adjusted_new_lines.append(original_indent + relative_indent + line.lstrip())
+                else:
+                    adjusted_new_lines.append("")
+            
+            new_block = "\n".join(adjusted_new_lines)
+            if content_lines[end-1].endswith('\n') and not new_block.endswith('\n'):
+                new_block += '\n'
+                
+            new_content = "".join(content_lines[:start]) + new_block + "".join(content_lines[end:])
+
+        # --- ステップ3: 書き込み ---
+        # インタラクティブパッチUIの呼び出し (環境変数が設定されている場合)
         if os.environ.get('MOCO_INTERACTIVE_PATCH') == '1':
-            from ..ui.patch_viewer import preview_patch, save_patch
-            choice = preview_patch(path, content, new_content, title=f"Edit File: {path}")
-            if choice == 'n':
-                return "Edit cancelled by user."
-            if choice == 's':
-                save_patch(path, content, new_content)
-                return f"Patch saved for {path}. Edit cancelled."
-            if choice == 'e':
-                return "Edit mode not implemented yet, edit cancelled."
+            try:
+                from ..ui.patch_viewer import preview_patch, save_patch
+                choice = preview_patch(path, content, new_content, title=f"Edit File: {path}")
+                if choice == 'n': return "Edit cancelled by user."
+                if choice == 's':
+                    save_patch(path, content, new_content)
+                    return f"Patch saved for {path}. Edit cancelled."
+            except ImportError:
+                pass
 
         with open(abs_path, 'w', encoding='utf-8') as f:
             f.write(new_content)
 
         # キャッシュを無効化
         _TOKEN_CACHE.delete_by_path(abs_path)
-
-        # 統計
-        old_lines = old_string.count('\n') + 1
-        new_lines = new_string.count('\n') + 1
-        diff = new_lines - old_lines
-
-        if diff > 0:
-            return f"Successfully edited {path}: replaced {old_lines} lines with {new_lines} lines (+{diff})"
-        elif diff < 0:
-            return f"Successfully edited {path}: replaced {old_lines} lines with {new_lines} lines ({diff})"
-        else:
-            return f"Successfully edited {path}: modified {old_lines} lines"
+        return f"Successfully edited {path} using {'exact' if count == 1 else 'smart'} match."
 
     except Exception as e:
         return f"Error editing file: {e}"
