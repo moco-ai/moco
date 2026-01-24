@@ -13,7 +13,7 @@ import threading
 import time
 import uuid
 from typing import Optional, Any, Dict, List, Tuple
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
@@ -38,6 +38,11 @@ from moco.cancellation import (
     clear_cancel_event,
     OperationCancelled
 )
+from moco.gateway.media_processor import MediaProcessor
+from moco.utils.tunnel import setup_tunnel, stop_tunnel
+from moco.adapters.line_adapter import LINEAdapter
+from moco.adapters.telegram_adapter import TelegramAdapter
+from moco.adapters.base import OutgoingMessage
 
 
 def filter_response_for_display(response: str, verbose: bool = False) -> str:
@@ -66,6 +71,24 @@ def filter_response_for_display(response: str, verbose: bool = False) -> str:
 
 app = FastAPI(title="Moco", version="1.0.0")
 
+@app.on_event("startup")
+async def startup_event():
+    """起動時にトンネルをセットアップ"""
+    port = int(os.getenv("PORT", 8000))
+    # トンネルのセットアップ（失敗しても本体の起動を妨げない）
+    try:
+        setup_tunnel(port)
+    except Exception as e:
+        logger.error(f"Error during tunnel setup: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """終了時にトンネルを停止"""
+    try:
+        stop_tunnel()
+    except Exception as e:
+        logger.error(f"Error during tunnel shutdown: {e}")
+
 # 静的ファイルのマウント
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -85,6 +108,19 @@ class ApprovalManager:
         self.pending_approvals = pending_approvals
         self.pending_approvals_lock = pending_approvals_lock
         self.session_websockets: Dict[str, list[Any]] = {}
+        self.gateway_clients: Dict[str, Any] = {}
+        
+        # 外部通知用アダプターの管理
+        self.adapters: List[ChannelAdapter] = []
+        
+        line_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+        line_secret = os.getenv("LINE_CHANNEL_SECRET")
+        if line_token:
+            self.adapters.append(LINEAdapter(line_token, line_secret))
+            
+        tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        if tg_token:
+            self.adapters.append(TelegramAdapter(tg_token))
 
     async def register_websocket(self, session_id: str, websocket: Any) -> None:
         self.session_websockets.setdefault(session_id, []).append(websocket)
@@ -98,22 +134,79 @@ class ApprovalManager:
         if not ws_list:
             self.session_websockets.pop(session_id, None)
 
+    async def register_gateway_client(self, client_id: str, websocket: Any) -> None:
+        self.gateway_clients[client_id] = websocket
+
+    async def unregister_gateway_client(self, client_id: str) -> None:
+        self.gateway_clients.pop(client_id, None)
+
     async def _send_to_session(self, session_id: str, payload: Dict[str, Any]) -> bool:
         ws_list = self.session_websockets.get(session_id) or []
-        if not ws_list:
-            return False
-        sent_any = False
+        # UI WebSockets
+        sent = False
         for ws in list(ws_list):
             try:
                 if hasattr(ws, "send_json"):
                     await ws.send_json(payload)
-                    sent_any = True
+                    sent = True
                 elif hasattr(ws, "send_text"):
+                    import json
                     await ws.send_text(json.dumps(payload, ensure_ascii=False))
-                    sent_any = True
+                    sent = True
             except Exception:
                 continue
-        return sent_any
+        return sent
+
+    async def _notify_gateway_clients(self, approval_id: str, tool: str, args: dict, session_id: str):
+        """Gateway経由でモバイルに通知"""
+        message = {
+            "type": "approval.request",
+            "id": approval_id,
+            "payload": {
+                "approval_id": approval_id,
+                "tool": tool,
+                "args": args,
+                "session_id": session_id
+            }
+        }
+        
+        # WebSocket クライアントへ送信
+        clients = list(self.gateway_clients.items())
+        for client_id, ws in clients:
+            try:
+                await ws.send_json(message)
+            except Exception:
+                self.gateway_clients.pop(client_id, None)
+
+        # 外部チャネル（LINE/Telegram）へプッシュ送信
+        await self._push_external_notifications(approval_id, tool, args)
+
+    async def _push_external_notifications(self, approval_id: str, tool: str, args: dict):
+        """LINE/Telegramにプッシュ通知を送信"""
+        text = f"承認リクエスト: {tool}\n引数: {json.dumps(args, ensure_ascii=False, indent=2)}"
+        raw_payload = {
+            "approval_id": approval_id,
+            "tool": tool,
+            "args": args
+        }
+        msg = OutgoingMessage(text=text, raw_payload=raw_payload)
+
+        # 全てのアダプターに対して送信を試みる
+        # LINE_USER_ID や TELEGRAM_CHAT_ID は環境変数から取得（将来的にDB管理が望ましい）
+        targets = {
+            "line": os.getenv("LINE_USER_ID"),
+            "telegram": os.getenv("TELEGRAM_CHAT_ID")
+        }
+
+        for adapter in self.adapters:
+            channel = "line" if isinstance(adapter, LINEAdapter) else "telegram"
+            target_id = targets.get(channel)
+            if target_id:
+                try:
+                    await adapter.send_message(target_id, msg)
+                    logger.info(f"Sent approval request to {channel}: {approval_id}")
+                except Exception as e:
+                    logger.error(f"Failed to send {channel} notification: {e}")
 
     async def create_approval_request(self, approval_id: str, tool: str, args: Dict[str, Any], session_id: str) -> bool:
         with self.pending_approvals_lock:
@@ -126,10 +219,21 @@ class ApprovalManager:
                 "session_id": session_id,
             }
 
+        # Web UIへ通知
         await self._send_to_session(
             session_id,
-            {"type": "approval_request", "approval_id": approval_id, "tool": tool, "args": args or {}},
+            {
+                "type": "approval_request",
+                "approval_id": approval_id,
+                "tool": tool,
+                "args": args or {},
+                "session_id": session_id
+            },
         )
+        
+        # Gateway接続クライアントへ通知
+        await self._notify_gateway_clients(approval_id, tool, args, session_id)
+        
         return True
 
     async def respond_to_approval(self, approval_id: str, approved: bool) -> bool:
@@ -823,7 +927,10 @@ async def get_stats(session_id: Optional[str] = None, scope: str = "all"):
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
-    """チャット（非ストリーミング）"""
+    """チャット（非ストリーミング）- WhatsApp/モバイル連携用"""
+    import tempfile
+    import base64
+    
     orchestrator = get_orchestrator(
         req.profile,
         req.provider,
@@ -836,8 +943,39 @@ async def chat(req: ChatRequest):
     if not session_id:
         session_id = orchestrator.create_session(title=req.message[:50])
 
-    # 実行
-    response = orchestrator.run_sync(req.message, session_id=session_id)
+    # 添付ファイルを処理
+    message = req.message
+    image_paths = []
+    
+    if req.attachments:
+        for i, att in enumerate(req.attachments):
+            if att.type == "image":
+                # 一時ファイルとして保存
+                ext = att.mime_type.split("/")[-1] if "/" in att.mime_type else "jpg"
+                with tempfile.NamedTemporaryFile(
+                    delete=False, 
+                    suffix=f".{ext}", 
+                    prefix="moco_img_"
+                ) as f:
+                    f.write(base64.b64decode(att.data))
+                    image_paths.append(f.name)
+                    logger.info(f"Image saved: {f.name}")
+        
+        if image_paths:
+            # LLMが画像パスを正しく理解できるよう明確に指示
+            paths_str = "\n".join(f"- {p}" for p in image_paths)
+            message = f"""ユーザーからのリクエスト: {req.message}
+
+【重要】ユーザーが以下の画像ファイルを添付しました。analyze_image ツールを使用してこれらの画像を分析してください:
+{paths_str}
+
+まず画像を分析し、その内容に基づいてユーザーのリクエストに回答してください。"""
+
+    # セッション準備
+    session_id, history = orchestrator._prepare_session(message, session_id)
+
+    # 非同期で実行（イベントループの競合を回避）
+    response = await orchestrator.process_message(message, session_id, history)
 
     return {
         "response": response,
@@ -1065,6 +1203,161 @@ async def chat_stream(req: ChatRequest):
             "X-Accel-Buffering": "no"  # Nginxなどのバッファリングを無効化
         }
     )
+
+
+@app.websocket("/ws/gateway")
+async def websocket_gateway(websocket: WebSocket, token: Optional[str] = Query(None)):
+    """モバイル接続用ゲートウェイ WebSocket"""
+    from moco.gateway.server import handle_gateway_connection
+    await handle_gateway_connection(websocket, token)
+
+
+@app.post("/webhook/{channel}")
+async def webhook_handler(channel: str, request: Request):
+    """
+    外部サービス（LINE, Telegram等）からのWebhookを受信するエンドポイント。
+    """
+    from moco.adapters.line_adapter import LINEAdapter
+    from moco.adapters.telegram_adapter import TelegramAdapter
+    
+    # 署名検証のために生のボディを取得
+    body = await request.body()
+    body_str = body.decode("utf-8")
+    try:
+        payload = json.loads(body_str)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    # チャネルに応じたアダプターの初期化
+    adapter = None
+    if channel == "line":
+        token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+        secret = os.getenv("LINE_CHANNEL_SECRET")
+        if token:
+            adapter = LINEAdapter(token, secret)
+            # 署名検証
+            signature = request.headers.get("X-Line-Signature")
+            if not signature or not adapter.verify_signature(body_str, signature):
+                logger.warning("Invalid LINE signature")
+                raise HTTPException(status_code=403, detail="Invalid signature")
+    elif channel == "telegram":
+        token = os.getenv("TELEGRAM_BOT_TOKEN")
+        if token:
+            adapter = TelegramAdapter(token)
+            # Telegramシークレットトークン検証
+            tg_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET")
+            if tg_secret:
+                header_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+                if not header_secret or not secrets.compare_digest(header_secret, tg_secret):
+                    logger.warning("Invalid Telegram secret token")
+                    raise HTTPException(status_code=403, detail="Invalid secret token")
+    
+    if not adapter:
+        # フォールバック: パラメータをそのまま使う簡易モード
+        return await _simple_webhook_handler(channel, payload)
+
+    # 1. Webhookペイロードの正規化
+    normalized_msgs = await adapter.handle_webhook(payload)
+    if not normalized_msgs:
+        return {"status": "ignored"}
+
+    from moco.gateway.media_processor import MediaProcessor
+    processor = MediaProcessor()
+    
+    for msg in normalized_msgs:
+        processed_text = msg.text or ""
+        attachments_info = []
+
+        # 2. メディア処理 (画像リサイズ、音声文字起こし等)
+        if msg.media:
+            for m in msg.media:
+                data = await adapter.download_media(m)
+                if not data:
+                    continue
+                
+                if m.type == "image":
+                    processed = await processor.process_image(data)
+                    path = processor.save_temp(processed.data, f"line_{msg.message_id}.jpg")
+                    attachments_info.append(f"[Image processed] Path: {path}")
+                elif m.type == "audio":
+                    processed = await processor.process_audio(data, m.mime_type)
+                    transcript = processed.metadata.get("transcript")
+                    if transcript:
+                        attachments_info.append(f"[Audio transcript] {transcript}")
+                else:
+                    path = processor.save_temp(data, m.filename or "file")
+                    attachments_info.append(f"[File] Path: {path}")
+
+        combined_text = processed_text
+        if attachments_info:
+            combined_text += "\n\n" + "\n".join(attachments_info)
+
+        if not combined_text.strip():
+            continue
+
+        # 3. セッション管理とOrchestrator実行
+        session_id = f"{channel}_{msg.conversation_id}"
+        orchestrator = get_orchestrator(profile="development")
+        
+        # 履歴が存在するか確認（存在しなければ作成）
+        if not session_logger.get_session(session_id):
+            session_logger.create_session(session_id, title=f"{channel.capitalize()} Chat")
+
+        # 承認リクエスト用の情報を OutgoingMessage に含めるための準備 (LINE等)
+        async def mock_approval_notification(approval_id, tool, args, sid):
+            if sid == session_id:
+                from moco.adapters.base import OutgoingMessage
+                await adapter.send_message(
+                    msg.conversation_id, 
+                    OutgoingMessage(
+                        text=f"Approval required for {tool}",
+                        raw_payload={"approval_id": approval_id, "tool": tool, "args": args}
+                    )
+                )
+
+        # 承認イベントをフックするために一時的に登録（将来的には ApprovalManager 側でフックするのが望ましい）
+        # ここでは簡易的にバックグラウンド処理内で完結させる
+
+        # バックグラウンド処理
+        async def process_task(sid, text, msg_obj):
+            response = await asyncio.to_thread(orchestrator.run_sync, text, session_id=sid)
+            # 送信
+            from moco.adapters.base import OutgoingMessage
+            await adapter.send_message(msg_obj.conversation_id, OutgoingMessage(text=response))
+
+        asyncio.create_task(process_task(session_id, combined_text, msg))
+
+    return {"status": "accepted"}
+
+
+async def _simple_webhook_handler(channel: str, request: Dict[str, Any]):
+    """互換性のための簡易Webhookハンドラー"""
+    sender_name = request.get("sender_name", "Mobile User")
+    text = request.get("text", "")
+    session_id = request.get("session_id")
+
+    if not text:
+        return {"status": "ignored", "reason": "empty text"}
+
+    orchestrator = get_orchestrator(profile="development")
+    if not session_id:
+        session_id = orchestrator.create_session(title=f"Chat from {channel}")
+
+    async def process_task():
+        response = await asyncio.to_thread(orchestrator.run_sync, text, session_id=session_id)
+        payload = {
+            "type": "chat_response",
+            "session_id": session_id,
+            "response": response
+        }
+        for ws in list(approval_manager.gateway_clients.values()):
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                continue
+
+    asyncio.create_task(process_task())
+    return {"status": "accepted", "session_id": session_id}
 
 
 if __name__ == "__main__":

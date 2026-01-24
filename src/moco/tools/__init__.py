@@ -21,6 +21,7 @@ from .process import (
 from .skill_loader import SkillLoader, SkillConfig
 from .skill_tools import search_skills, load_skill, list_loaded_skills, execute_skill
 from .project_context import get_project_context
+from .mobile import NotifyMobileTool, RequestLocationTool
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,9 @@ TOOL_MAP = {
     "execute_skill": execute_skill,
     # プロジェクトコンテキスト
     "get_project_context": get_project_context,
+    # モバイル通知
+    "notify_mobile": NotifyMobileTool().run,
+    "request_location": RequestLocationTool().run,
     # NOTE: browser_* ツールは discovery.py で自動的に読み込まれる
 }
 

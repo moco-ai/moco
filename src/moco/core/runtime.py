@@ -655,7 +655,7 @@ class AgentRuntime:
         self.progress_callback = progress_callback
         self.parent_agent = parent_agent
         self.skills: List[SkillConfig] = skills or []
-        self.memory_service = memory_service
+        self.memory_service = memory_service; self.parent_session_id = None
         
         # Memory context (dynamically updated in run())
         self._memory_context = ""
@@ -928,7 +928,7 @@ class AgentRuntime:
         """
         # Cancellation check
         if session_id:
-            check_cancelled(session_id)
+            check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
 
         # Validate required args before logging/loop-detection (Cursor-like behavior)
         # - Avoid noisy "📝 write_file" lines when the model emits empty args
@@ -1081,7 +1081,7 @@ class AgentRuntime:
 
         # Cancellation check
         if session_id:
-            check_cancelled(session_id)
+            check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
 
         # Recall from semantic memory
         self._recall_results = []
@@ -1212,7 +1212,7 @@ class AgentRuntime:
         # max_iterations = 20
         while True:
             if session_id:
-                check_cancelled(session_id)
+                check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
             
             # Iteration warnings commented out (managed by token limit)
             # remaining = max_iterations - iterations
@@ -1622,7 +1622,7 @@ class AgentRuntime:
 
         while True:
             if session_id:
-                check_cancelled(session_id)
+                check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
 
             try:
                 if self.stream:
