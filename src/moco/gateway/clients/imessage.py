@@ -31,7 +31,7 @@ from typing import Optional, Dict, Set, List
 
 # === 設定 ===
 MOCO_API_URL = "http://localhost:8000/api/chat"
-DEFAULT_PROFILE = "cursor"
+DEFAULT_PROFILE = "code"
 DEFAULT_PROVIDER = "openrouter"
 DEFAULT_WORKING_DIR = "/tmp/moco-mobile"  # モバイルからの作業ディレクトリ
 
