@@ -77,6 +77,10 @@ knowledge_base/
 !src/moco/profiles/
 runbooks/
 
+# User input/output files
+inputs/
+outputs/
+
 # Code index cache
 .code_index/
 
