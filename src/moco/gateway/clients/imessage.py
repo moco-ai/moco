@@ -338,9 +338,21 @@ def handle_special_commands(text: str, sender: str) -> Optional[str]:
 def main():
     """メインループ"""
     
-    print("=" * 50)
-    print("📱 iMessage ↔ moco 連携")
-    print("=" * 50)
+    print("""
+╔════════════════════════════════════════════════════════════════╗
+║              iMessage ↔ moco 連携                              ║
+╠════════════════════════════════════════════════════════════════╣
+║  前提: moco ui が起動していること (moco ui)                    ║
+║  終了: Ctrl+C                                                  ║
+╠════════════════════════════════════════════════════════════════╣
+║  コマンド:                                                     ║
+║    /profile <名前>  - プロファイル変更                         ║
+║    /provider <名前> - プロバイダ変更                           ║
+║    /new             - 新しいセッション                         ║
+║    /status          - 現在の設定を表示                         ║
+║    /help            - ヘルプ表示                               ║
+╚════════════════════════════════════════════════════════════════╝
+    """)
     
     # データベース確認
     if not CHAT_DB_PATH.exists():
@@ -360,12 +372,13 @@ def main():
             return
         raise
     
-    print(f"✅ データベース接続OK: {CHAT_DB_PATH}")
+    print(f"✅ データベース接続OK")
     print(f"🔗 moco API: {MOCO_API_URL}")
-    print(f"👤 プロファイル: {MOCO_PROFILE}")
-    print(f"🤖 プロバイダ: {MOCO_PROVIDER}")
-    print("-" * 50)
-    print("📨 メッセージを待機中... (Ctrl+C で終了)")
+    print(f"👤 デフォルトプロファイル: {DEFAULT_PROFILE}")
+    print(f"🤖 デフォルトプロバイダ: {DEFAULT_PROVIDER}")
+    print()
+    print("📨 メッセージを待機中...")
+    print("   別のデバイス（iPhone等）から自分のMacにiMessageを送信してください。")
     print()
     
     # 現在の最新ROWIDを取得（過去のメッセージは処理しない）
