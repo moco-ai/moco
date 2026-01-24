@@ -43,6 +43,10 @@ dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.23.0",
 ]
+mobile = [
+    "neonize",  # WhatsApp integration
+    "python-magic",  # File type detection for media
+]
 
 [project.scripts]
 moco = "moco.cli:main"
