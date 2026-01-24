@@ -118,22 +118,15 @@ def get_current_session() -> Optional[str]:
 
 def todowrite(todos: Union[str, List[Dict[str, Any]]]) -> str:
     """
-    Creates and manages a structured task list (todo list) for the current session.
-    
-    Args:
-        todos: A JSON array of todo objects. Each object must have:
-            - id: Unique identifier (string)
-            - content: Task description (string)
-            - status: One of "pending", "in_progress", "completed", "cancelled"
-    
-    Example:
-        [
-            {"id": "1", "content": "Research market data", "status": "pending"},
-            {"id": "2", "content": "Write report", "status": "in_progress"}
-        ]
-    
-    Returns:
-        Success or error message.
+    Create/update the todo list for THIS session.
+
+    Rules:
+    - Output ONLY a JSON array of {id, content, status}.
+    - status: pending | in_progress | completed | cancelled
+    - Exactly ONE item is in_progress.
+    - NO generic templates ("要件定義→実装→レビュー"). Every item must be role-specific and checkable.
+    - Each content must mention a deliverable: file path / function name / command / concrete artifact.
+    - Sub-agents: write ONLY your own todos (do not copy orchestrator’s list).
     """
     session_id = get_current_session()
 

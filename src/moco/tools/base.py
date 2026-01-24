@@ -196,12 +196,12 @@ def write_file(path: str, content: str, overwrite: bool = False) -> str:
 
             new_lines = content.count('\n') + 1
 
-            # 既存ファイルが5行以上、または書き込む内容が5行以上の場合は
+            # 既存ファイルが5行以上の場合は、意図しない大規模なデータ消失を防ぐため
             # write_file による全上書きを制限し、edit_file を推奨する。
-            if existing_lines >= 5 or new_lines >= 5:
+            if existing_lines >= 5:
                 # 警告メッセージ。overwrite=True が指定されていても拒否する。
                 return (
-                    f"Error: Substantial file content detected (Existing: {existing_lines} lines, New: {new_lines} lines).\n"
+                    f"Error: Substantial existing content detected ({existing_lines} lines).\n"
                     "Overwriting large files with write_file is prohibited to prevent accidental data loss.\n"
                     "Please use edit_file(path, old_string, new_string) for partial modifications."
                 )
