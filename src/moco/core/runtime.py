@@ -761,11 +761,26 @@ class AgentRuntime:
         self._prepare_tools()
 
     def _prepare_tools(self):
-        """Prepare enabled tools"""
-        if not self.config.tools:
-            return
+        """Prepare enabled tools.
+        
+        Tool selection rules:
+        - tools: 省略 or 空 → 全ての基礎ツール
+        - tools: ["*", ...] → 全ての基礎ツール + 追加指定
+        - tools: [a, b] → a, b のみ（厳密ホワイトリスト）
+        """
+        # Determine which tools to enable
+        if not self.config.tools or "*" in self.config.tools:
+            # Empty or contains "*" → enable all base tools
+            tools_to_enable = set(self.tool_map.keys())
+            # Also add any explicitly listed tools (for non-base tools)
+            if self.config.tools:
+                tools_to_enable.update(self.config.tools)
+            tools_to_enable.discard("*")  # Remove the wildcard itself
+        else:
+            # Explicit whitelist
+            tools_to_enable = set(self.config.tools)
 
-        for tool_name in self.config.tools:
+        for tool_name in tools_to_enable:
             if tool_name in self.tool_map:
                 func = self.tool_map[tool_name]
                 self.available_tools[tool_name] = func

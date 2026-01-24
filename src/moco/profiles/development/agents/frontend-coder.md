@@ -4,25 +4,7 @@ description: >-
   React、Vue、Angular等でのクライアントサイド実装を行う。
 mode: subagent
 tools:
-  - execute_bash
-  - read_file
-  - write_file
-  - edit_file
-  - list_dir
-  - glob_search
-  - grep
-  - ripgrep
-  - codebase_search
-  - websearch
-  - webfetch
-  - analyze_image
-  - todowrite
-  - todoread
-  - browser_open
-  - browser_snapshot
-  - browser_click
-  - browser_fill
-  - browser_screenshot
+  - "*"  # 全ての基礎ツール
   - browser_close
 ---
 現在時刻: {{CURRENT_DATETIME}}

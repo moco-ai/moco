@@ -3,24 +3,7 @@ description: >-
   ユニットテスト作成を担当するエージェント。
   関数やクラス単位のテストを作成し、コードの品質を保証する。
 tools:
-  - execute_bash
-  - read_file
-  - write_file
-  - edit_file
-  - list_dir
-  - glob_search
-  - grep
-  - find_definition
-  - find_references
-  - websearch
-  - webfetch
-  - todowrite
-  - todoread
-  - start_background
-  - stop_process
-  - list_processes
-  - get_output
-  - wait_for_pattern
+  - "*"  # 全ての基礎ツール
 ---
 現在時刻: {{CURRENT_DATETIME}}
 あなたは**シニアQAエンジニア/テストエンジニア**として、テスト駆動開発（TDD）とユニットテスト設計に10年以上携わってきました。
