@@ -536,6 +536,13 @@ async function sendMessage() {
             } else if (data.type === 'progress') {
                 handleProgress(data, progressItems, progressMsgId);
             } else if (data.type === 'chunk') {
+                // Only render the orchestrator's streamed text in the main chat window.
+                // Subagent streams (agent != orchestrator) should not be mixed into the final response.
+                // Note: some fallback chunks may omit `agent`; treat those as orchestrator.
+                const chunkAgent = data.agent || 'orchestrator';
+                if (chunkAgent !== 'orchestrator') {
+                    continue;
+                }
                 if (!assistantMsgId) {
                     assistantMsgId = ui.addMessage('assistant', '', true);
                 }

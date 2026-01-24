@@ -513,6 +513,9 @@ def chat(
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
     stream: bool = typer.Option(True, "--stream/--no-stream", help="ストリーミング出力（デフォルト: オン）"),
     subagent_stream: bool = typer.Option(False, "--subagent-stream/--no-subagent-stream", help="サブエージェント本文のストリーミング表示（デフォルト: オフ）"),
+    tool_status: bool = typer.Option(True, "--tool-status/--no-tool-status", help="ツール/委譲の短いステータス行を表示（デフォルト: オン）"),
+    todo_pane: bool = typer.Option(False, "--todo-pane/--no-todo-pane", help="Todo を右ペインに常時表示（デフォルト: オフ）"),
+    async_input: bool = typer.Option(False, "--async-input/--no-async-input", help="処理中も入力を受け付けてキューイング（Gemini CLI風）"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="詳細ログ"),
     session: Optional[str] = typer.Option(None, "--session", "-s", help="セッション名（継続 or 新規）"),
     new_session: bool = typer.Option(False, "--new", help="新規セッションを強制開始"),
@@ -532,20 +535,352 @@ def chat(
     from .core.runtime import _safe_stream_print
 
     console = Console()
-    stream_flags = {"show_subagent_stream": subagent_stream}
+    stream_flags = {"show_subagent_stream": subagent_stream, "show_tool_status": tool_status}
+    # Track whether we have printed any streamed text without a newline recently.
+    # Used to avoid mixing tool logs into the middle of a line.
+    stream_state = {"mid_line": False}
+
+    # prompt_toolkit printing helpers (used in --async-input mode)
+    pt_ansi_print = None
+
+    # Async-input mode (Gemini CLI style):
+    # - allow typing next prompts while the current one is processing
+    # - enqueue prompts and execute sequentially in a worker thread
+    if async_input and todo_pane:
+        console.print("[yellow]--async-input is currently incompatible with --todo-pane. Disabling --async-input.[/yellow]")
+        async_input = False
+    if async_input:
+        import sys
+        if not sys.stdin.isatty():
+            console.print("[yellow]--async-input requires an interactive TTY stdin. Disabling --async-input.[/yellow]")
+            async_input = False
+
+    # Optional: side pane for Todos (Rich Live layout)
+    pane_state = {
+        "enabled": bool(todo_pane),
+        "live": None,
+        "layout": None,
+        "lines": [],
+        "max_lines": 500,
+    }
+
+    def _pane_append(line: str) -> None:
+        if not pane_state["enabled"]:
+            return
+        if line is None:
+            return
+        s = str(line)
+        if not s:
+            return
+        # Split to keep rendering stable
+        parts = s.splitlines() or [s]
+        pane_state["lines"].extend(parts)
+        # Trim
+        if len(pane_state["lines"]) > pane_state["max_lines"]:
+            pane_state["lines"] = pane_state["lines"][-pane_state["max_lines"] :]
+
+    def _pane_update_chat_panel() -> None:
+        if not pane_state["enabled"]:
+            return
+        live = pane_state.get("live")
+        layout = pane_state.get("layout")
+        if not live or not layout:
+            return
+        try:
+            from rich.panel import Panel
+            from rich.text import Text
+            from rich import box
+
+            text = Text()
+            # Render last lines; allow Rich markup for minimal coloring
+            for ln in pane_state["lines"][-pane_state["max_lines"] :]:
+                try:
+                    text.append_text(Text.from_markup(ln))
+                except Exception:
+                    text.append(ln)
+                text.append("\n")
+
+            layout["chat"].update(
+                Panel(
+                    text,
+                    title="Chat",
+                    border_style=theme_config.status,
+                    box=box.ROUNDED,
+                )
+            )
+            live.refresh()
+        except Exception:
+            return
+
+    def _pane_update_todo_panel(session_id: Optional[str]) -> None:
+        if not pane_state["enabled"]:
+            return
+        live = pane_state.get("live")
+        layout = pane_state.get("layout")
+        if not live or not layout:
+            return
+        try:
+            from rich.panel import Panel
+            from rich.text import Text
+            from rich import box
+            from moco.tools.todo import todoread_all, set_current_session
+
+            if session_id:
+                set_current_session(session_id)
+            raw = todoread_all()
+            todo_text = Text(raw or "(no todos)", style="default")
+            layout["todo"].update(
+                Panel(
+                    todo_text,
+                    title="Todos",
+                    border_style=theme_config.tools,
+                    box=box.ROUNDED,
+                )
+            )
+            live.refresh()
+        except Exception as e:
+            try:
+                from rich.panel import Panel
+                from rich.text import Text
+                from rich import box
+
+                layout["todo"].update(
+                    Panel(
+                        Text(f"(todo pane error) {e}", style="dim"),
+                        title="Todos",
+                        border_style=theme_config.tools,
+                        box=box.ROUNDED,
+                    )
+                )
+                live.refresh()
+            except Exception:
+                return
 
     # Streaming callback for CLI:
     # - tool/delegate logs are printed elsewhere (keep as-is)
     # - print streamed chunks only for orchestrator by default
-    def progress_callback(event_type: str, content: str = None, agent_name: str = None, **kwargs):
+    def progress_callback(
+        event_type: str,
+        content: str = None,
+        agent_name: str = None,
+        **kwargs
+    ):
+        """
+        CLI progress callback.
+
+        Notes:
+        - We keep chunk streaming behavior as-is.
+        - We additionally surface tool/delegate completion so users can see whether
+          write_file/edit_file actually succeeded (or failed).
+        """
+        def _safe_stream_print_styled(text: str, style: str) -> None:
+            """Print streamed text with color without breaking streaming."""
+            if not text:
+                return
+            try:
+                from rich.text import Text
+                # In async-input mode (prompt_toolkit), avoid emitting ANSI styles because
+                # some terminals/recorders show escape sequences literally.
+                if async_input:
+                    _safe_stream_print(text)
+                else:
+                    console.print(Text(text, style=style), end="")
+            except BrokenPipeError:
+                return
+            except OSError as e:
+                if getattr(e, "errno", None) == 32:
+                    return
+                _safe_stream_print(text)
+            except Exception:
+                _safe_stream_print(text)
+
+        # Start marker for orchestrator output (helps distinguish from user input)
+        if event_type == "start" and (agent_name or "") == "orchestrator":
+            if pane_state["enabled"]:
+                _pane_append("[bold]🤖[/bold] ")
+                _pane_update_chat_panel()
+                return
+            if stream_state.get("mid_line"):
+                _safe_stream_print("\n")
+                stream_state["mid_line"] = False
+            if async_input:
+                _safe_stream_print("🤖 ")
+            else:
+                _safe_stream_print_styled("🤖 ", f"bold {theme_config.result}")
+            stream_state["mid_line"] = True
+            return
+
+        # Streamed text chunks
         if event_type == "chunk" and content:
             name = agent_name or ""
             if name == "orchestrator" or stream_flags.get("show_subagent_stream"):
-                _safe_stream_print(content)
-        elif event_type == "done":
-            # Add newline after the main response
+                if pane_state["enabled"]:
+                    # Append to last line (create if needed)
+                    if not pane_state["lines"]:
+                        pane_state["lines"].append("🤖 ")
+                    chunk = str(content)
+                    parts = chunk.split("\n")
+                    # First part appends to current last line
+                    pane_state["lines"][-1] = (pane_state["lines"][-1] or "") + parts[0]
+                    # Remaining parts become new lines
+                    for p in parts[1:]:
+                        pane_state["lines"].append(p)
+                    # Trim
+                    if len(pane_state["lines"]) > pane_state["max_lines"]:
+                        pane_state["lines"] = pane_state["lines"][-pane_state["max_lines"] :]
+                    _pane_update_chat_panel()
+                    return
+                # Color the assistant output to visually separate it from the user's input line.
+                if async_input:
+                    _safe_stream_print(content)
+                else:
+                    _safe_stream_print_styled(content, theme_config.result)
+                stream_state["mid_line"] = True
+            return
+
+        # Ensure newline after orchestrator main response
+        if event_type == "done":
             if (agent_name or "") == "orchestrator":
+                if pane_state["enabled"]:
+                    _pane_append("")  # spacing
+                    _pane_update_chat_panel()
+                    return
                 _safe_stream_print("\n")
+                stream_state["mid_line"] = False
+            return
+
+        # Delegation status (running/completed)
+        if event_type == "delegate":
+            if not stream_flags.get("show_tool_status", True):
+                return
+            status = (kwargs.get("status") or "").lower()
+            name = kwargs.get("name") or agent_name or ""
+            detail = (kwargs.get("detail") or "").strip()
+            if name and not str(name).startswith("@"):
+                name = f"@{name}"
+            if pane_state["enabled"]:
+                # Keep default output compact: show only completion unless verbose.
+                if status == "running" and verbose:
+                    _pane_append(f"[dim]→ {name}[/dim]")
+                elif status == "completed":
+                    _pane_append(f"[green]✓ {name}[/green]")
+                else:
+                    if verbose:
+                        _pane_append(f"[dim]{status or 'delegate'} {name}[/dim]")
+                _pane_update_chat_panel()
+                return
+            # If we're mid-stream, start a fresh line to keep logs readable.
+            if stream_state.get("mid_line"):
+                _safe_stream_print("\n")
+                stream_state["mid_line"] = False
+            if status == "running":
+                if async_input and pt_ansi_print:
+                    # Show agent + truncated task text with colors (Gemini CLI style)
+                    msg = f"\x1b[2m→\x1b[0m \x1b[36m{name}\x1b[0m"
+                    if detail:
+                        d = detail.replace("\n", " ").strip()
+                        if len(d) > 90:
+                            d = d[:87] + "..."
+                        msg += f" \x1b[2m{d}\x1b[0m"
+                    pt_ansi_print(msg)
+                else:
+                    console.print(f"[dim]→ {name}[/dim]")
+            elif status == "completed":
+                if async_input and pt_ansi_print:
+                    pt_ansi_print(f"\x1b[32m✓\x1b[0m \x1b[36m{name}\x1b[0m")
+                else:
+                    console.print(f"[green]✓ {name}[/green]")
+            else:
+                if async_input and pt_ansi_print:
+                    pt_ansi_print(f"\x1b[2m{status or 'delegate'}\x1b[0m \x1b[36m{name}\x1b[0m")
+                else:
+                    console.print(f"[dim]{status or 'delegate'} {name}[/dim]")
+            return
+
+        # Tool status: show running + success/error so file ops are verifiable in-chat.
+        if event_type == "tool":
+            if not stream_flags.get("show_tool_status", True):
+                return
+            status = (kwargs.get("status") or "").lower()
+            tool_name = kwargs.get("tool_name") or kwargs.get("tool") or ""
+            detail = kwargs.get("detail") or ""
+            result = kwargs.get("result")
+
+            if pane_state["enabled"]:
+                # Default: one line per tool (completed only). Running line only in verbose.
+                if status == "running":
+                    if verbose:
+                        line = tool_name or "tool"
+                        if detail:
+                            line += f" → {detail}"
+                        _pane_append(f"[dim]→ {line}[/dim]")
+                        _pane_update_chat_panel()
+                    return
+                if status != "completed":
+                    return
+
+                result_str = "" if result is None else str(result)
+                is_error = result_str.startswith("Error") or result_str.startswith("ERROR:")
+                line = tool_name or "tool"
+                if detail:
+                    line += f" → {detail}"
+                # (No long summary here; keep compact. Verbose summary stays in normal mode.)
+                if is_error:
+                    _pane_append(f"[red]✗ {line}[/red]")
+                else:
+                    _pane_append(f"[green]✓ {line}[/green]")
+                _pane_update_chat_panel()
+                return
+
+            if stream_state.get("mid_line"):
+                _safe_stream_print("\n")
+                stream_state["mid_line"] = False
+
+            # Running line (start)
+            if status == "running":
+                # Default: keep tool-status output compact (one line per tool).
+                # Show the "running" line only in verbose mode.
+                if verbose:
+                    line = tool_name or "tool"
+                    if detail:
+                        line += f" → {detail}"
+                    if async_input and pt_ansi_print:
+                        pt_ansi_print(f"\x1b[2m→\x1b[0m \x1b[36m{line}\x1b[0m")
+                    else:
+                        console.print(f"[dim]→ {line}[/dim]")
+                return
+
+            if status != "completed":
+                return
+
+            # Determine success/failure from result text
+            result_str = "" if result is None else str(result)
+            is_error = result_str.startswith("Error") or result_str.startswith("ERROR:")
+
+            # Build a concise line, e.g. "✓ write_file → MOBILE_SPEC.md"
+            line = tool_name or "tool"
+            if detail:
+                line += f" → {detail}"
+            # Only show the (potentially long) tool result summary in verbose mode.
+            # This keeps default tool-status output short (no "Successfully edited ... (+22)" etc.).
+            if verbose and result_str:
+                summary = result_str.splitlines()[0].strip()
+                if len(summary) > 140:
+                    summary = summary[:137] + "..."
+                if summary:
+                    line += f" ({summary})"
+
+            if is_error:
+                if async_input and pt_ansi_print:
+                    pt_ansi_print(f"\x1b[31m✗\x1b[0m \x1b[36m{line}\x1b[0m")
+                else:
+                    console.print(f"[red]✗ {line}[/red]")
+            else:
+                if async_input and pt_ansi_print:
+                    pt_ansi_print(f"\x1b[32m✓\x1b[0m \x1b[36m{line}\x1b[0m")
+                else:
+                    console.print(f"[green]✓ {line}[/green]")
+            return
 
     # プロファイルの解決（指定なしの場合は対話選択）
     if profile is None:
@@ -601,10 +936,61 @@ def chat(
 
     command_context['session_id'] = session_id
 
-    console.print("[bold cyan]🤖 Moco chat[/]")
-    console.print(f"[bold {theme_config.status}]Profile:[/] {profile}  [bold {theme_config.status}]Provider:[/] {provider}")
-    console.print("[dim]Type 'exit' to quit, '/help' for commands[/dim]")
-    console.print()
+    # --- Dashboard Display ---
+    from .ui.welcome import show_welcome_dashboard
+    show_welcome_dashboard(o, theme_config)
+    # -------------------------
+
+    # If todo pane is enabled, set up a 2-pane Rich layout
+    live_ctx = None
+    if todo_pane:
+        try:
+            from rich.layout import Layout
+            from rich.live import Live
+            from rich.panel import Panel
+            from rich.text import Text
+            from rich import box
+            from moco.tools.todo import set_current_session
+
+            set_current_session(session_id)
+
+            root = Layout(name="root")
+            width = getattr(console, "size", None).width if getattr(console, "size", None) else 120
+
+            if width >= 120:
+                root.split_row(
+                    Layout(name="chat", ratio=3),
+                    Layout(name="todo", ratio=1, minimum_size=36),
+                )
+            else:
+                # Fallback for narrow terminals: place todo below
+                root.split_column(
+                    Layout(name="chat", ratio=3),
+                    Layout(name="todo", ratio=1),
+                )
+
+            pane_state["enabled"] = True
+            pane_state["layout"] = root
+
+            # Initial render
+            root["chat"].update(
+                Panel(Text("(waiting for output...)", style="dim"), title="Chat", border_style=theme_config.status, box=box.ROUNDED)
+            )
+            root["todo"].update(
+                Panel(Text("(loading...)", style="dim"), title="Todos", border_style=theme_config.tools, box=box.ROUNDED)
+            )
+
+            live_ctx = Live(root, console=console, auto_refresh=False)
+            live_ctx.__enter__()
+            pane_state["live"] = live_ctx
+
+            _pane_update_todo_panel(session_id)
+            _pane_update_chat_panel()
+        except Exception as e:
+            pane_state["enabled"] = False
+            pane_state["live"] = None
+            pane_state["layout"] = None
+            console.print(f"[yellow]Todo pane disabled (failed to initialize): {e}[/yellow]")
 
     # --- スラッシュコマンド対応 ---
     from .cli_commands import handle_slash_command
@@ -612,11 +998,158 @@ def chat(
     # ---
 
     try:
+        # If async_input is enabled, run orchestration in a background worker and keep reading input.
+        if async_input:
+            try:
+                from prompt_toolkit import PromptSession
+                from prompt_toolkit.patch_stdout import patch_stdout
+                from prompt_toolkit.key_binding import KeyBindings
+            except Exception as e:
+                console.print(f"[yellow]--async-input requires prompt_toolkit. ({e})[/yellow]")
+                async_input = False
+
+        if async_input:
+            import threading
+            import queue
+            from datetime import datetime as _dt
+            from prompt_toolkit.shortcuts import print_formatted_text
+            from prompt_toolkit.formatted_text import ANSI
+
+            # Tell slash commands to avoid Rich markup (prevents raw ANSI escapes in some terminals).
+            command_context["plain_output"] = True
+            command_context["plain_print"] = print_formatted_text
+
+            # Use ANSI-aware printing for progress output (tool/delegate) to keep colors without mojibake.
+            def _pt_ansi_print(s: str) -> None:
+                try:
+                    print_formatted_text(ANSI(s))
+                except Exception:
+                    # fall back to plain stdout
+                    _safe_stream_print(str(s) + "\n")
+
+            pt_ansi_print = _pt_ansi_print
+
+            pending: "queue.Queue[str | None]" = queue.Queue()
+            busy_lock = threading.Lock()
+            busy = {"running": False}
+            stop_requested = {"stop": False}
+
+            def _set_busy(val: bool) -> None:
+                with busy_lock:
+                    busy["running"] = val
+
+            def _is_busy() -> bool:
+                with busy_lock:
+                    return bool(busy["running"])
+
+            def _worker() -> None:
+                while True:
+                    item = pending.get()
+                    if item is None:
+                        return
+
+                    _set_busy(True)
+                    try:
+                        create_cancel_event(session_id)
+                        result = o.run_sync(item, session_id)
+                        if result and not stream:
+                            # Prefer plain output in async-input mode to avoid ANSI artifacts.
+                            print_formatted_text("")
+                            print_formatted_text(result)
+                            print_formatted_text("")
+                    except KeyboardInterrupt:
+                        request_cancel(session_id)
+                        print_formatted_text("\nInterrupted.")
+                    except OperationCancelled:
+                        print_formatted_text("\nOperation cancelled.")
+                    except Exception as e:  # noqa: BLE001
+                        print_formatted_text(f"Error: {e}")
+                    finally:
+                        clear_cancel_event(session_id)
+                        _set_busy(False)
+                        if stop_requested["stop"]:
+                            return
+
+            worker = threading.Thread(target=_worker, daemon=True)
+            worker.start()
+
+            kb = KeyBindings()
+
+            @kb.add("c-c")
+            def _(event):  # noqa: ANN001
+                # If running, cancel current task; otherwise exit.
+                if _is_busy():
+                    request_cancel(session_id)
+                    print_formatted_text("(cancel requested)")
+                else:
+                    stop_requested["stop"] = True
+                    pending.put(None)
+                    event.app.exit()
+
+            prompt = PromptSession(key_bindings=kb)
+
+            with patch_stdout():
+                while True:
+                    # 最新のテーマ設定を反映
+                    theme_config = THEMES[ui_state.theme]
+
+                    try:
+                        text = prompt.prompt("> ")
+                    except (EOFError, KeyboardInterrupt):
+                        # EOF / Ctrl+C while idle -> exit
+                        stop_requested["stop"] = True
+                        pending.put(None)
+                        break
+
+                    if not (text or "").strip():
+                        continue
+
+                    # Slash commands are processed immediately in the main thread.
+                    if text.strip().startswith("/"):
+                        # Avoid session-changing commands while busy (they can desync current run)
+                        if _is_busy() and text.strip().split()[0].lower() in ("/profile", "/session", "/clear"):
+                            print_formatted_text("That command is blocked while a task is running. Try again after completion.")
+                            continue
+
+                        if not handle_slash_command(text, command_context):
+                            stop_requested["stop"] = True
+                            pending.put(None)
+                            break
+
+                        if "pending_prompt" in command_context:
+                            text = command_context.pop("pending_prompt")
+                        else:
+                            session_id = command_context["session_id"]
+                            continue
+
+                    lowered = text.strip().lower()
+                    if lowered in ("exit", "quit"):
+                        stop_requested["stop"] = True
+                        # Ask current run to stop, then exit after worker finishes.
+                        if _is_busy():
+                            request_cancel(session_id)
+                        pending.put(None)
+                        break
+
+                    # Enqueue normal prompts.
+                    pending.put(text)
+                    qsize = pending.qsize()
+                    if _is_busy() or qsize > 0:
+                        # Plain text to avoid ANSI escape artifacts in some terminals/recorders
+                        print_formatted_text(f"(queued {qsize} @ {_dt.now().strftime('%H:%M:%S')})")
+
+            # Wait briefly for worker to exit (best-effort)
+            worker.join(timeout=2)
+            return
+
         while True:
             # 最新のテーマ設定を反映
             theme_config = THEMES[ui_state.theme]
 
             try:
+                if pane_state["enabled"]:
+                    _pane_update_todo_panel(command_context.get("session_id"))
+                    _pane_update_chat_panel()
                 text = console.input(f"[bold {theme_config.status}]> [/bold {theme_config.status}]")
             except EOFError:
                 break
@@ -666,6 +1199,12 @@ def chat(
                 console.print()
     except KeyboardInterrupt:
         console.print("\n[dim]Bye![/dim]")
+    finally:
+        if live_ctx is not None:
+            try:
+                live_ctx.__exit__(None, None, None)
+            except Exception:
+                pass
 
 
 # ========== Skills Commands ==========
@@ -838,6 +1377,7 @@ def skills_info():
     registries = [
         ("anthropics", "anthropics/skills", "公式 Claude Skills"),
         ("community", "alirezarezvani/claude-skills", "コミュニティ Skills"),
+        ("remotion", "remotion-dev/skills", "Remotion 動画生成 Skills"),
         ("claude-code", "daymade/claude-code-skills", "Claude Code 特化"),
         ("collection", "abubakarsiddik31/claude-skills-collection", "キュレーション集"),
     ]

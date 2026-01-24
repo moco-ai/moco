@@ -4,6 +4,7 @@ import json
 import re
 import sys
 import os
+from contextvars import ContextVar
 
 # 動的インポート対応: 相対インポートが使えない場合は絶対パスでインポート
 try:
@@ -16,7 +17,7 @@ except ImportError:
     from storage.session_logger import SessionLogger
 
 # グローバルセッションID（Orchestratorが設定する）
-_current_session_id: Optional[str] = None
+_current_session_id_var: ContextVar[Optional[str]] = ContextVar("_current_session_id", default=None)
 
 _CODE_FENCE_RE = re.compile(
     r"^\s*```(?:json|python|txt)?\s*\n(?P<body>[\s\S]*?)\n```\s*$",
@@ -109,35 +110,27 @@ def _parse_todos_loose(value: str) -> Union[List[Dict[str, Any]], Dict[str, Any]
 
 def set_current_session(session_id: str) -> None:
     """現在のセッションIDを設定（Orchestratorから呼ばれる）"""
-    global _current_session_id
-    _current_session_id = session_id
+    _current_session_id_var.set(session_id)
 
 def get_current_session() -> Optional[str]:
     """現在のセッションIDを取得"""
-    return _current_session_id
+    return _current_session_id_var.get()
 
 def todowrite(todos: Union[str, List[Dict[str, Any]]]) -> str:
     """
-    Creates and manages a structured task list (todo list) for the current session.
-    
-    Args:
-        todos: A JSON array of todo objects. Each object must have:
-            - id: Unique identifier (string)
-            - content: Task description (string)
-            - status: One of "pending", "in_progress", "completed", "cancelled"
-    
-    Example:
-        [
-            {"id": "1", "content": "Research market data", "status": "pending"},
-            {"id": "2", "content": "Write report", "status": "in_progress"}
-        ]
-    
-    Returns:
-        Success or error message.
-    """
-    global _current_session_id
+    Create/update the todo list for THIS session.
 
-    if not _current_session_id:
+    Rules:
+    - Output ONLY a JSON array of {id, content, status}.
+    - status: pending | in_progress | completed | cancelled
+    - Exactly ONE item is in_progress.
+    - NO generic templates ("要件定義→実装→レビュー"). Every item must be role-specific and checkable.
+    - Each content must mention a deliverable: file path / function name / command / concrete artifact.
+    - Sub-agents: write ONLY your own todos (do not copy orchestrator’s list).
+    """
+    session_id = get_current_session()
+
+    if not session_id:
         return "Error: No active session. This tool must be called during an orchestration session."
 
     logger = SessionLogger()
@@ -153,7 +146,7 @@ def todowrite(todos: Union[str, List[Dict[str, Any]]]) -> str:
         if any(not isinstance(t, dict) for t in todos):
             return "Error: Invalid JSON format for todos"
 
-        logger.save_todos(_current_session_id, todos)
+        logger.save_todos(session_id, todos)
         return f"Todo list updated successfully. {len(todos)} items saved to session."
     except Exception as e:
         return f"Error updating todo list: {e}"
@@ -161,14 +154,36 @@ def todowrite(todos: Union[str, List[Dict[str, Any]]]) -> str:
 def todoread() -> str:
     """
     Reads the current todo list for the active session.
+    If called by the orchestrator, it shows todos from all sub-agents as well.
     """
-    global _current_session_id
+    session_id = get_current_session()
 
-    if not _current_session_id:
+    if not session_id:
         return "Error: No active session. This tool must be called during an orchestration session."
 
     logger = SessionLogger()
-    todos = logger.get_todos(_current_session_id)
+
+    # Check if this is a sub-agent session
+    is_sub_agent = False
+    try:
+        conn = logger._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT metadata FROM sessions WHERE session_id = ?", (session_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if row and row[0]:
+            metadata = json.loads(row[0])
+            if metadata.get("parent_session_id"):
+                is_sub_agent = True
+    except Exception:
+        pass
+
+    # If it's the orchestrator (no parent session), show all todos hierarchically
+    if not is_sub_agent:
+        return todoread_all()
+
+    # Otherwise, show only the current agent's todos
+    todos = logger.get_todos(session_id)
 
     if not todos:
         return "No todos found for current session."
@@ -191,9 +206,9 @@ def todoread_all() -> str:
     """
     現在のセッションと全サブエージェントの todo リストを階層的に表示します。
     """
-    global _current_session_id
+    session_id = get_current_session()
 
-    if not _current_session_id:
+    if not session_id:
         return "Error: No active session."
 
     logger = SessionLogger()
@@ -205,7 +220,7 @@ def todoread_all() -> str:
     }
 
     all_lines = []
-    main_todos = logger.get_todos(_current_session_id)
+    main_todos = logger.get_todos(session_id)
     all_lines.append("=== orchestrator ===")
     if main_todos:
         for t in main_todos:
@@ -221,7 +236,7 @@ def todoread_all() -> str:
             SELECT session_id, title FROM sessions
             WHERE metadata LIKE ?
             ORDER BY created_at
-        """, (f'%"parent_session_id": "{_current_session_id}"%',))
+        """, (f'%"parent_session_id": "{session_id}"%',))
         sub_sessions = cursor.fetchall()
         conn.close()
 

@@ -5,6 +5,16 @@ from rich.table import Table
 from .ui.theme import ThemeName
 from .ui.layout import ui_state
 
+
+def _print_out(context: Dict[str, Any], message: str) -> None:
+    """Print message respecting async-input plain output mode."""
+    if context.get("plain_output") and callable(context.get("plain_print")):
+        context["plain_print"](str(message))
+        return
+    console = context.get("console", Console())
+    console.print(message)
+
+
 def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
     """Process slash commands. Returns True to continue chat, False to exit."""
     try:
@@ -28,7 +38,9 @@ def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
         'cost': handle_cost,
         'tools': handle_tools,
         'agents': handle_agents,
+        'todo': handle_todo,
         'substream': handle_substream,
+        'toolstatus': handle_toolstatus,
         'quit': handle_quit,
         'exit': handle_quit,
         'theme': handle_theme,
@@ -60,9 +72,64 @@ def handle_slash_command(text: str, context: Dict[str, Any]) -> bool:
         except ImportError:
             pass
 
-        console = context.get('console', Console())
-        console.print(f"[red]Unknown command: /{command}. Type /help for available commands.[/red]")
+        # Plain output in async-input mode to avoid raw ANSI escapes.
+        if context.get("plain_output"):
+            _print_out(context, f"Unknown command: /{command}. Type /help for available commands.")
+        else:
+            _print_out(context, f"[red]Unknown command: /{command}. Type /help for available commands.[/red]")
         return True
+
+
+def handle_todo(args: List[str], context: Dict[str, Any]) -> bool:
+    """Show current todo list for this chat session.
+
+    Usage:
+      /todo          -> show hierarchical todos (orchestrator + subagents)
+    """
+    session_id = context.get("session_id")
+    try:
+        from moco.tools.todo import set_current_session, todoread_all
+        if session_id:
+            set_current_session(session_id)
+        out = todoread_all()
+    except Exception as e:
+        out = f"Error: failed to read todos: {e}"
+
+    _print_out(context, out)
+    return True
+
+def handle_toolstatus(args: List[str], context: Dict[str, Any]) -> bool:
+    """Toggle tool/delegation status lines in CLI.
+
+    Usage:
+      /toolstatus            -> show current state
+      /toolstatus on|off     -> enable/disable
+    """
+    console = context.get('console', Console())
+    flags = context.get('stream_flags') or {}
+    current = bool(flags.get("show_tool_status", True))
+
+    if not args:
+        if context.get("plain_output"):
+            _print_out(context, f"Tool status display: {'ON' if current else 'OFF'}")
+            _print_out(context, "Usage: /toolstatus on|off")
+        else:
+            console.print(f"[dim]Tool status display:[/dim] {'ON' if current else 'OFF'}")
+            console.print("[dim]Usage: /toolstatus on|off[/dim]")
+        return True
+
+    val = args[0].lower()
+    if val in ("on", "true", "1", "yes"):
+        flags["show_tool_status"] = True
+        _print_out(context, "Tool status display: ON" if context.get("plain_output") else "[green]Tool status display: ON[/green]")
+        return True
+    if val in ("off", "false", "0", "no"):
+        flags["show_tool_status"] = False
+        _print_out(context, "Tool status display: OFF" if context.get("plain_output") else "[green]Tool status display: OFF[/green]")
+        return True
+
+    _print_out(context, "Usage: /toolstatus on|off" if context.get("plain_output") else "[red]Usage: /toolstatus on|off[/red]")
+    return True
 
 def handle_substream(args: List[str], context: Dict[str, Any]) -> bool:
     """Toggle sub-agent streamed text in CLI.
@@ -76,21 +143,25 @@ def handle_substream(args: List[str], context: Dict[str, Any]) -> bool:
     current = bool(flags.get("show_subagent_stream", False))
 
     if not args:
-        console.print(f"[dim]Sub-agent stream:[/dim] {'ON' if current else 'OFF'}")
-        console.print("[dim]Usage: /substream on|off[/dim]")
+        if context.get("plain_output"):
+            _print_out(context, f"Sub-agent stream: {'ON' if current else 'OFF'}")
+            _print_out(context, "Usage: /substream on|off")
+        else:
+            console.print(f"[dim]Sub-agent stream:[/dim] {'ON' if current else 'OFF'}")
+            console.print("[dim]Usage: /substream on|off[/dim]")
         return True
 
     val = args[0].lower()
     if val in ("on", "true", "1", "yes"):
         flags["show_subagent_stream"] = True
-        console.print("[green]Sub-agent stream: ON[/green]")
+        _print_out(context, "Sub-agent stream: ON" if context.get("plain_output") else "[green]Sub-agent stream: ON[/green]")
         return True
     if val in ("off", "false", "0", "no"):
         flags["show_subagent_stream"] = False
-        console.print("[green]Sub-agent stream: OFF[/green]")
+        _print_out(context, "Sub-agent stream: OFF" if context.get("plain_output") else "[green]Sub-agent stream: OFF[/green]")
         return True
 
-    console.print("[red]Usage: /substream on|off[/red]")
+    _print_out(context, "Usage: /substream on|off" if context.get("plain_output") else "[red]Usage: /substream on|off[/red]")
     return True
 
 def handle_ls(args: List[str], context: Dict[str, Any]) -> bool:
@@ -160,6 +231,25 @@ def handle_tree(args: List[str], context: Dict[str, Any]) -> bool:
 def handle_help(args: List[str], context: Dict[str, Any]) -> bool:
     """Display available commands"""
     console = context.get('console', Console())
+    if context.get("plain_output"):
+        _print_out(context, "Available Commands:")
+        _print_out(context, "  /help              Show this help message")
+        _print_out(context, "  /clear             Clear conversation history")
+        _print_out(context, "  /model [name]      Show or change current model")
+        _print_out(context, "  /profile [name]    Show or change current profile")
+        _print_out(context, "  /theme [name]      Show or change current theme")
+        _print_out(context, "  /workdir [path]    Show or change working directory")
+        _print_out(context, "  /ls [path]         List directory contents")
+        _print_out(context, "  /tree [depth]      Show directory tree (default depth 2)")
+        _print_out(context, "  /session           Show current session info")
+        _print_out(context, "  /save              Save current session (Automatic)")
+        _print_out(context, "  /cost              Show estimated cost for this session")
+        _print_out(context, "  /tools             List available tools")
+        _print_out(context, "  /agents            List available agents")
+        _print_out(context, "  /todo              Show current Todo list for this session")
+        _print_out(context, "  /toolstatus on|off Toggle tool/delegation status lines")
+        _print_out(context, "  /quit              Exit chat")
+        return True
     table = Table(title="Available Commands", border_style="cyan")
     table.add_column("Command", style="cyan")
     table.add_column("Description")
@@ -179,6 +269,8 @@ def handle_help(args: List[str], context: Dict[str, Any]) -> bool:
         ("/cost", "Show estimated cost for this session"),
         ("/tools", "List available tools"),
         ("/agents", "List available agents"),
+        ("/todo", "Show current Todo list for this session"),
+        ("/toolstatus on|off", "Toggle tool/delegation status lines"),
         ("/quit", "Exit chat"),
     ]
     for cmd, desc in commands:
@@ -282,12 +374,15 @@ def handle_profile(args: List[str], context: Dict[str, Any]) -> bool:
         new_profile = args[0]
         # Profile change requires re-initialization of Orchestrator
         console.print(f"[dim]Changing profile to '{new_profile}'...[/dim]")
-        orchestrator.profile = new_profile
-        orchestrator.loader.profile = new_profile
-        orchestrator.skill_loader.profile = new_profile
-        if hasattr(orchestrator, 'optimizer_config'):
-            orchestrator.optimizer_config.profile = new_profile
-        orchestrator.reload_agents()
+        if hasattr(orchestrator, "set_profile"):
+            orchestrator.set_profile(new_profile)
+        else:
+            orchestrator.profile = new_profile
+            orchestrator.loader.profile = new_profile
+            orchestrator.skill_loader.profile = new_profile
+            if hasattr(orchestrator, 'optimizer_config'):
+                orchestrator.optimizer_config.profile = new_profile
+            orchestrator.reload_agents()
         console.print(f"[green]Profile changed to: {new_profile}[/green]")
     return True
 
@@ -435,6 +530,14 @@ def handle_tools(args: List[str], context: Dict[str, Any]) -> bool:
     if not orchestrator:
         return True
 
+    # Async-input / plain output mode: avoid Rich tables (ANSI artifacts in some terminals).
+    if context.get("plain_output"):
+        _print_out(context, "Available Tools:")
+        if hasattr(orchestrator, 'tool_map'):
+            for tool_name in sorted(orchestrator.tool_map.keys()):
+                _print_out(context, f"  - {tool_name}")
+        return True
+
     table = Table(title="Available Tools", border_style="green")
     table.add_column("Tool Name", style="cyan")
     
@@ -450,6 +553,18 @@ def handle_agents(args: List[str], context: Dict[str, Any]) -> bool:
     console = context.get('console', Console())
     orchestrator = context.get('orchestrator')
     if not orchestrator:
+        return True
+
+    # Async-input / plain output mode: avoid Rich tables (ANSI artifacts in some terminals).
+    if context.get("plain_output"):
+        _print_out(context, "Available Agents:")
+        if hasattr(orchestrator, 'agents'):
+            for name, config in orchestrator.agents.items():
+                desc = getattr(config, "description", "") or ""
+                desc = desc.replace("\n", " ").strip()
+                if len(desc) > 120:
+                    desc = desc[:117] + "..."
+                _print_out(context, f"  - {name}: {desc}")
         return True
 
     table = Table(title="Available Agents", border_style="magenta")

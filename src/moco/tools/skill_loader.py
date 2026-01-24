@@ -20,6 +20,7 @@ import subprocess
 import logging
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
+from .security_scanner import SecurityScanner
 
 try:
     import yaml
@@ -79,6 +80,9 @@ class SkillConfig:
     - version: バージョン
     - allowed_tools: 許可されたツール（Claude互換: allowed-tools）
     - content: 知識・ルール本文
+    - is_logic: ロジック（JS/TS/Py）を含むか
+    - path: スキルディレクトリの絶対パス
+    - exposed_tools: スキルが露出するツール定義
     """
     name: str
     description: str
@@ -86,6 +90,9 @@ class SkillConfig:
     version: str
     content: str
     allowed_tools: List[str] = field(default_factory=list)
+    path: str = ""
+    is_logic: bool = False
+    exposed_tools: Dict[str, Any] = field(default_factory=dict)
 
     def matches_input(self, user_input: str) -> bool:
         """Check if this skill matches the user input based on triggers or description keywords"""
@@ -242,13 +249,59 @@ class SkillLoader:
         elif not isinstance(allowed_tools, list):
             allowed_tools = []
 
+        skill_dir = os.path.dirname(file_path)
+        # ロジック判定 (JS, TS, Py)
+        logic_files = ["index.js", "index.ts", "package.json"]
+        is_logic = any(os.path.exists(os.path.join(skill_dir, f)) for f in logic_files)
+        
+        # scripts ディレクトリや .py ファイルがある場合もロジックありとみなす
+        if not is_logic:
+            is_logic = os.path.exists(os.path.join(skill_dir, "scripts")) or \
+                       any(f.endswith(".py") for f in os.listdir(skill_dir) if f != "__init__.py")
+
+        # 露出ツールの定義 (YAML内の tools セクション)
+        exposed_tools_raw = metadata.get("tools", {}) or {}
+        # Normalize to dict:
+        # - dict: {tool_name: {description, parameters,...}}
+        # - list: [{name: tool_name, ...}, ...]  (seen in some local skills)
+        exposed_tools: Dict[str, Any] = {}
+        if isinstance(exposed_tools_raw, dict):
+            exposed_tools = exposed_tools_raw
+        elif isinstance(exposed_tools_raw, list):
+            for item in exposed_tools_raw:
+                # Common format: {name: "...", description: "...", ...}
+                if isinstance(item, dict):
+                    name_val = item.get("name")
+                    if isinstance(name_val, str) and name_val.strip():
+                        tool_name = name_val.strip()
+                        # Keep the rest of the fields as tool definition
+                        tool_def = dict(item)
+                        tool_def.pop("name", None)
+                        exposed_tools[tool_name] = tool_def
+                        continue
+                    # Alternate compact format: {tool_name: {...}}
+                    if len(item) == 1:
+                        k = next(iter(item.keys()))
+                        v = item.get(k)
+                        if isinstance(k, str) and k.strip():
+                            exposed_tools[k.strip()] = v if isinstance(v, dict) else {"value": v}
+                            continue
+                # Fallback: string tool names
+                if isinstance(item, str) and item.strip():
+                    exposed_tools[item.strip()] = {}
+        else:
+            exposed_tools = {}
+
         return SkillConfig(
             name=name,
             description=metadata.get("description", ""),
             triggers=triggers,
             version=metadata.get("version", "1.0.0"),
             content=body,
-            allowed_tools=allowed_tools
+            allowed_tools=allowed_tools,
+            path=skill_dir,
+            is_logic=is_logic,
+            exposed_tools=exposed_tools
         )
 
     def match_skills(
@@ -483,6 +536,20 @@ class SkillLoader:
             if not os.path.exists(skill_file):
                 return False, f"SKILL.md not found in {skill_name}"
 
+            # --- Security Scan (Pre-install) ---
+            scanner = SecurityScanner()
+            findings = scanner.scan_directory(source_path)
+            high_findings = [f for f in findings if f.get('severity') == 'high']
+            
+            if high_findings:
+                msg = f"CRITICAL SECURITY ALERT: Skill '{skill_name}' contains high-risk patterns and will NOT be installed.\n{scanner.generate_report(high_findings)}"
+                logger.error(msg)
+                return False, f"Security risk blocked: {len(high_findings)} high-severity issues found."
+            
+            if findings:
+                logger.warning(f"Security Warning for skill '{skill_name}':\n{scanner.generate_report(findings)}")
+            # -----------------------------------
+
             # インストール先
             dest_path = os.path.join(self.skills_dir, skill_name)
             if os.path.exists(dest_path):
@@ -544,6 +611,19 @@ class SkillLoader:
                         if not rel_path.startswith(category):
                             continue
 
+                    # --- Security Scan (Pre-install) ---
+                    scanner = SecurityScanner()
+                    findings = scanner.scan_directory(root)
+                    high_findings = [f for f in findings if f.get('severity') == 'high']
+                    
+                    if high_findings:
+                        logger.error(f"BLOCKING SKILL '{skill_name}': High-risk patterns detected.\n{scanner.generate_report(high_findings)}")
+                        continue # Skip this skill but continue with others
+                    
+                    if findings:
+                        logger.warning(f"Security Warning for skill '{skill_name}':\n{scanner.generate_report(findings)}")
+                    # -----------------------------------
+
                     dest_path = os.path.join(self.skills_dir, skill_name)
                     if os.path.exists(dest_path):
                         shutil.rmtree(dest_path)
@@ -591,6 +671,7 @@ class SkillLoader:
             "community": "alirezarezvani/claude-skills",
             "claude-code": "daymade/claude-code-skills",
             "collection": "abubakarsiddik31/claude-skills-collection",
+            "remotion": "remotion-dev/skills",
         }
 
         if registry not in registries:
@@ -920,7 +1001,7 @@ class SkillLoader:
         registry: str,
         top_k: int = 5
     ) -> List[Dict[str, Any]]:
-        """Search remote registry using embedding-based semantic matching."""
+        """Search remote registry using embedding-based someantic matching."""
         cache = self._get_registry_cache(registry)
         if not cache:
             return []
