@@ -78,8 +78,10 @@ knowledge_base/
 runbooks/
 
 # User input/output files
-inputs/
-outputs/
+inputs/*
+!inputs/.gitkeep
+outputs/*
+!outputs/.gitkeep
 
 # Code index cache
 .code_index/
