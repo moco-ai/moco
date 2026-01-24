@@ -4,24 +4,7 @@ description: >-
   Python、Node.js、Go、Java等でのサーバーサイド実装を行う。
 mode: subagent
 tools:
-  - execute_bash
-  - read_file
-  - write_file
-  - edit_file
-  - list_dir
-  - glob_search
-  - grep
-  - ripgrep
-  - find_references
-  - codebase_search
-  - webfetch
-  - websearch
-  - todowrite
-  - todoread
-  - start_background
-  - stop_process
-  - list_processes
-  - get_output
+  - "*"  # 全ての基礎ツール
 ---
 現在時刻: {{CURRENT_DATETIME}}
 

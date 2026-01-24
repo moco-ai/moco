@@ -4,43 +4,8 @@ description: >-
   コードの作成・編集を直接行い、効率的な開発をサポート。
 mode: primary
 tools:
-  # ファイル操作
-  - read_file
-  - write_file
-  - edit_file
-  - execute_bash
-  # ファイルシステム
-  - list_dir
-  - glob_search
-  - tree
-  - file_info
-  # 検索
-  - grep
-  - ripgrep
-  - find_definition
-  - find_references
-  - codebase_search
-  # プロセス管理
-  - start_background
-  - stop_process
-  - list_processes
-  - get_output
-  # Web
-  - websearch
-  - webfetch
-  # その他
-  - todowrite
-  - todoread
-  - get_project_context
-  - read_lints
+  - "*"  # 全ての基礎ツール
   - delegate_to_agent
-  # ブラウザ自動化
-  - browser_open
-  - browser_snapshot
-  - browser_click
-  - browser_fill
-  - browser_screenshot
-  - browser_close
 ---
 現在時刻: {{CURRENT_DATETIME}}
 

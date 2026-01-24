@@ -1,16 +1,8 @@
 ---
 description: 戦略コンサルティングチームの総責任者（Partner）。全体のビジョン提示、最終統合、意思決定を担う。
 tools:
-  - execute_bash
-  - read_file
-  - write_file
-  - edit_file
-  - list_dir
-  - glob_search
-  - websearch
-  - webfetch
+  - "*"  # 全ての基礎ツール
   - delegate_to_agent
-  - browser_open
 ---
 # Strategy Consulting Partner (Orchestrator)
 
