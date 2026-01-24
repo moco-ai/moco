@@ -26,6 +26,9 @@ DEFAULT_WORKING_DIR = "/tmp/moco-mobile"  # モバイルからの作業ディレ
 # WhatsApp クライアント
 client = NewClient("moco_whatsapp")
 
+# 接続完了フラグ（起動時の過去メッセージを無視するため）
+is_connected = False
+
 # ユーザーごとの設定（セッション、プロファイル、プロバイダ）
 user_settings = {}  # {sender: {"session_id": str, "profile": str, "provider": str, "working_dir": str}}
 
@@ -49,11 +52,27 @@ def get_user_settings(sender: str) -> dict:
 @client.event(QREv)
 def on_qr(c: NewClient, qr: QREv):
     print("\n🔲 QRコードをスキャンしてください:")
-    qr.print_qr()
+    # neonize バージョン互換性
+    if hasattr(qr, 'print_qr'):
+        qr.print_qr()
+    elif hasattr(qr, 'QR'):
+        # QRコードを文字列として表示
+        try:
+            import qrcode
+            qr_obj = qrcode.QRCode()
+            qr_obj.add_data(qr.QR)
+            qr_obj.print_ascii(invert=True)
+        except ImportError:
+            print(f"QR Code: {qr.QR}")
+            print("(qrcode パッケージをインストールするとQRコードが表示されます: pip install qrcode)")
+    else:
+        print(f"QR Event: {qr}")
 
 
 @client.event(ConnectedEv)
 def on_connected(c: NewClient, ev: ConnectedEv):
+    global is_connected
+    is_connected = True
     print("\n" + "="*60)
     print("✅ WhatsApp 接続完了！")
     print("📱 メッセージを送ると moco が処理します")
@@ -62,6 +81,10 @@ def on_connected(c: NewClient, ev: ConnectedEv):
 
 @client.event(MessageEv)
 def on_message(c: NewClient, ev: MessageEv):
+    # 接続完了前のメッセージは無視（起動時の履歴同期）
+    if not is_connected:
+        return
+    
     info = ev.Info
     msg = ev.Message
     
