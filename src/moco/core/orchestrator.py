@@ -926,7 +926,7 @@ class Orchestrator:
                 status="running"
             )
 
-        runtime = self.runtimes[agent_name]
+        runtime = self.runtimes[agent_name]; runtime.parent_session_id = parent_session_id
 
         try:
             # キャンセルチェック
