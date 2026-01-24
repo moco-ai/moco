@@ -39,6 +39,21 @@ except (ImportError, ValueError) as e:
             "Please set OPENAI_API_KEY or GEMINI_API_KEY environment variable."
         )
 
+# semantic_search も埋め込みAPIキーが必要
+try:
+    from .semantic_search import semantic_search
+    SEMANTIC_SEARCH_AVAILABLE = True
+except (ImportError, ValueError) as e:
+    logger.warning(f"semantic_search is disabled: {e}")
+    SEMANTIC_SEARCH_AVAILABLE = False
+
+    def semantic_search(query: str, target_dir: str = ".", top_k: int = 5) -> str:
+        """semantic_search is unavailable (no embedding API key configured)."""
+        return (
+            "Error: semantic_search is unavailable. "
+            "Please set OPENAI_API_KEY or GEMINI_API_KEY environment variable."
+        )
+
 TOOL_MAP = {
     # ファイル操作
     "read_file": read_file,
@@ -67,6 +82,7 @@ TOOL_MAP = {
     "find_references": find_references,
     "ripgrep": ripgrep,
     "codebase_search": codebase_search,
+    "semantic_search": semantic_search,
     # ファイルアップロード
     "file_upload": file_upload_str,
     # 画像解析
