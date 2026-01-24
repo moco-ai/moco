@@ -699,16 +699,39 @@ def chat(
         - We additionally surface tool/delegate completion so users can see whether
           write_file/edit_file actually succeeded (or failed).
         """
+        # ANSI color code mapping for async-input mode
+        _ANSI_COLORS = {
+            "black": "30", "red": "31", "green": "32", "yellow": "33",
+            "blue": "34", "magenta": "35", "cyan": "36", "white": "37",
+            "bright_black": "90", "bright_red": "91", "bright_green": "92",
+            "bright_yellow": "93", "bright_blue": "94", "bright_magenta": "95",
+            "bright_cyan": "96", "bright_white": "97", "grey50": "90",
+        }
+
+        def _get_ansi_code(style: str) -> str:
+            """Extract ANSI code from Rich style string."""
+            codes = []
+            if "bold" in style:
+                codes.append("1")
+            for color_name, code in _ANSI_COLORS.items():
+                if color_name in style:
+                    codes.append(code)
+                    break
+            return ";".join(codes) if codes else "0"
+
         def _safe_stream_print_styled(text: str, style: str) -> None:
             """Print streamed text with color without breaking streaming."""
             if not text:
                 return
             try:
                 from rich.text import Text
-                # In async-input mode (prompt_toolkit), avoid emitting ANSI styles because
-                # some terminals/recorders show escape sequences literally.
                 if async_input:
-                    _safe_stream_print(text)
+                    # Use ANSI escape codes for color in async-input mode
+                    ansi_code = _get_ansi_code(style)
+                    if ansi_code and ansi_code != "0":
+                        _safe_stream_print(f"\x1b[{ansi_code}m{text}\x1b[0m")
+                    else:
+                        _safe_stream_print(text)
                 else:
                     console.print(Text(text, style=style), end="")
             except BrokenPipeError:
@@ -729,10 +752,7 @@ def chat(
             if stream_state.get("mid_line"):
                 _safe_stream_print("\n")
                 stream_state["mid_line"] = False
-            if async_input:
-                _safe_stream_print("🤖 ")
-            else:
-                _safe_stream_print_styled("🤖 ", f"bold {theme_config.result}")
+            _safe_stream_print_styled("🤖 ", f"bold {theme_config.result}")
             stream_state["mid_line"] = True
             return
 
@@ -757,10 +777,7 @@ def chat(
                     _pane_update_chat_panel()
                     return
                 # Color the assistant output to visually separate it from the user's input line.
-                if async_input:
-                    _safe_stream_print(content)
-                else:
-                    _safe_stream_print_styled(content, theme_config.result)
+                _safe_stream_print_styled(content, theme_config.result)
                 stream_state["mid_line"] = True
             return
 
