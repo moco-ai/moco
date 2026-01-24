@@ -12,8 +12,16 @@
 ### インストール
 
 ```bash
-pip install neonize
-brew install libmagic  # macOS
+# Python パッケージ
+pip install neonize python-magic
+
+# または moco の mobile オプション
+pip install -e ".[mobile]"
+
+# libmagic (OS依存)
+brew install libmagic          # macOS
+sudo apt install libmagic1     # Ubuntu/Debian
+sudo yum install file-libs     # CentOS/RHEL
 ```
 
 ### 起動
