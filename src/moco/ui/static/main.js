@@ -536,13 +536,6 @@ async function sendMessage() {
             } else if (data.type === 'progress') {
                 handleProgress(data, progressItems, progressMsgId);
             } else if (data.type === 'chunk') {
-                // Only render the orchestrator's streamed text in the main chat window.
-                // Subagent streams (agent != orchestrator) should not be mixed into the final response.
-                // Note: some fallback chunks may omit `agent`; treat those as orchestrator.
-                const chunkAgent = data.agent || 'orchestrator';
-                if (chunkAgent !== 'orchestrator') {
-                    continue;
-                }
                 if (!assistantMsgId) {
                     assistantMsgId = ui.addMessage('assistant', '', true);
                 }
@@ -597,9 +590,21 @@ function handleProgress(data, progressItems, progressMsgId) {
 
     // ツール実行ログの追加
     if (data.event === 'tool' && data.tool) {
-        const item = `${data.status === 'running' ? '⏳' : '✅'} ${data.name}: ${data.detail || ''}`;
-        progressItems.push(item);
-        ui.appendProgressItem(progressMsgId, item);
+        if (data.status === 'running') {
+            // 開始時のみ新規追加
+            const item = `⏳ ${data.name}: ${data.detail || ''}`;
+            progressItems.push(item);
+            ui.appendProgressItem(progressMsgId, item);
+        } else if (data.status === 'completed') {
+            // 完了時は既存アイテムを更新（⏳ → ✅）
+            const runningItem = `⏳ ${data.name}: ${data.detail || ''}`;
+            const completedItem = `✅ ${data.name}: ${data.detail || ''}`;
+            const idx = progressItems.indexOf(runningItem);
+            if (idx !== -1) {
+                progressItems[idx] = completedItem;
+                ui.updateProgressItem(progressMsgId, idx, completedItem);
+            }
+        }
     }
 
     if (data.event === 'delegate') {

@@ -156,6 +156,16 @@ export function appendProgressItem(id, item) {
     }
 }
 
+export function updateProgressItem(id, index, newItem) {
+    const el = document.querySelector(`#${id} .progress-items`);
+    if (el) {
+        const items = el.querySelectorAll('.progress-item');
+        if (items[index]) {
+            items[index].textContent = newItem;
+        }
+    }
+}
+
 export function addThinkingMessage() {
     const container = document.getElementById('chat-container');
     const id = `thinking-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
