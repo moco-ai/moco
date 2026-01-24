@@ -628,6 +628,8 @@ orchestrator = Orchestrator(
 
 ```
 moco/
+├── inputs/                # User input files (gitignored)
+├── outputs/               # Generated output files (gitignored)
 ├── cli.py                 # CLI entry point
 ├── core/
 │   ├── orchestrator.py    # Main orchestrator
