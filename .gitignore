@@ -77,6 +77,12 @@ knowledge_base/
 !src/moco/profiles/
 runbooks/
 
+# User input/output files
+inputs/*
+!inputs/.gitkeep
+outputs/*
+!outputs/.gitkeep
+
 # Code index cache
 .code_index/
 
