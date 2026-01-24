@@ -591,9 +591,35 @@ def chat(
             from rich.text import Text
             from rich import box
 
+            # Auto-follow: render only the bottom-most lines that fit in the panel.
+            # (If we render the whole buffer, Rich will show from the top and the latest
+            # conversation scrolls out of view.)
+            try:
+                chat_w = max(20, int(getattr(layout["chat"], "size", None).width or console.size.width) - 4)
+                chat_h = max(6, int(getattr(layout["chat"], "size", None).height or console.size.height) - 4)
+            except Exception:
+                chat_w = max(20, console.size.width - 4)
+                chat_h = max(6, console.size.height - 4)
+
+            # Build visible lines from bottom up, accounting for wrapping.
+            visible_lines = []
+            used_rows = 0
+            for ln in reversed(pane_state["lines"][-pane_state["max_lines"] :]):
+                try:
+                    t = Text.from_markup(ln)
+                    plain = t.plain
+                except Exception:
+                    plain = str(ln)
+                # Approximate wrap rows
+                rows = max(1, (len(plain) + max(1, chat_w) - 1) // max(1, chat_w))
+                if used_rows + rows > chat_h:
+                    break
+                visible_lines.append(ln)
+                used_rows += rows
+            visible_lines.reverse()
+
             text = Text()
-            # Render last lines; allow Rich markup for minimal coloring
-            for ln in pane_state["lines"][-pane_state["max_lines"] :]:
+            for ln in visible_lines:
                 try:
                     text.append_text(Text.from_markup(ln))
                 except Exception:
@@ -830,6 +856,9 @@ def chat(
                 else:
                     _pane_append(f"[green]✓ {line}[/green]")
                 _pane_update_chat_panel()
+                # Refresh todo pane immediately when todos might have changed.
+                if tool_name in ("todowrite", "todoread", "todoread_all"):
+                    _pane_update_todo_panel(command_context.get("session_id"))
                 return
 
             if stream_state.get("mid_line"):
@@ -935,6 +964,12 @@ def chat(
         console.print(f"[dim]New session: {session_id[:8]}...[/dim]")
 
     command_context['session_id'] = session_id
+    # Optional: allow slash commands to interact with the todo-pane
+    # (so `/todo` can refresh the right pane without printing raw text to the terminal).
+    command_context["pane_enabled"] = bool(pane_state.get("enabled"))
+    command_context["pane_append"] = _pane_append
+    command_context["pane_refresh_chat"] = _pane_update_chat_panel
+    command_context["pane_refresh_todo"] = lambda: _pane_update_todo_panel(command_context.get("session_id"))
 
     # --- Dashboard Display ---
     from .ui.welcome import show_welcome_dashboard
@@ -1150,7 +1185,25 @@ def chat(
                 if pane_state["enabled"]:
                     _pane_update_todo_panel(command_context.get("session_id"))
                     _pane_update_chat_panel()
+                # Liveが有効だと入力プロンプトが再描画で見えなくなるので、
+                # 入力中は一時的に Live を停止して端末の制御を戻す。
+                if pane_state["enabled"] and live_ctx is not None:
+                    try:
+                        live_ctx.stop()
+                    except Exception:
+                        pass
+
                 text = console.input(f"[bold {theme_config.status}]> [/bold {theme_config.status}]")
+
+                # 入力が終わったら Live を再開し、左ペインにもユーザー入力を残す
+                if pane_state["enabled"] and live_ctx is not None:
+                    try:
+                        live_ctx.start()
+                    except Exception:
+                        pass
+                    if text and text.strip():
+                        _pane_append(f"[bold {theme_config.status}]User:[/bold {theme_config.status}] {text.strip()}")
+                        _pane_update_chat_panel()
             except EOFError:
                 break
 

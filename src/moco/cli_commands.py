@@ -85,8 +85,27 @@ def handle_todo(args: List[str], context: Dict[str, Any]) -> bool:
 
     Usage:
       /todo          -> show hierarchical todos (orchestrator + subagents)
+      /todo refresh  -> refresh todo pane (when --todo-pane is enabled)
     """
+    console = context.get('console', Console())
     session_id = context.get("session_id")
+
+    pane_enabled = bool(context.get("pane_enabled"))
+    pane_append = context.get("pane_append")
+    pane_refresh_chat = context.get("pane_refresh_chat")
+    pane_refresh_todo = context.get("pane_refresh_todo")
+
+    # Refresh-only mode (useful when todo-pane is enabled)
+    if args and args[0].lower() in ("refresh", "r"):
+        if pane_enabled and callable(pane_refresh_todo):
+            pane_refresh_todo()
+            if callable(pane_append) and callable(pane_refresh_chat):
+                pane_append("[dim]✓ Todos refreshed[/dim]")
+                pane_refresh_chat()
+        else:
+            console.print("[dim](todo pane is not enabled)[/dim]")
+        return True
+
     try:
         from moco.tools.todo import set_current_session, todoread_all
         if session_id:
@@ -95,7 +114,16 @@ def handle_todo(args: List[str], context: Dict[str, Any]) -> bool:
     except Exception as e:
         out = f"Error: failed to read todos: {e}"
 
-    _print_out(context, out)
+    if pane_enabled and callable(pane_append) and callable(pane_refresh_chat):
+        pane_append("[bold]Todos[/bold]")
+        for ln in (out or "").splitlines():
+            pane_append(ln)
+        pane_refresh_chat()
+        if callable(pane_refresh_todo):
+            pane_refresh_todo()
+        return True
+
+    console.print(out)
     return True
 
 def handle_toolstatus(args: List[str], context: Dict[str, Any]) -> bool:
