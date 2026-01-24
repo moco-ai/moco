@@ -6,11 +6,13 @@ ChatGPT-like interface
 import os
 import re
 import asyncio
+import base64
 import queue
+import tempfile
 import threading
 import time
 import uuid
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List, Tuple
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -174,7 +176,88 @@ def get_orchestrator(profile: str, provider: str = "gemini", verbose: bool = Fal
     )
 
 
+# 一時ファイルを管理するためのディレクトリ
+_TEMP_ATTACHMENTS_DIR = os.path.join(tempfile.gettempdir(), "moco_attachments")
+os.makedirs(_TEMP_ATTACHMENTS_DIR, exist_ok=True)
+
+
+def process_attachments(attachments: Optional[List["Attachment"]], message: str) -> Tuple[str, List[str]]:
+    """
+    添付ファイルを処理し、メッセージを拡張する。
+    
+    画像ファイルは一時ファイルに保存し、パスをメッセージに追加。
+    テキストファイルはインラインで展開。
+    
+    Returns:
+        Tuple[str, List[str]]: (拡張されたメッセージ, 作成した一時ファイルのパスリスト)
+    """
+    if not attachments:
+        return message, []
+    
+    temp_files = []
+    attachment_info = []
+    
+    for att in attachments:
+        try:
+            # Base64データをデコード
+            data = base64.b64decode(att.data)
+            
+            if att.type == "image":
+                # 画像: 一時ファイルに保存
+                ext = att.mime_type.split("/")[-1]
+                if ext == "jpeg":
+                    ext = "jpg"
+                temp_path = os.path.join(
+                    _TEMP_ATTACHMENTS_DIR,
+                    f"{uuid.uuid4().hex[:8]}_{att.name}"
+                )
+                with open(temp_path, "wb") as f:
+                    f.write(data)
+                temp_files.append(temp_path)
+                attachment_info.append(f"[Image: {att.name}] Path: {temp_path}")
+            else:
+                # テキストファイル: 内容をインラインで展開
+                try:
+                    text_content = data.decode("utf-8")
+                    # 長すぎる場合は先頭のみ
+                    if len(text_content) > 10000:
+                        text_content = text_content[:10000] + "\n... (truncated)"
+                    attachment_info.append(f"[File: {att.name}]\n```\n{text_content}\n```")
+                except UnicodeDecodeError:
+                    # バイナリファイルの場合は一時ファイルに保存
+                    temp_path = os.path.join(
+                        _TEMP_ATTACHMENTS_DIR,
+                        f"{uuid.uuid4().hex[:8]}_{att.name}"
+                    )
+                    with open(temp_path, "wb") as f:
+                        f.write(data)
+                    temp_files.append(temp_path)
+                    attachment_info.append(f"[Binary File: {att.name}] Path: {temp_path}")
+        except Exception as e:
+            logger.warning(f"Failed to process attachment {att.name}: {e}")
+            attachment_info.append(f"[Error processing {att.name}: {e}]")
+    
+    # メッセージに添付情報を追加
+    if attachment_info:
+        expanded_message = message
+        if message:
+            expanded_message += "\n\n"
+        expanded_message += "## Attached Files\n" + "\n\n".join(attachment_info)
+        expanded_message += "\n\nNote: For images, use the `analyze_image` tool with the provided path to examine the content."
+        return expanded_message, temp_files
+    
+    return message, temp_files
+
+
 # === Models ===
+
+class Attachment(BaseModel):
+    """添付ファイル"""
+    type: str  # "image" or "file"
+    name: str
+    mime_type: str
+    data: str  # Base64エンコードされたデータ
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -184,6 +267,7 @@ class ChatRequest(BaseModel):
     model: Optional[str] = None  # OpenRouter用モデル名
     verbose: bool = False
     working_directory: Optional[str] = None  # 作業ディレクトリ（セッションごとに設定可能）
+    attachments: Optional[list[Attachment]] = None  # 添付ファイル
 
 
 class SessionCreate(BaseModel):
@@ -882,18 +966,21 @@ async def chat_stream(req: ChatRequest):
     if not session_id:
         session_id = orchestrator.create_session(title=req.message[:50])
 
+    # 添付ファイルを処理してメッセージを拡張
+    expanded_message, temp_files = process_attachments(req.attachments, req.message)
+
     # キャンセルイベントを確実にクリアしてから新規登録
     # (過去のリクエストでキャンセル状態が残っているのを防ぐ)
     clear_cancel_event(session_id)
     create_cancel_event(session_id)
 
     # 結果を格納する変数
-    result_holder = {"response": None, "error": None, "cancelled": False}
+    result_holder = {"response": None, "error": None, "cancelled": False, "temp_files": temp_files}
     stop_event = threading.Event()
 
     def run_orchestrator():
         try:
-            result_holder["response"] = orchestrator.run_sync(req.message, session_id=session_id)
+            result_holder["response"] = orchestrator.run_sync(expanded_message, session_id=session_id)
             # 完了直前に強制フラッシュ
             progress_callback(event_type="flush")
         except OperationCancelled:
@@ -961,6 +1048,13 @@ async def chat_stream(req: ChatRequest):
                     await asyncio.sleep(0.05)
         finally:
             stop_event.set()
+            # 一時ファイルのクリーンアップ
+            for temp_file in result_holder.get("temp_files", []):
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                except Exception as e:
+                    logger.warning(f"Failed to remove temp file {temp_file}: {e}")
 
     return StreamingResponse(
         generate(),
