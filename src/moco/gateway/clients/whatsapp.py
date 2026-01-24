@@ -21,21 +21,27 @@ from neonize.events import MessageEv, ConnectedEv, QREv, event
 MOCO_API_URL = "http://localhost:8000/api/chat"
 DEFAULT_PROFILE = "cursor"
 DEFAULT_PROVIDER = "openrouter"
+DEFAULT_WORKING_DIR = "/tmp/moco-mobile"  # モバイルからの作業ディレクトリ
 
 # WhatsApp クライアント
 client = NewClient("moco_whatsapp")
 
 # ユーザーごとの設定（セッション、プロファイル、プロバイダ）
-user_settings = {}  # {sender: {"session_id": str, "profile": str, "provider": str}}
+user_settings = {}  # {sender: {"session_id": str, "profile": str, "provider": str, "working_dir": str}}
 
 
 def get_user_settings(sender: str) -> dict:
     """ユーザー設定を取得（なければデフォルト作成）"""
     if sender not in user_settings:
+        # 作業ディレクトリを作成
+        import os
+        os.makedirs(DEFAULT_WORKING_DIR, exist_ok=True)
+        
         user_settings[sender] = {
             "session_id": None,
             "profile": DEFAULT_PROFILE,
-            "provider": DEFAULT_PROVIDER
+            "provider": DEFAULT_PROVIDER,
+            "working_dir": DEFAULT_WORKING_DIR
         }
     return user_settings[sender]
 
@@ -174,7 +180,8 @@ def on_message(c: NewClient, ev: MessageEv):
             "message": text,
             "session_id": settings["session_id"],
             "profile": settings["profile"],
-            "provider": settings["provider"]
+            "provider": settings["provider"],
+            "working_directory": settings["working_dir"]
         }
         
         # 添付ファイルがあれば追加

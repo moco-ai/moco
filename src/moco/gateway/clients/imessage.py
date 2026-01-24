@@ -33,6 +33,7 @@ from typing import Optional, Dict, Set, List
 MOCO_API_URL = "http://localhost:8000/api/chat"
 DEFAULT_PROFILE = "cursor"
 DEFAULT_PROVIDER = "openrouter"
+DEFAULT_WORKING_DIR = "/tmp/moco-mobile"  # モバイルからの作業ディレクトリ
 
 # iMessage データベースパス
 CHAT_DB_PATH = Path.home() / "Library/Messages/chat.db"
@@ -50,10 +51,14 @@ processed_messages: Set[int] = set()
 def get_user_settings(sender: str) -> Dict[str, Optional[str]]:
     """ユーザー設定を取得（なければデフォルト作成）"""
     if sender not in user_settings:
+        # 作業ディレクトリを作成
+        os.makedirs(DEFAULT_WORKING_DIR, exist_ok=True)
+        
         user_settings[sender] = {
             "session_id": None,
             "profile": DEFAULT_PROFILE,
-            "provider": DEFAULT_PROVIDER
+            "provider": DEFAULT_PROVIDER,
+            "working_dir": DEFAULT_WORKING_DIR
         }
     return user_settings[sender]
 
@@ -258,7 +263,8 @@ def call_moco(message: str, sender: str, attachments: Optional[List[dict]] = Non
         "message": message,
         "profile": settings["profile"],
         "provider": settings["provider"],
-        "session_id": settings["session_id"]
+        "session_id": settings["session_id"],
+        "working_directory": settings["working_dir"]
     }
     
     # 添付ファイルがあれば追加
