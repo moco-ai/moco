@@ -94,6 +94,11 @@ def on_message(c: NewClient, ev: MessageEv):
     is_from_me = info.MessageSource.IsFromMe
     if not is_from_me:
         return
+
+    # 自分から他人へのメッセージを除外（自分宛てのみ反応）
+    # Sender.User (自分の番号) と Chat.User (宛先の番号) が一致するか確認
+    if info.MessageSource.Sender.User != info.MessageSource.Chat.User:
+        return
     
     # テキスト取得
     text = ""
