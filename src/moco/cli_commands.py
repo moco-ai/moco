@@ -554,7 +554,6 @@ def handle_cost(args: List[str], context: Dict[str, Any]) -> bool:
       /cost all      -> Last 7 days breakdown by model
     """
     from moco.storage.usage_store import get_usage_store
-    from rich.table import Table
     from datetime import datetime, timezone
     
     console = context.get('console', Console())

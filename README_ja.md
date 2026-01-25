@@ -69,9 +69,6 @@ moco list-profiles             # プロファイル一覧
 *   `/model [model_name]`: モデルの表示・変更
 *   `/profile [profile_name]`: プロファイルの変更
 *   `/cost [today|all]`: トークン使用量と見積もりコストを表示
-*   `/todo`: 現在のタスクリストを表示
-*   `/tools`: 利用可能なツール一覧を表示
-*   `/agents`: 利用可能なエージェント一覧を表示
 *   `/clear`: 履歴をクリアしてセッション再開
 *   `/quit`: チャットを終了
 
@@ -633,8 +630,6 @@ orchestrator = Orchestrator(
 
 ```
 moco/
-├── inputs/                # ユーザー入力ファイル（gitignore対象）
-├── outputs/               # 生成された出力ファイル（gitignore対象）
 ├── cli.py                 # CLIエントリポイント
 ├── core/
 │   ├── orchestrator.py    # メインオーケストレーター

@@ -69,9 +69,6 @@ Enter `/` during a chat session to access various operations:
 *   `/model [model_name]`: View or change the current model
 *   `/profile [profile_name]`: Change the current profile
 *   `/cost [today|all]`: Show token usage and estimated cost
-*   `/todo`: Show current task list
-*   `/tools`: List available tools
-*   `/agents`: List available agents
 *   `/clear`: Clear history and restart the session
 *   `/quit`: Exit the chat
 
@@ -633,8 +630,6 @@ orchestrator = Orchestrator(
 
 ```
 moco/
-├── inputs/                # User input files (gitignored)
-├── outputs/               # Generated output files (gitignored)
 ├── cli.py                 # CLI entry point
 ├── core/
 │   ├── orchestrator.py    # Main orchestrator
