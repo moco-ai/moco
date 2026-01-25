@@ -95,7 +95,6 @@ def on_message(c: NewClient, ev: MessageEv):
     is_from_me = info.MessageSource.IsFromMe
     if not is_from_me:
         return
-
     # 自分から他人へのメッセージを除外（自分宛てのみ反応）
     # Sender.User (自分の番号) と Chat.User (宛先の番号) が一致するか確認
     if info.MessageSource.Sender.User != info.MessageSource.Chat.User:
@@ -157,6 +156,11 @@ def on_message(c: NewClient, ev: MessageEv):
             client.reply_message(status, ev)
             return
 
+        if text_lower == "/clear" or text_lower == "/new":
+            settings["session_id"] = None
+            client.reply_message("🗑️ セッションをクリアしました", ev)
+            print("📤 セッションクリア")
+            return
         if text_lower == "/stop" or text_lower == "/interrupt":
             if settings["session_id"]:
                 try:

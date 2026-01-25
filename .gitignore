@@ -77,6 +77,20 @@ knowledge_base/
 !src/moco/profiles/
 runbooks/
 
+# Mobile integration
+moco_whatsapp
+
+# Alpaca project (Exclude from moco-ai/moco)
+alpaca_app/
+src/moco/tools/alpaca.py
+
+# Temporary / Drafts
+/final_raft_evaluation.md
+/raft_comparison_report.md
+/moco/
+/test_json_fix.py
+/examples/raft_simulation/
+
 # Code index cache
 .code_index/
 

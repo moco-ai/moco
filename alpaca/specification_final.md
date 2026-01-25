@@ -1,0 +1,1 @@
+# Alpaca トレーディングシステム 技術仕様書\n\n## 1. 概要\n`alpaca-py` を用いた自律型トレーディングシステムの詳細仕様。\n\n## 2. クラス構成\n- src/client.py\n- src/strategy.py\n- src/executor.py\n\n## 3. リスク管理\n- 資金の2%リスク制限\n- ブラケット注文 (TP/SL) 必須\n

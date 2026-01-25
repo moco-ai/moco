@@ -30,6 +30,11 @@ MOCO is an orchestration framework that supports multiple LLM providers (Gemini,
 - **📊 Task Management**: Run tasks in the background, monitor progress, and view logs.
 - **📁 Session Management**: Persistent storage, recovery, and named sessions for conversation history.
 
+### Mobile Integration
+- **📱 WhatsApp Integration**: Chat with moco agents via WhatsApp (supports text, images, and documents).
+- **📸 Vision Capability**: Automatically recognizes sent images for multi-modal interactions.
+- **⌨️ Mobile Commands**: Slash commands like `/profile`, `/cd`, and `/workdir` available from mobile.
+
 ### Developer-focused
 - **🔍 Codebase Search**: Understand your codebase via semantic search powered by FAISS.
 - **🔧 Git Integration**: Generate AI commit messages and create Pull Requests.
@@ -42,7 +47,7 @@ MOCO is an orchestration framework that supports multiple LLM providers (Gemini,
 - **🔒 Loop Detection**: Automatically detect and stop infinite tool-calling loops.
 - **💾 Checkpoints**: Save conversation states and restore them later.
 
-## 📋 CLI Commands
+## CLI Commands
 
 ### Basic Commands
 

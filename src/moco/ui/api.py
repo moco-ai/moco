@@ -1153,6 +1153,21 @@ async def chat_stream(req: ChatRequest):
     result_holder = {"response": None, "error": None, "cancelled": False, "temp_files": temp_files}
     stop_event = threading.Event()
 
+    # プロンプトの拡張
+    expanded_message = req.message
+    if req.attachments:
+        expanded_message += "\n\nFiles attached to this message:"
+        for att in req.attachments:
+            att_name = att.get("name", "unknown")
+            att_path = att.get("path") or (att.get("data")[:50] + "..." if att.get("data") else "unknown")
+            att_type = att.get("type", "file")
+            if att_type == "image":
+                expanded_message += f"\n- [Image: {att_name}] Path: {att_path}"
+                expanded_message += "\n  Note: Use the `analyze_image` tool to see this image if needed."
+            else:
+                expanded_message += f"\n- [File: {att_name}] Path: {att_path}"
+                expanded_message += f"\n  Note: Use the `file_upload` tool to read this file."
+
     def run_orchestrator():
         try:
             result_holder["response"] = orchestrator.run_sync(expanded_message, session_id=session_id)

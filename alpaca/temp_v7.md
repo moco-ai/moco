@@ -1,0 +1,1 @@
+# Alpaca 自律型株式トレーディングシステム 技術仕様書\n\n## 1. プロジェクト概要\nAlpaca Trading API (`alpaca-py`) を活用し、自律的に売買を行うシステムを設計。2%リスク管理とブラケット注文を柱とする。\n\n## 2. 技術スタック\nPython 3.10+, alpaca-py, pandas, loguru\n\n## 3. ディレクトリ構成\n- src/client.py\n- src/risk_manager.py\n- src/executor.py\n\n## 4. 実行フロー\n初期化 -> 監視 -> 執行 -> 待機\n

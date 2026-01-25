@@ -1,0 +1,1 @@
+# Alpaca Technical Spec\n\n## 1. Structure\n- src/client.py\n- src/strategy.py\n- src/executor.py\n\n## 2. Risk Mgmt\n- 2% per trade loss limit\n- Bracket orders (TP/SL)\n
