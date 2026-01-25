@@ -42,6 +42,20 @@ import sys
 from datetime import datetime
 from typing import Optional, List
 from .ui.theme import ThemeName, THEMES
+from .utils.env_manager import EnvManager
+
+def check_setup():
+    """セットアップが完了しているか確認し、未完了ならウィザードを起動"""
+    # 特定のコマンド以外（setup command自体など）でチェックを走らせる
+    if len(sys.argv) > 1 and sys.argv[1] == "setup":
+        return
+
+    env = EnvManager()
+    if not env.is_configured():
+        from .ui.wizard import SetupWizard
+        wizard = SetupWizard()
+        if not wizard.run():
+            sys.exit(0)
 
 def init_environment():
     """環境変数の初期化（後方互換性のために残す）"""
@@ -101,6 +115,13 @@ app.add_typer(sessions_app, name="sessions")
 # Skills 管理用サブコマンド
 skills_app = typer.Typer(help="Skills 管理（Claude Skills 互換）")
 app.add_typer(skills_app, name="skills")
+
+@app.command()
+def setup():
+    """Moco の初期設定ウィザードを起動します。"""
+    from .ui.wizard import SetupWizard
+    wizard = SetupWizard()
+    wizard.run()
 
 # タスク管理用サブコマンド
 tasks_app = typer.Typer(help="タスク管理")
@@ -1902,6 +1923,7 @@ def ui(
 
 
 def main():
+    check_setup()
     app()
 
 

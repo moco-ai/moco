@@ -724,7 +724,7 @@ class AgentRuntime:
                 raise ValueError("ZAI_API_KEY environment variable not set")
             self.openai_client = AsyncOpenAI(
                 api_key=zai_key,
-                base_url="https://api.z.ai/api/coding/paas/v4"
+                base_url=os.environ.get("ZAI_BASE_URL", "https://api.z.ai/api/coding/paas/v4")
             )
             self.client = None
         else:

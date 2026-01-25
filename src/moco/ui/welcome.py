@@ -90,6 +90,8 @@ def show_welcome_dashboard(orchestrator, theme_config):
         "Chat ",
         ("/run ", f"bold {theme_config.warning}"),
         "Task ",
+        ("/cd ", f"bold {theme_config.warning}"),
+        "WorkDir ",
         ("/help ", f"bold {theme_config.warning}"),
         "Help ",
         ("/exit ", "dim"),

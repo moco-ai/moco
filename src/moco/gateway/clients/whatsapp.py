@@ -14,14 +14,16 @@ WhatsApp ↔ moco 連携
 
 import httpx
 import base64
+import threading
 from neonize.client import NewClient
 from neonize.events import MessageEv, ConnectedEv, QREv, event
 
 # 設定
-MOCO_API_URL = "http://localhost:8000/api/chat"
+MOCO_BASE_URL = "http://localhost:8000/api"
+MOCO_API_URL = f"{MOCO_BASE_URL}/chat"
 DEFAULT_PROFILE = "cursor"
 DEFAULT_PROVIDER = "openrouter"
-DEFAULT_WORKING_DIR = "/tmp/moco-mobile"  # モバイルからの作業ディレクトリ
+DEFAULT_WORKING_DIR = "."  # モバイルからの作業ディレクトリ（実行時のカレントディレクトリ）
 
 # WhatsApp クライアント
 client = NewClient("moco_whatsapp")
@@ -142,8 +144,60 @@ def on_message(c: NewClient, ev: MessageEv):
 
 プロファイル: {settings['profile']}
 プロバイダ: {settings['provider']}
+作業ディレクトリ: {settings['working_dir']}
 セッション: {settings['session_id'] or '(新規)'}"""
             client.reply_message(status, ev)
+            return
+
+        if text_lower == "/stop" or text_lower == "/interrupt":
+            if settings["session_id"]:
+                try:
+                    with httpx.Client() as http:
+                        resp = http.post(f"{MOCO_BASE_URL}/sessions/{settings['session_id']}/cancel")
+                    if resp.status_code == 200:
+                        client.reply_message("🛑 実行を中断しました", ev)
+                        print(f"📤 中断成功: {settings['session_id']}")
+                    else:
+                        client.reply_message("❌ 中断に失敗しました（実行中ではない可能性があります）", ev)
+                except Exception as e:
+                    client.reply_message(f"⚠️ 中断エラー: {e}", ev)
+            else:
+                client.reply_message("❓ 実行中のタスクがありません", ev)
+            return
+
+        if text_lower.startswith("/workdir ") or text_lower.startswith("/cd "):
+            new_dir = text.split(" ", 1)[1].strip()
+            if new_dir:
+                # サーバーにリクエストを投げて、サーバー側で検証させる
+                if settings["session_id"]:
+                    try:
+                        with httpx.Client() as http:
+                            resp = http.post(
+                                f"{MOCO_BASE_URL}/sessions/{settings['session_id']}/workdir",
+                                json={"working_directory": new_dir}
+                            )
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                settings["working_dir"] = data["working_directory"]
+                                reply = f"✅ 作業ディレクトリを変更しました: {data['working_directory']}"
+                            else:
+                                detail = resp.json().get("detail", "Unknown error")
+                                reply = f"❌ 変更に失敗しました: {detail}"
+                    except Exception as e:
+                        reply = f"⚠️ サーバー通信エラー: {e}"
+                else:
+                    # セッションがない場合はローカルのみ（検証なし、将来的なセッション開始時に使用）
+                    import os
+                    abs_path = os.path.abspath(new_dir)
+                    settings["working_dir"] = abs_path
+                    reply = f"✅ 作業ディレクトリ(ローカル)を変更: {abs_path}"
+                            
+                client.reply_message(reply, ev)
+                print(f"📤 {reply}")
+            return
+        
+        if text_lower == "/workdir" or text_lower == "/cd":
+            client.reply_message(f"📁 現在の作業ディレクトリ: {settings['working_dir']}", ev)
             return
         
         if text_lower == "/help":
@@ -151,13 +205,17 @@ def on_message(c: NewClient, ev: MessageEv):
 
 /profile <名前> - プロファイル変更
 /provider <名前> - プロバイダ変更
+/workdir <パス> - 作業ディレクトリ変更 (短縮形: /cd)
 /new または /clear - 新しいセッション
+/stop - 実行中のタスクを中断
 /status - 現在の設定を表示
 /help - このヘルプを表示
 
 例:
+/workdir ./data
 /profile development
-/provider gemini"""
+/provider openrouter
+/stop"""
             client.reply_message(help_text, ev)
             return
     
@@ -194,54 +252,58 @@ def on_message(c: NewClient, ev: MessageEv):
     sender = str(info.MessageSource.Sender)
     settings = get_user_settings(sender)
     
-    # mocoに送信
-    try:
-        print(f"🚀 moco に送信中... [{settings['profile']}/{settings['provider']}]" + 
-              (f" (画像{len(attachments)}枚含む)" if attachments else ""))
-        
-        payload = {
-            "message": text,
-            "session_id": settings["session_id"],
-            "profile": settings["profile"],
-            "provider": settings["provider"],
-            "working_directory": settings["working_dir"]
-        }
-        
-        # 添付ファイルがあれば追加
-        if attachments:
-            payload["attachments"] = attachments
-        
-        with httpx.Client(timeout=300.0) as http:
-            response = http.post(MOCO_API_URL, json=payload)
-        
-        if response.status_code == 200:
-            data = response.json()
-            result = data.get("response", "（応答なし）")
-            new_session_id = data.get("session_id")
+    # mocoに送信 (スレッド化して受信を妨げないようにする)
+    def call_moco_thread():
+        try:
+            print(f"🚀 moco に送信中... [{settings['profile']}/{settings['provider']}]" + 
+                  (f" (画像{len(attachments)}枚含む)" if attachments else ""))
             
-            # セッションを保存
-            if new_session_id:
-                settings["session_id"] = new_session_id
+            payload = {
+                "message": text,
+                "session_id": settings["session_id"],
+                "profile": settings["profile"],
+                "provider": settings["provider"],
+                "working_directory": settings["working_dir"]
+            }
             
-            # 長すぎる場合は切り詰め
-            if len(result) > 4000:
-                result = result[:4000] + "\n\n... (長すぎるため省略)"
+            # 添付ファイルがあれば追加
+            if attachments:
+                payload["attachments"] = attachments
             
-            client.reply_message(result, ev)
-            print(f"📤 返信完了 ({len(result)} 文字)")
-        else:
-            error_msg = f"❌ moco エラー: {response.status_code}"
+            with httpx.Client(timeout=300.0) as http:
+                response = http.post(MOCO_API_URL, json=payload)
+            
+            if response.status_code == 200:
+                data = response.json()
+                result = data.get("response", "（応答なし）")
+                new_session_id = data.get("session_id")
+                
+                # セッションを保存
+                if new_session_id:
+                    settings["session_id"] = new_session_id
+                
+                # 長すぎる場合は切り詰め
+                if len(result) > 4000:
+                    result = result[:4000] + "\n\n... (長すぎるため省略)"
+                
+                client.reply_message(result, ev)
+                print(f"📤 返信完了 ({len(result)} 文字)")
+            else:
+                error_msg = f"❌ moco エラー: {response.status_code}"
+                client.reply_message(error_msg, ev)
+                print(error_msg)
+                
+        except httpx.ConnectError:
+            error_msg = "❌ moco に接続できません。moco ui を起動してください。"
             client.reply_message(error_msg, ev)
             print(error_msg)
-            
-    except httpx.ConnectError:
-        error_msg = "❌ moco に接続できません。moco ui を起動してください。"
-        client.reply_message(error_msg, ev)
-        print(error_msg)
-    except Exception as e:
-        error_msg = f"❌ エラー: {e}"
-        client.reply_message(error_msg, ev)
-        print(error_msg)
+        except Exception as e:
+            error_msg = f"❌ エラー: {e}"
+            client.reply_message(error_msg, ev)
+            print(error_msg)
+
+    # スレッドを開始
+    threading.Thread(target=call_moco_thread, daemon=True).start()
 
 
 def main():
@@ -253,8 +315,10 @@ def main():
 ║  終了: Ctrl+C                                                  ║
 ╠════════════════════════════════════════════════════════════════╣
 ║  コマンド:                                                     ║
+║    /workdir <パス>  - 作業ディレクトリ変更 (短縮: /cd)         ║
 ║    /profile <名前>  - プロファイル変更                         ║
 ║    /provider <名前> - プロバイダ変更                           ║
+║    /stop            - 実行を中断                               ║
 ║    /new             - 新しいセッション                         ║
 ║    /status          - 現在の設定を表示                         ║
 ║    /help            - ヘルプ表示                               ║

@@ -25,15 +25,17 @@ import time
 import httpx
 import base64
 import mimetypes
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Set, List
 
 # === 設定 ===
-MOCO_API_URL = "http://localhost:8000/api/chat"
+MOCO_BASE_URL = "http://localhost:8000/api"
+MOCO_API_URL = f"{MOCO_BASE_URL}/chat"
 DEFAULT_PROFILE = "cursor"
 DEFAULT_PROVIDER = "openrouter"
-DEFAULT_WORKING_DIR = "/tmp/moco-mobile"  # モバイルからの作業ディレクトリ
+DEFAULT_WORKING_DIR = "."  # モバイルからの作業ディレクトリ（実行時のカレントディレクトリ）
 
 # iMessage データベースパス
 CHAT_DB_PATH = Path.home() / "Library/Messages/chat.db"
@@ -303,6 +305,20 @@ def handle_special_commands(text: str, sender: str) -> Optional[str]:
         settings["session_id"] = None
         return "🔄 セッションをクリアしました"
     
+    if text_lower == "/stop" or text_lower == "/interrupt":
+        if settings["session_id"]:
+            try:
+                with httpx.Client() as http:
+                    resp = http.post(f"{MOCO_BASE_URL}/sessions/{settings['session_id']}/cancel")
+                if resp.status_code == 200:
+                    return "🛑 実行を中断しました"
+                else:
+                    return "❌ 中断に失敗しました"
+            except Exception as e:
+                return f"⚠️ 中断エラー: {e}"
+        else:
+            return "❓ 実行中のタスクがありません"
+    
     if text_lower.startswith("/profile "):
         new_profile = text[9:].strip()
         if new_profile:
@@ -330,13 +346,15 @@ def handle_special_commands(text: str, sender: str) -> Optional[str]:
 コマンド:
 • /profile <名前> - プロファイル変更
 • /provider <名前> - プロバイダ変更
+• /stop - 実行を中断
 • /new または /clear - 新しいセッション
 • /status - 現在の設定を表示
 • /help - このヘルプを表示
 
 例:
 • /profile development
-• /provider gemini"""
+• /provider openrouter
+• /stop"""
     
     return None
 
@@ -354,6 +372,7 @@ def main():
 ║  コマンド:                                                     ║
 ║    /profile <名前>  - プロファイル変更                         ║
 ║    /provider <名前> - プロバイダ変更                           ║
+║    /stop            - 実行を中断                               ║
 ║    /new             - 新しいセッション                         ║
 ║    /status          - 現在の設定を表示                         ║
 ║    /help            - ヘルプ表示                               ║
@@ -436,19 +455,21 @@ def main():
                 if not text and attachments:
                     text = "この画像について教えてください。"
                 
-                # moco に送信
-                response = call_moco(text, sender, attachments if attachments else None)
-                
-                # 返信
-                reply = f"[moco] {response}"
-                
-                # 長すぎる場合は分割
-                MAX_LENGTH = 1000
-                if len(reply) > MAX_LENGTH:
-                    reply = reply[:MAX_LENGTH] + "..."
-                
-                print(f"[{timestamp}] 📤 返信: {reply[:50]}...")
-                send_imessage(sender, reply)
+                # moco に送信 (スレッド化して受信監視を止めないようにする)
+                def process_moco_and_reply(text_to_send, sender_to_reply, attachments_to_send):
+                    response = call_moco(text_to_send, sender_to_reply, attachments_to_send)
+                    reply = f"[moco] {response}"
+                    MAX_LENGTH = 1000
+                    if len(reply) > MAX_LENGTH:
+                        reply = reply[:MAX_LENGTH] + "..."
+                    print(f"[{timestamp}] 📤 返信: {reply[:50]}...")
+                    send_imessage(sender_to_reply, reply)
+
+                threading.Thread(
+                    target=process_moco_and_reply, 
+                    args=(text, sender, attachments if attachments else None),
+                    daemon=True
+                ).start()
             
             time.sleep(POLL_INTERVAL)
             
