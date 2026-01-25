@@ -10,6 +10,7 @@ class ChatRequest(BaseModel):
     model: Optional[str] = None
     verbose: bool = False
     working_directory: Optional[str] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
 
 class SessionCreate(BaseModel):
     title: str = "New Chat"
