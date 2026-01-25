@@ -47,6 +47,7 @@ mobile = [
     "neonize",  # WhatsApp integration
     "python-magic",  # File type detection for media
     "qrcode",  # QR code display for WhatsApp auth
+    "protobuf>=5.0.0",  # Required by neonize
 ]
 
 [project.scripts]
