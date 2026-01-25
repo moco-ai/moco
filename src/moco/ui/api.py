@@ -359,8 +359,8 @@ class Attachment(BaseModel):
     """添付ファイル"""
     type: str  # "image" or "file"
     name: str
-    mime_type: str
-    data: str  # Base64エンコードされたデータ
+    path: str
+    mime_type: Optional[str] = None
 
 
 class ChatRequest(BaseModel):
@@ -1005,31 +1005,9 @@ async def chat(req: ChatRequest):
 
     # 添付ファイルを処理
     message = req.message
-    image_paths = []
-    
     if req.attachments:
-        for i, att in enumerate(req.attachments):
-            if att.type == "image":
-                # 一時ファイルとして保存
-                ext = att.mime_type.split("/")[-1] if "/" in att.mime_type else "jpg"
-                with tempfile.NamedTemporaryFile(
-                    delete=False, 
-                    suffix=f".{ext}", 
-                    prefix="moco_img_"
-                ) as f:
-                    f.write(base64.b64decode(att.data))
-                    image_paths.append(f.name)
-                    logger.info(f"Image saved: {f.name}")
-        
-        if image_paths:
-            # LLMが画像パスを正しく理解できるよう明確に指示
-            paths_str = "\n".join(f"- {p}" for p in image_paths)
-            message = f"""ユーザーからのリクエスト: {req.message}
-
-【重要】ユーザーが以下の画像ファイルを添付しました。analyze_image ツールを使用してこれらの画像を分析してください:
-{paths_str}
-
-まず画像を分析し、その内容に基づいてユーザーのリクエストに回答してください。"""
+        expanded_message, _ = process_attachments(req.attachments, req.message)
+        message = expanded_message
 
     # セッション準備
     session_id, history = orchestrator._prepare_session(message, session_id)

@@ -15,6 +15,7 @@ WhatsApp ↔ moco 連携
 import httpx
 import base64
 import threading
+import uuid
 from neonize.client import NewClient
 from neonize.events import MessageEv, ConnectedEv, QREv, event
 
@@ -31,9 +32,8 @@ client = NewClient("moco_whatsapp")
 # 接続完了フラグ（起動時の過去メッセージを無視するため）
 is_connected = False
 
-# ユーザーごとの設定（セッション、プロファイル、プロバイダ）
-user_settings = {}  # {sender: {"session_id": str, "profile": str, "provider": str, "working_dir": str}}
-
+# ユーザーごとの設定とロック
+user_settings = {}  # {sender: {"session_id": str, "profile": str, "provider": str, "working_dir": str, "lock": threading.Lock}}
 
 def get_user_settings(sender: str) -> dict:
     """ユーザー設定を取得（なければデフォルト作成）"""
@@ -46,7 +46,8 @@ def get_user_settings(sender: str) -> dict:
             "session_id": None,
             "profile": DEFAULT_PROFILE,
             "provider": DEFAULT_PROVIDER,
-            "working_dir": DEFAULT_WORKING_DIR
+            "working_dir": DEFAULT_WORKING_DIR,
+            "lock": threading.Lock()
         }
     return user_settings[sender]
 
@@ -104,6 +105,8 @@ def on_message(c: NewClient, ev: MessageEv):
         text = msg.extendedTextMessage.text
     elif msg.imageMessage and msg.imageMessage.caption:
         text = msg.imageMessage.caption
+    elif msg.documentMessage and msg.documentMessage.caption:
+        text = msg.documentMessage.caption
     
     # 自分の返信メッセージは無視（ループ防止）
     if text and (text.startswith("[moco]") or text.startswith("❌")):
@@ -219,47 +222,99 @@ def on_message(c: NewClient, ev: MessageEv):
             client.reply_message(help_text, ev)
             return
     
-    # 画像メッセージの処理
-    attachments = []
-    if msg.imageMessage:
-        try:
-            print("🖼️ 画像を検出...")
-            # 画像をダウンロード
-            image_data = c.download_any(msg)
-            if image_data:
-                # Base64エンコード
-                b64_data = base64.b64encode(image_data).decode("utf-8")
-                mime_type = msg.imageMessage.mimetype or "image/jpeg"
-                attachments.append({
-                    "type": "image",
-                    "name": "whatsapp_image.jpg",
-                    "mime_type": mime_type,
-                    "data": b64_data
-                })
-                print(f"✅ 画像取得完了 ({len(image_data)} bytes)")
-                # キャプションがなければデフォルト
-                if not text:
-                    text = "この画像について教えてください。"
-        except Exception as e:
-            print(f"⚠️ 画像取得エラー: {e}")
+    # 画像・ドキュメントメッセージの処理（ここでは検出のみ、ダウンロードはスレッド内で行う）
+    has_image = bool(msg.imageMessage)
+    has_doc = bool(msg.documentMessage)
     
-    # テキストも画像もない場合はスキップ
-    if not text and not attachments:
+    # テキストもメディアもない場合はスキップ
+    if not text and not has_image and not has_doc:
         return
     
-    print(f"\n📩 受信: {text}" + (f" + {len(attachments)}個の添付" if attachments else ""))
+    print(f"\n📩 受信: {text}" + (" + [画像検出]" if has_image else "") + (" + [ドキュメント検出]" if has_doc else ""))
     
     sender = str(info.MessageSource.Sender)
     settings = get_user_settings(sender)
     
     # mocoに送信 (スレッド化して受信を妨げないようにする)
     def call_moco_thread():
+        # 同一ユーザーからの同時リクエストを制御（スレッドセーフなロック）
+        # ロック取得に失敗した場合は、後続の要求として待機せず通知して終了
+        lock = settings.get("lock")
+        if lock and not lock.acquire(blocking=False):
+            client.reply_message("⚠️ 前のリクエストを処理中です。しばらくお待ちください。", ev)
+            return
+
         try:
+            # 重い I/O 処理（ファイルのダウンロード）をスレッド内で行う
+            current_attachments = []
+            working_dir = settings.get("working_dir") or DEFAULT_WORKING_DIR
+
+            # 保存先ディレクトリの準備
+            import os
+            os.makedirs(working_dir, exist_ok=True)
+
+            # 画像の処理
+            if msg.imageMessage:
+                try:
+                    print("🖼️ 画像をダウンロード中...")
+                    image_data = c.download_any(msg)
+                    if image_data:
+                        # ワークスペースに保存
+                        file_name = f"image_{uuid.uuid4().hex[:8]}.jpg"
+                        file_path = os.path.join(working_dir, file_name)
+                        with open(file_path, "wb") as f:
+                            f.write(image_data)
+
+                        current_attachments.append({
+                            "type": "image",
+                            "name": file_name,
+                            "path": file_path
+                        })
+                        print(f"✅ 画像を保存しました: {file_path}")
+                except Exception as e:
+                    print(f"⚠️ 画像ダウンロードエラー: {e}")
+
+            # ドキュメントの処理
+            if msg.documentMessage:
+                try:
+                    doc = msg.documentMessage
+                    file_name = doc.fileName or f"file_{uuid.uuid4().hex[:8]}"
+                    print(f"📄 ドキュメントをダウンロード中 ({file_name})...")
+                    doc_data = c.download_any(msg)
+                    if doc_data:
+                        # ワークスペースに保存
+                        file_path = os.path.join(working_dir, file_name)
+                        with open(file_path, "wb") as f:
+                            f.write(doc_data)
+
+                        current_attachments.append({
+                            "type": "file",
+                            "name": file_name,
+                            "path": file_path
+                        })
+                        print(f"✅ ドキュメントを保存しました: {file_path}")
+                except Exception as e:
+                    print(f"⚠️ ドキュメントダウンロードエラー: {e}")
+
+            # 処理用テキストの決定
+            thread_text = text
+            if not thread_text and current_attachments:
+                att0 = current_attachments[0]
+                if att0["type"] == "image":
+                    thread_text = f"画像 {att0['name']} について教えてください。"
+                else:
+                    thread_text = f"添付ファイル {att0['name']} を解析して内容を説明してください。"
+
+            if not thread_text and not current_attachments:
+                return
+
+            client.reply_message("⏳ 処理を開始しました。完了までお待ちください...", ev)
+
             print(f"🚀 moco に送信中... [{settings['profile']}/{settings['provider']}]" + 
-                  (f" (画像{len(attachments)}枚含む)" if attachments else ""))
+                  (f" (画像{len(current_attachments)}枚含む)" if current_attachments else ""))
             
             payload = {
-                "message": text,
+                "message": thread_text,
                 "session_id": settings["session_id"],
                 "profile": settings["profile"],
                 "provider": settings["provider"],
@@ -267,10 +322,11 @@ def on_message(c: NewClient, ev: MessageEv):
             }
             
             # 添付ファイルがあれば追加
-            if attachments:
-                payload["attachments"] = attachments
+            if current_attachments:
+                payload["attachments"] = current_attachments
             
-            with httpx.Client(timeout=300.0) as http:
+            # タイムアウトを 無制限に設定
+            with httpx.Client(timeout=None) as http:
                 response = http.post(MOCO_API_URL, json=payload)
             
             if response.status_code == 200:
@@ -282,14 +338,18 @@ def on_message(c: NewClient, ev: MessageEv):
                 if new_session_id:
                     settings["session_id"] = new_session_id
                 
-                # 長すぎる場合は切り詰め
+                # WhatsApp のメッセージ制限（約4000-6000文字）に配慮
                 if len(result) > 4000:
                     result = result[:4000] + "\n\n... (長すぎるため省略)"
                 
                 client.reply_message(result, ev)
                 print(f"📤 返信完了 ({len(result)} 文字)")
             else:
-                error_msg = f"❌ moco エラー: {response.status_code}"
+                try:
+                    error_detail = response.json().get("detail", str(response.status_code))
+                except:
+                    error_detail = response.text[:100]
+                error_msg = f"❌ moco エラー: {error_detail}"
                 client.reply_message(error_msg, ev)
                 print(error_msg)
                 
@@ -301,6 +361,9 @@ def on_message(c: NewClient, ev: MessageEv):
             error_msg = f"❌ エラー: {e}"
             client.reply_message(error_msg, ev)
             print(error_msg)
+        finally:
+            if lock:
+                lock.release()
 
     # スレッドを開始
     threading.Thread(target=call_moco_thread, daemon=True).start()

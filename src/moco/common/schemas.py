@@ -2,6 +2,12 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from datetime import datetime
 
+class Attachment(BaseModel):
+    type: str  # "image" or "file"
+    name: str
+    path: str
+    mime_type: Optional[str] = None
+
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
@@ -10,6 +16,7 @@ class ChatRequest(BaseModel):
     model: Optional[str] = None
     verbose: bool = False
     working_directory: Optional[str] = None
+    attachments: Optional[list[Attachment]] = None
 
 class SessionCreate(BaseModel):
     title: str = "New Chat"
