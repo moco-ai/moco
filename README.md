@@ -136,6 +136,75 @@ moco run "task" --provider zai/glm-4.7        # Combined (recommended)
 moco run "task" --provider openrouter -m claude-3-5-sonnet
 ```
 
+## 📱 Mobile Integration (WhatsApp)
+
+MOCO can be integrated with WhatsApp, allowing you to interact with your AI agents directly from your mobile device.
+
+### Setup
+
+```bash
+# Install mobile dependencies
+pip install -e ".[mobile]"
+
+# Start the Web UI server
+moco ui &
+
+# Start the WhatsApp client
+python -m moco.gateway.clients.whatsapp &
+```
+
+### First-time Connection
+
+1. A QR code will be displayed in the terminal
+2. Open WhatsApp on your phone
+3. Go to **Settings** → **Linked Devices** → **Link a Device**
+4. Scan the QR code
+
+### Usage
+
+Send messages to **yourself** in WhatsApp (Note to Self / Saved Messages):
+
+```
+Hello, create a Python script
+```
+
+MOCO will process your request and reply with the result.
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `/stop` | Cancel the current running task |
+| `/new` or `/clear` | Start a new session |
+| `/profile <name>` | Change profile (e.g., `development`, `code`) |
+| `/provider <name>` | Change LLM provider (e.g., `openai`, `gemini`) |
+| `/workdir <path>` | Change working directory |
+| `/cd <path>` | Alias for `/workdir` |
+| `/status` | Show current settings |
+| `/help` | Show help message |
+
+### Important Notes
+
+- **Self-messages only**: MOCO only responds to messages you send to yourself, not to messages from other contacts or groups
+- **Privacy**: Your conversations stay between you and the MOCO server running on your machine
+- **Long tasks**: For long-running tasks, use `/stop` to cancel and continue with a new request
+
+### Example Workflow
+
+```
+You: /workdir ~/projects/myapp
+MOCO: ✅ Working directory changed: /home/user/projects/myapp
+
+You: Create a FastAPI hello world app
+MOCO: [Creates main.py with FastAPI code]
+
+You: /stop
+MOCO: 🛑 Execution cancelled
+
+You: Now add a /users endpoint
+MOCO: [Continues with the new request]
+```
+
 ## 🚀 Quick Start
 
 ### Installation

@@ -46,7 +46,8 @@ def get_user_settings(sender: str) -> dict:
             "profile": DEFAULT_PROFILE,
             "provider": DEFAULT_PROVIDER,
             "working_dir": DEFAULT_WORKING_DIR,
-            "lock": threading.Lock()
+            "lock": threading.Lock(),
+            "active_request_id": None  # リクエストID管理（キャンセル時の復旧用）
         }
     return user_settings[sender]
 
@@ -170,6 +171,16 @@ def on_message(c: NewClient, ev: MessageEv):
                     client.reply_message(f"⚠️ 中断エラー: {e}", ev)
             else:
                 client.reply_message("❓ 実行中のタスクがありません", ev)
+            
+            # ローカル状態を強制リセット（復旧を確実にする）
+            settings["active_request_id"] = None  # 実行中リクエストを無効化
+            lock = settings.get("lock")
+            if lock and lock.locked():
+                try:
+                    lock.release()
+                    print("🔓 ロックを強制解放しました")
+                except RuntimeError:
+                    pass  # すでに解放済み
             return
 
         if text_lower.startswith("/workdir ") or text_lower.startswith("/cd "):
@@ -247,6 +258,10 @@ def on_message(c: NewClient, ev: MessageEv):
         if lock and not lock.acquire(blocking=False):
             client.reply_message("⚠️ 前のリクエストを処理中です。しばらくお待ちください。", ev)
             return
+
+        # リクエストIDを生成（キャンセル検知用）
+        request_id = str(uuid.uuid4())
+        settings["active_request_id"] = request_id
 
         try:
             # 重い I/O 処理（ファイルのダウンロード）をスレッド内で行う
@@ -333,6 +348,11 @@ def on_message(c: NewClient, ev: MessageEv):
             with httpx.Client(timeout=None) as http:
                 response = http.post(MOCO_API_URL, json=payload)
             
+            # キャンセルチェック: リクエストIDが変わっていたら無視
+            if settings["active_request_id"] != request_id:
+                print(f"⚠️ リクエスト {request_id[:8]} はキャンセルされました（結果を破棄）")
+                return
+            
             if response.status_code == 200:
                 data = response.json()
                 result = data.get("response", "（応答なし）")
@@ -366,7 +386,7 @@ def on_message(c: NewClient, ev: MessageEv):
             client.reply_message(error_msg, ev)
             print(error_msg)
         finally:
-            if lock:
+            if lock and lock.locked():
                 lock.release()
 
     # スレッドを開始
