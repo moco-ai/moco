@@ -91,7 +91,8 @@ class Orchestrator:
         verbose: bool = False,
         progress_callback: Optional[callable] = None,
         use_optimizer: bool = False,
-        working_directory: Optional[str] = None
+        working_directory: Optional[str] = None,
+        mcp_servers: Optional[List[Dict[str, Any]]] = None
     ):
         # Ensure global skill tools use the active profile.
         # skill_tools._get_loader() relies on MOCO_PROFILE and keeps a global loader cache,
@@ -141,9 +142,32 @@ class Orchestrator:
             db_path=memory_db_path
         )
 
-        # ツールを動的に読み込む
-        self.tool_map = discover_tools(profile=self.profile)
+        # Ad-hoc MCP サーバー設定の変換
+        additional_mcp = []
+        
+        # Ad-hoc MCP servers from CLI arguments (--mcp "name:cmd,arg1,arg2")
+        if mcp_servers:
+            from ..core.mcp_client import MCPServerConfig
+            for s in mcp_servers:
+                if isinstance(s, dict) and s.get("name") and s.get("command"):
+                    additional_mcp.append(
+                        MCPServerConfig(
+                            name=str(s["name"]),
+                            command=str(s["command"]),
+                            args=list(s.get("args", []) or []),
+                            env=dict(s.get("env", {}) or {}),
+                        )
+                    )
 
+        # ツールを動的に読み込む
+        self.tool_map = discover_tools(profile=self.profile, additional_mcp=additional_mcp)
+
+        # プロジェクト固有の記憶（MOCO.md）をロード
+        self.project_memory = self._load_project_memory()
+        if self.project_memory:
+            moco_log(f"Loaded project memory from MOCO.md", verbose=self.verbose)
+
+        # Agent registry and session state
         self.agents: Dict[str, AgentConfig] = {}
         self.runtimes: Dict[str, AgentRuntime] = {}
 
@@ -152,9 +176,9 @@ class Orchestrator:
         self._current_session_id: Optional[str] = None
 
         # サブエージェントのセッションIDをキャッシュ
-        # {parent_session_id: {agent_name: sub_session_id}}
         self._sub_sessions: Dict[str, Dict[str, str]] = {}
 
+        # エージェント定義をロード
         self.reload_agents()
 
     def reload_agents(self):
@@ -174,9 +198,14 @@ class Orchestrator:
             if self.verbose:
                 print(f"Loaded agent: {name}")
 
-            # delegate_to_agent ツールが必要かどうか判定
+            # Needs delegate tool
             needs_delegate = name == "orchestrator" or "delegate_to_agent" in config.tools
             
+            # MOCO.md の情報をシステムプロンプトに追加
+            full_system_prompt = config.system_prompt
+            if hasattr(self, 'project_memory') and self.project_memory:
+                full_system_prompt = f"{full_system_prompt}\n\n{self.project_memory}"
+
             if needs_delegate:
                 # delegate_to_agent ツールを追加
                 agent_tools = dict(self.tool_map)
@@ -193,7 +222,8 @@ class Orchestrator:
                     progress_callback=self.progress_callback,
                     parent_agent=None if name == "orchestrator" else "orchestrator",
                     semantic_memory=self.semantic_memory,
-                    memory_service=self.memory_service
+                    memory_service=self.memory_service,
+                    system_prompt_override=full_system_prompt
                 )
             else:
                 self.runtimes[name] = AgentRuntime(
@@ -206,9 +236,10 @@ class Orchestrator:
                     stream=self.stream,
                     verbose=self.verbose,
                     progress_callback=self.progress_callback,
-                    parent_agent="orchestrator",  # サブエージェントの親はorchestrator
+                    parent_agent="orchestrator",
                     semantic_memory=self.semantic_memory,
-                    memory_service=self.memory_service
+                    memory_service=self.memory_service,
+                    system_prompt_override=full_system_prompt
                 )
 
     def set_profile(self, profile: str) -> None:
@@ -1548,3 +1579,14 @@ class Orchestrator:
                 loop.close()
             except Exception:
                 pass
+
+    def _load_project_memory(self) -> Optional[str]:
+        """作業ディレクトリから MOCO.md を探して読み込む"""
+        moco_md = Path(self.working_directory) / "MOCO.md"
+        if moco_md.exists():
+            try:
+                content = moco_md.read_text(encoding="utf-8")
+                return f"## PROJECT CONTEXT (from MOCO.md)\n{content}"
+            except Exception as e:
+                moco_log(f"Error reading MOCO.md: {e}", verbose=self.verbose)
+        return None

@@ -73,7 +73,7 @@ def _find_profiles_dir() -> str:
 
 # --- Tool Discovery ---
 
-def discover_tools(profile: str) -> Dict[str, Callable]:
+def discover_tools(profile: str, additional_mcp: Optional[List['MCPServerConfig']] = None) -> Dict[str, Callable]:
     """
     指定されたプロファイルの tools/ ディレクトリと、
     設定に応じてベースツールを読み込む
@@ -116,36 +116,46 @@ def discover_tools(profile: str) -> Dict[str, Callable]:
         from .project_context import get_project_context
         tool_map["get_project_context"] = get_project_context
         
-    # 3. MCP ツールを読み込む（profile.yaml の mcp_servers から）
+    # 3. MCP ツールを読み込む
     mcp_servers_config = profile_config.get("mcp_servers", []) if isinstance(profile_config, dict) else []
-    if mcp_servers_config:
+    
+    env_mcp = os.getenv("MOCO_MCP_SERVERS")
+    if env_mcp:
         try:
-            from ..core.mcp_client import get_mcp_client, MCPConfig, MCPServerConfig
+            import json
+            mcp_servers_config.extend(json.loads(env_mcp))
+        except Exception as e:
+            logger.error(f"Error parsing MOCO_MCP_SERVERS env: {e}")
 
-            servers = []
-            for s in mcp_servers_config:
-                if isinstance(s, dict) and s.get("name") and s.get("command"):
-                    servers.append(
-                        MCPServerConfig(
-                            name=str(s["name"]),
-                            command=str(s["command"]),
-                            args=list(s.get("args", []) or []),
-                            env=dict(s.get("env", {}) or {}),
-                        )
-                    )
+    # 集約した設定から MCP サーバーを構築
+    servers = []
+    from ..core.mcp_client import MCPServerConfig
+    for s in mcp_servers_config:
+        if isinstance(s, dict) and s.get("name") and s.get("command"):
+            servers.append(
+                MCPServerConfig(
+                    name=str(s["name"]),
+                    command=str(s["command"]),
+                    args=list(s.get("args", []) or []),
+                    env=dict(s.get("env", {}) or {}),
+                )
+            )
+    
+    if additional_mcp:
+        servers.extend(additional_mcp)
 
-            if servers:
-                mcp_config = MCPConfig(enabled=True, servers=servers)
-                mcp_client = get_mcp_client(mcp_config)
-                mcp_tools = mcp_client.create_tool_functions()
-                tool_map.update(mcp_tools)
-                logger.info(f"Loaded {len(mcp_tools)} MCP tools from {len(servers)} servers")
-        except ImportError:
-            logger.warning("MCP dependencies not found. Skipping MCP tools loading.")
+    if servers:
+        try:
+            from ..core.mcp_client import get_mcp_client, MCPConfig
+            mcp_config = MCPConfig(enabled=True, servers=servers)
+            mcp_client = get_mcp_client(mcp_config)
+            mcp_tools = mcp_client.create_tool_functions()
+            tool_map.update(mcp_tools)
+            logger.info(f"Loaded {len(mcp_tools)} MCP tools from {len(servers)} servers")
         except Exception as e:
             logger.error(f"Error loading MCP tools: {e}")
 
-    # 4. Skills のロジック型ツールを読み込む（SKILL.md の tools: で宣言されたもののみ）
+    # 4. Skills のロジック型ツールを読み込む
     from .skill_loader import SkillLoader
     from .skill_tools import execute_skill
     
@@ -153,10 +163,8 @@ def discover_tools(profile: str) -> Dict[str, Callable]:
     skills = loader.load_skills()
     
     def _wrap_declared_skill_tool(skill_name: str, tool_name: str, description: str = ""):
-        """Wrap a declared skill tool as a normal Python tool."""
         def _tool(**kwargs):
             return execute_skill(skill_name=skill_name, tool_name=tool_name, arguments=kwargs)
-
         _tool.__name__ = tool_name
         _tool.__doc__ = description or f"Skill tool: {skill_name}.{tool_name}"
         return _tool
@@ -165,9 +173,7 @@ def discover_tools(profile: str) -> Dict[str, Callable]:
         if skill.is_logic and skill.exposed_tools:
             for tool_name, tool_def in skill.exposed_tools.items():
                 desc = tool_def.get("description", "")
-                # Python関数としてラップして登録（JS/TS/Python は execute_skill 側で分岐）
                 tool_map[tool_name] = _wrap_declared_skill_tool(skill.name, tool_name, desc)
-                logger.info(f"Loaded declared skill tool: {tool_name} from {skill.name}")
 
     return tool_map
 
