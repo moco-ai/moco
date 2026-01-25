@@ -13,7 +13,6 @@ WhatsApp ↔ moco 連携
 """
 
 import httpx
-import base64
 import threading
 import uuid
 from neonize.client import NewClient
@@ -347,7 +346,7 @@ def on_message(c: NewClient, ev: MessageEv):
             else:
                 try:
                     error_detail = response.json().get("detail", str(response.status_code))
-                except:
+                except Exception:
                     error_detail = response.text[:100]
                 error_msg = f"❌ moco エラー: {error_detail}"
                 client.reply_message(error_msg, ev)

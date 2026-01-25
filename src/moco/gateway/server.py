@@ -1,9 +1,8 @@
 import secrets
-import json
 import logging
 import os
 import uuid
-from typing import Any, Dict, Optional
+from typing import Optional
 from fastapi import WebSocket, WebSocketDisconnect
 from moco.ui.api import approval_manager
 
@@ -74,5 +73,5 @@ async def handle_gateway_connection(websocket: WebSocket, token: Optional[str] =
         logger.error(f"Error in Gateway connection: {e}")
         try:
             await websocket.close()
-        except:
+        except Exception:
             pass

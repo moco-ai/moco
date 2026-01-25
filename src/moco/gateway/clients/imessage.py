@@ -24,7 +24,6 @@ import subprocess
 import time
 import httpx
 import base64
-import mimetypes
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -68,7 +67,7 @@ def get_user_settings(sender: str) -> Dict[str, Optional[str]]:
 def get_apple_id() -> Optional[str]:
     """自分のApple ID（電話番号/メールアドレス）を取得"""
     try:
-        result = subprocess.run(
+        subprocess.run(
             ["defaults", "read", "com.apple.iChat", "Accounts"],
             capture_output=True,
             text=True
@@ -397,7 +396,7 @@ def main():
             return
         raise
     
-    print(f"✅ データベース接続OK")
+    print("✅ データベース接続OK")
     print(f"🔗 moco API: {MOCO_API_URL}")
     print(f"👤 デフォルトプロファイル: {DEFAULT_PROFILE}")
     print(f"🤖 デフォルトプロバイダ: {DEFAULT_PROVIDER}")

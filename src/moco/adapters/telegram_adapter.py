@@ -1,6 +1,5 @@
-import os
 import logging
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from datetime import datetime
 import aiohttp
 from .base import ChannelAdapter, NormalizedMessage, MediaAttachment, OutgoingMessage, LocationData

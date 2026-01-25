@@ -1,7 +1,7 @@
 import hmac
 import hashlib
 import base64
-from typing import Any, Dict, Optional, List
+from typing import Optional, List
 import aiohttp
 import logging
 from datetime import datetime

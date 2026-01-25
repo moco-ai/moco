@@ -3,7 +3,6 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt, Confirm
-from rich.style import Style
 from .env_manager import EnvManager
 
 console = Console()

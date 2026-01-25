@@ -4,6 +4,7 @@ ChatGPT-like interface
 """
 # ruff: noqa: E402
 import os
+import secrets
 import re
 import asyncio
 import base64
@@ -42,7 +43,7 @@ from moco.gateway.media_processor import MediaProcessor
 from moco.utils.tunnel import setup_tunnel, stop_tunnel
 from moco.adapters.line_adapter import LINEAdapter
 from moco.adapters.telegram_adapter import TelegramAdapter
-from moco.adapters.base import OutgoingMessage
+from moco.adapters.base import OutgoingMessage, ChannelAdapter
 
 
 def filter_response_for_display(response: str, verbose: bool = False) -> str:
@@ -988,8 +989,6 @@ async def get_stats(session_id: Optional[str] = None, scope: str = "all"):
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     """チャット（非ストリーミング）- WhatsApp/モバイル連携用"""
-    import tempfile
-    import base64
     
     orchestrator = get_orchestrator(
         req.profile,
@@ -1299,7 +1298,6 @@ async def webhook_handler(channel: str, request: Request):
     if not normalized_msgs:
         return {"status": "ignored"}
 
-    from moco.gateway.media_processor import MediaProcessor
     processor = MediaProcessor()
     
     for msg in normalized_msgs:
@@ -1370,7 +1368,7 @@ async def webhook_handler(channel: str, request: Request):
 
 async def _simple_webhook_handler(channel: str, request: Dict[str, Any]):
     """互換性のための簡易Webhookハンドラー"""
-    sender_name = request.get("sender_name", "Mobile User")
+    # sender_name = request.get("sender_name", "Mobile User")
     text = request.get("text", "")
     session_id = request.get("session_id")
 

@@ -194,7 +194,7 @@ def write_file(path: str, content: str, overwrite: bool = False) -> str:
             except Exception:
                 existing_lines = 0
 
-            new_lines = content.count('\n') + 1
+            # new_lines = content.count('\n') + 1
 
             # 既存ファイルが5行以上の場合は、意図しない大規模なデータ消失を防ぐため
             # write_file による全上書きを制限し、edit_file を推奨する。
@@ -316,12 +316,12 @@ def edit_file(path: str, old_string: str, new_string: str, dry_run: bool = False
                 msg = f"Error: old_string not found in {path}\n"
                 # ヒントの生成を強化
                 diff = list(difflib.ndiff(old_unix.splitlines(), content_unix.splitlines()))
-                nearby = [l[2:] for l in diff if l.startswith('  ') and len(l.strip()) > 10]
+                nearby = [ln[2:] for ln in diff if ln.startswith('  ') and len(ln.strip()) > 10]
                 if nearby:
                     msg += f"Hint: Similar code found:\n{nearby[0][:100]}...\n"
 
                 # インデントの差異をチェック
-                if any(normalize(l) in [normalize(cl) for cl in content_lines] for l in old_lines if l.strip()):
+                if any(normalize(ol) in [normalize(cl) for cl in content_lines] for ol in old_lines if ol.strip()):
                     msg += "Hint: Content matches partially but indentation or structure differs.\n"
 
                 return msg
@@ -335,7 +335,7 @@ def edit_file(path: str, old_string: str, new_string: str, dry_run: bool = False
             original_indent = first_matched_line[:len(first_matched_line) - len(first_matched_line.lstrip())] if first_matched_line.strip() else ""
 
             new_lines_list = new_unix.splitlines()
-            new_indents = [len(l) - len(l.lstrip()) for l in new_lines_list if l.strip()]
+            new_indents = [len(ln) - len(ln.lstrip()) for ln in new_lines_list if ln.strip()]
             min_new_indent = min(new_indents) if new_indents else 0
 
             replacement_lines = []
@@ -374,7 +374,8 @@ def edit_file(path: str, old_string: str, new_string: str, dry_run: bool = False
             try:
                 from ..ui.patch_viewer import preview_patch, save_patch
                 choice = preview_patch(path, content, new_content, title=f"Edit File: {path}")
-                if choice == 'n': return "Edit cancelled by user."
+                if choice == 'n':
+                    return "Edit cancelled by user."
                 if choice == 's':
                     save_patch(path, content, new_content)
                     return f"Patch saved for {path}. Edit cancelled."

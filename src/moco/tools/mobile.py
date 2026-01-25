@@ -1,7 +1,6 @@
 from typing import Any, Dict, Optional
 import logging
 import asyncio
-import json
 
 logger = logging.getLogger(__name__)
 

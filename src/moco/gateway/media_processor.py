@@ -4,7 +4,6 @@ import io
 import tempfile
 import os
 import uuid
-from typing import Optional
 
 @dataclass
 class ProcessedMedia:

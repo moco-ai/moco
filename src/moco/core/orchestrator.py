@@ -165,7 +165,7 @@ class Orchestrator:
         # プロジェクト固有の記憶（MOCO.md）をロード
         self.project_memory = self._load_project_memory()
         if self.project_memory:
-            moco_log(f"Loaded project memory from MOCO.md", verbose=self.verbose)
+            moco_log("Loaded project memory from MOCO.md", verbose=self.verbose)
 
         # Agent registry and session state
         self.agents: Dict[str, AgentConfig] = {}
@@ -957,7 +957,8 @@ class Orchestrator:
                 status="running"
             )
 
-        runtime = self.runtimes[agent_name]; runtime.parent_session_id = parent_session_id
+        runtime = self.runtimes[agent_name]
+        runtime.parent_session_id = parent_session_id
 
         try:
             # キャンセルチェック

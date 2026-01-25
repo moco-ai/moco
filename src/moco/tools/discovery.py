@@ -3,7 +3,7 @@ import sys
 import logging
 import importlib.util
 import inspect
-from typing import Dict, Callable, Optional, List
+from typing import Dict, Callable, Optional, List, Any
 import yaml
 import glob
 from dataclasses import dataclass
@@ -73,7 +73,7 @@ def _find_profiles_dir() -> str:
 
 # --- Tool Discovery ---
 
-def discover_tools(profile: str, additional_mcp: Optional[List['MCPServerConfig']] = None) -> Dict[str, Callable]:
+def discover_tools(profile: str, additional_mcp: Optional[List[Any]] = None) -> Dict[str, Callable]:
     """
     指定されたプロファイルの tools/ ディレクトリと、
     設定に応じてベースツールを読み込む

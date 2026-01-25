@@ -657,7 +657,8 @@ class AgentRuntime:
         self.progress_callback = progress_callback
         self.parent_agent = parent_agent
         self.skills: List[SkillConfig] = skills or []
-        self.memory_service = memory_service; self.parent_session_id = None
+        self.memory_service = memory_service
+        self.parent_session_id = None
         
         # Memory context (dynamically updated in run())
         self._memory_context = ""
@@ -930,7 +931,9 @@ class AgentRuntime:
         """
         # Cancellation check
         if session_id:
-            check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
+            check_cancelled(session_id)
+            if self.parent_session_id:
+                check_cancelled(self.parent_session_id)
 
         # Validate required args before logging/loop-detection (Cursor-like behavior)
         # - Avoid noisy "📝 write_file" lines when the model emits empty args
@@ -1017,7 +1020,9 @@ class AgentRuntime:
                 
                 # Check cancellation again after potentially long execution
                 if session_id:
-                    check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
+                    check_cancelled(session_id)
+                    if self.parent_session_id:
+                        check_cancelled(self.parent_session_id)
                 
                 result = _truncate_tool_output(raw_result, func_name)
             except Exception as e:
@@ -1088,7 +1093,9 @@ class AgentRuntime:
 
         # Cancellation check
         if session_id:
-            check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
+            check_cancelled(session_id)
+            if self.parent_session_id:
+                check_cancelled(self.parent_session_id)
 
         # Recall from semantic memory
         self._recall_results = []
@@ -1219,7 +1226,9 @@ class AgentRuntime:
         # max_iterations = 20
         while True:
             if session_id:
-                check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
+                check_cancelled(session_id)
+                if self.parent_session_id:
+                    check_cancelled(self.parent_session_id)
             
             # Iteration warnings commented out (managed by token limit)
             # remaining = max_iterations - iterations
@@ -1360,7 +1369,9 @@ class AgentRuntime:
                         if delta.content:
                             # Check cancellation during streaming
                             if session_id:
-                                check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
+                                check_cancelled(session_id)
+                                if self.parent_session_id:
+                                    check_cancelled(self.parent_session_id)
                             
                             if not self.progress_callback:
                                 _safe_stream_print(delta.content)
@@ -1442,7 +1453,9 @@ class AgentRuntime:
                             else:
                                 # ツール実行直前
                                 if session_id:
-                                    check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
+                                    check_cancelled(session_id)
+                                    if self.parent_session_id:
+                                        check_cancelled(self.parent_session_id)
                                 
                                 # Do not execute tools until arguments are fully parseable JSON.
                                 # NOTE: Using default={} hides JSON parse failures and causes missing-required loops.
@@ -1454,7 +1467,9 @@ class AgentRuntime:
                                 
                                 # ツール実行直後
                                 if session_id:
-                                    check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
+                                    check_cancelled(session_id)
+                                    if self.parent_session_id:
+                                        check_cancelled(self.parent_session_id)
 
                             messages.append({
                                 "role": "tool",
@@ -1641,7 +1656,9 @@ class AgentRuntime:
 
         while True:
             if session_id:
-                check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
+                check_cancelled(session_id)
+                if self.parent_session_id:
+                    check_cancelled(self.parent_session_id)
 
             try:
                 if self.stream:
@@ -1659,7 +1676,9 @@ class AgentRuntime:
                     for chunk in response_stream:
                         # Check cancellation during streaming
                         if session_id:
-                            check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
+                            check_cancelled(session_id)
+                            if self.parent_session_id:
+                                check_cancelled(self.parent_session_id)
                         
                         # Get usage information
                         if chunk.usage_metadata:
