@@ -359,8 +359,8 @@ class Attachment(BaseModel):
     """添付ファイル"""
     type: str  # "image" or "file"
     name: str
-    mime_type: str
-    data: str  # Base64エンコードされたデータ
+    path: str
+    mime_type: Optional[str] = None
 
 
 class ChatRequest(BaseModel):
@@ -391,6 +391,10 @@ class ApproveSessionRequest(BaseModel):
     tool: Optional[str] = None
     args: Dict[str, Any] = {}
     approved: Optional[bool] = None
+
+
+class WorkdirRequest(BaseModel):
+    working_directory: str
 
 
 class ApprovalRespond(BaseModel):
@@ -521,7 +525,13 @@ async def list_sessions(limit: int = 20, profile: str = None):
 async def create_session(req: SessionCreate):
     """新規セッション作成"""
     orchestrator = get_orchestrator(req.profile)
-    session_id = orchestrator.create_session(title=req.title, profile=req.profile)
+    # Orchestrator.create_session は内部で profile=self.profile を渡すため、
+    # metadata に profile を含めると二重指定になる
+    metadata = {}
+    if req.working_directory:
+        metadata["working_directory"] = req.working_directory
+        
+    session_id = orchestrator.create_session(title=req.title, **metadata)
     return {"session_id": session_id, "title": req.title}
 
 
@@ -578,6 +588,56 @@ async def respond_approval(approval_id: str, body: ApprovalRespond):
     if not ok:
         raise HTTPException(status_code=404, detail="Approval request not found or expired")
     return {"status": "ok", "approval_id": approval_id, "decision": bool(body.approved)}
+
+
+@app.post("/api/sessions/{session_id}/workdir")
+async def update_session_workdir(session_id: str, req: WorkdirRequest):
+    """セッションの作業ディレクトリを更新"""
+    try:
+        # パスの存在確認と正規化
+        path = os.path.abspath(req.working_directory)
+        
+        # セキュリティチェック: 許可されたルートディレクトリ内か確認
+        # MOCO_ALLOWED_ROOTS が設定されていればそれを使用、なければ現在の作業ディレクトリ配下のみ許可
+        allowed_roots_env = os.getenv("MOCO_ALLOWED_ROOTS", "")
+        if allowed_roots_env:
+            allowed_roots = [os.path.abspath(r.strip()) for r in allowed_roots_env.split(",") if r.strip()]
+        else:
+            # デフォルトは現在の OS 作業ディレクトリ（起動時）をルートとする
+            allowed_roots = [os.path.abspath(os.getenv("MOCO_WORKING_DIRECTORY") or os.getcwd())]
+            # /private/tmp なども開発用に許可リストに入れる必要がある場合があるが、
+            # 明示的に指定されない限りは制限的に振る舞う
+            if "/private/tmp" not in allowed_roots_env and req.working_directory.startswith("/private/tmp"):
+                 allowed_roots.append("/private/tmp")
+
+        is_allowed = False
+        for root in allowed_roots:
+            if os.path.commonpath([os.path.abspath(root), path]) == os.path.abspath(root):
+                is_allowed = True
+                break
+        
+        if not is_allowed:
+            raise HTTPException(status_code=403, detail=f"Access denied: {req.working_directory} is outside allowed roots.")
+
+        if not os.path.exists(path):
+            raise HTTPException(status_code=400, detail=f"Directory not found: {req.working_directory}")
+        if not os.path.isdir(path):
+            raise HTTPException(status_code=400, detail=f"Path is not a directory: {req.working_directory}")
+
+        # セッションメタデータの更新
+        session = session_logger.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+            
+        metadata = session.get("metadata") or {}
+        metadata["working_directory"] = path
+        session_logger.update_session(session_id, metadata=metadata)
+        
+        return {"status": "ok", "session_id": session_id, "working_directory": path}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/sessions/{session_id}")
@@ -945,31 +1005,9 @@ async def chat(req: ChatRequest):
 
     # 添付ファイルを処理
     message = req.message
-    image_paths = []
-    
     if req.attachments:
-        for i, att in enumerate(req.attachments):
-            if att.type == "image":
-                # 一時ファイルとして保存
-                ext = att.mime_type.split("/")[-1] if "/" in att.mime_type else "jpg"
-                with tempfile.NamedTemporaryFile(
-                    delete=False, 
-                    suffix=f".{ext}", 
-                    prefix="moco_img_"
-                ) as f:
-                    f.write(base64.b64decode(att.data))
-                    image_paths.append(f.name)
-                    logger.info(f"Image saved: {f.name}")
-        
-        if image_paths:
-            # LLMが画像パスを正しく理解できるよう明確に指示
-            paths_str = "\n".join(f"- {p}" for p in image_paths)
-            message = f"""ユーザーからのリクエスト: {req.message}
-
-【重要】ユーザーが以下の画像ファイルを添付しました。analyze_image ツールを使用してこれらの画像を分析してください:
-{paths_str}
-
-まず画像を分析し、その内容に基づいてユーザーのリクエストに回答してください。"""
+        expanded_message, _ = process_attachments(req.attachments, req.message)
+        message = expanded_message
 
     # セッション準備
     session_id, history = orchestrator._prepare_session(message, session_id)

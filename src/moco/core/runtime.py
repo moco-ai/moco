@@ -645,10 +645,12 @@ class AgentRuntime:
         parent_agent: Optional[str] = None,
         semantic_memory: Optional[SemanticMemory] = None,
         skills: Optional[List[SkillConfig]] = None,
-        memory_service = None
+        memory_service = None,
+        system_prompt_override: Optional[str] = None
     ):
         self.config = config
         self.tool_map = tool_map
+        self.system_prompt_override = system_prompt_override
         self.agent_name = agent_name
         self.name = name or agent_name
         self.verbose = verbose
@@ -724,7 +726,7 @@ class AgentRuntime:
                 raise ValueError("ZAI_API_KEY environment variable not set")
             self.openai_client = AsyncOpenAI(
                 api_key=zai_key,
-                base_url="https://api.z.ai/api/coding/paas/v4"
+                base_url=os.environ.get("ZAI_BASE_URL", "https://api.z.ai/api/coding/paas/v4")
             )
             self.client = None
         else:
@@ -863,7 +865,7 @@ class AgentRuntime:
         
         context_header += "---\n\n"
 
-        prompt = self.config.system_prompt
+        prompt = self.system_prompt_override if hasattr(self, 'system_prompt_override') and self.system_prompt_override else self.config.system_prompt
 
         # Injection of Skills
         if self.skills:
@@ -1012,6 +1014,11 @@ class AgentRuntime:
         elif func_name in self.available_tools:
             try:
                 raw_result = await _execute_tool_safely_async(self.available_tools[func_name], args_dict)
+                
+                # Check cancellation again after potentially long execution
+                if session_id:
+                    check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
+                
                 result = _truncate_tool_output(raw_result, func_name)
             except Exception as e:
                 result = f"Error executing {func_name}: {e}"
@@ -1351,6 +1358,10 @@ class AgentRuntime:
                                     reasoning_buffer = ""
                         # Stream output text content
                         if delta.content:
+                            # Check cancellation during streaming
+                            if session_id:
+                                check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
+                            
                             if not self.progress_callback:
                                 _safe_stream_print(delta.content)
                             collected_content += delta.content
@@ -1429,6 +1440,10 @@ class AgentRuntime:
                             elif not (stripped.startswith("{") and stripped.endswith("}")):
                                 result = "Error: tool call arguments are incomplete JSON"
                             else:
+                                # ツール実行直前
+                                if session_id:
+                                    check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
+                                
                                 # Do not execute tools until arguments are fully parseable JSON.
                                 # NOTE: Using default={} hides JSON parse failures and causes missing-required loops.
                                 args_dict = SmartJSONParser.parse(raw_args, default=None)
@@ -1436,6 +1451,10 @@ class AgentRuntime:
                                     result = "Error: tool call arguments are invalid JSON (expected a single JSON object)"
                                 else:
                                     result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
+                                
+                                # ツール実行直後
+                                if session_id:
+                                    check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
 
                             messages.append({
                                 "role": "tool",
@@ -1638,6 +1657,10 @@ class AgentRuntime:
                     function_calls = []
 
                     for chunk in response_stream:
+                        # Check cancellation during streaming
+                        if session_id:
+                            check_cancelled(session_id); (self.parent_session_id and check_cancelled(self.parent_session_id))
+                        
                         # Get usage information
                         if chunk.usage_metadata:
                             self.last_usage = {

@@ -228,127 +228,148 @@ def write_file(path: str, content: str, overwrite: bool = False) -> str:
         return f"Error writing file: {e}"
 
 
-def edit_file(path: str, old_string: str, new_string: str) -> str:
+def edit_file(path: str, old_string: str, new_string: str, dry_run: bool = False) -> str:
     """
     ファイルの一部を置換して編集します（search/replace形式）。
     既存ファイルの特定の文字列を新しい文字列に置き換えます。
 
     Args:
         path (str): 編集するファイルのパス
-        old_string (str): 置換対象の文字列（ファイル内で一意である必要があります）
+        old_string (str): 置換対象の文字列
         new_string (str): 置換後の文字列
+        dry_run (bool, optional): Trueの場合、実際に書き込まずに差分を表示します。
 
     Returns:
-        str: 成功時は成功メッセージ、失敗時はエラーメッセージ
-
-    Note:
-        - 最初に完全一致を試行し、失敗した場合はインデントや空白を無視したスマートマッチを試行します。
-        - 置換箇所が複数見つかった場合はエラーとなります。
+        str: 実行結果メッセージまたは差分
     """
     try:
-        # パスを解決
         abs_path = resolve_safe_path(path)
-
         if not os.path.exists(abs_path):
             return f"Error: File not found: {path}"
 
-        # 巨大ファイル編集のガード
         file_size = os.path.getsize(abs_path)
         if file_size > MAX_EDIT_SIZE:
-             return (
-                 f"Error: File is too large to edit via string replacement ({file_size} bytes). "
-                 f"Maximum allowed size is {MAX_EDIT_SIZE} bytes."
-             )
+             return f"Error: File too large ({file_size} bytes). Max {MAX_EDIT_SIZE} bytes."
 
-        with open(abs_path, 'r', encoding='utf-8') as f:
+        with open(abs_path, 'r', encoding='utf-8', errors='replace') as f:
             content = f.read()
 
-        # --- ステップ1: 完全一致の試行 ---
-        count = content.count(old_string)
-        
-        if count == 1:
+        # 改行コードの揺らぎを吸収
+        content_unix = content.replace('\r\n', '\n')
+        old_unix = old_string.replace('\r\n', '\n')
+        new_unix = new_string.replace('\r\n', '\n')
+
+        new_content = None
+
+        # 1. 完全一致 (Strict Match)
+        if content.count(old_string) == 1:
             new_content = content.replace(old_string, new_string, 1)
-        elif count > 1:
-            return f"Error: old_string found {count} times in {path}. Please provide a more specific string."
-        else:
-            # --- ステップ2: スマートマッチ (空白・インデント無視) の試行 ---
-            # 各行を正規化（前後の空白削除）して比較
-            content_lines = content.splitlines(keepends=True)
-            old_lines = old_string.splitlines()
-            
+        elif content_unix.count(old_unix) == 1:
+            new_content = content_unix.replace(old_unix, new_unix, 1)
+
+        if new_content is None:
+            # 2. スマートマッチ (Indentation/Whitespace Insensitive Match)
+            content_lines = content_unix.splitlines(keepends=True)
+            old_lines = old_unix.splitlines()
+
             def normalize(s):
                 return "".join(s.split())
 
-            old_norm_lines = [normalize(line) for line in old_lines if line.strip()]
-            
+            old_valid_indices = [i for i, line in enumerate(old_lines) if line.strip()]
+            old_norm_lines = [normalize(old_lines[i]) for i in old_valid_indices]
+
+            if not old_norm_lines:
+                return "Error: old_string consists only of whitespace/empty lines."
+
             match_indices = []
-            for i in range(len(content_lines) - len(old_norm_lines) + 1):
-                # content側の空白行を飛ばしつつ、old_linesの有効な行数分を比較
-                window = []
-                curr_idx = i
-                while len(window) < len(old_norm_lines) and curr_idx < len(content_lines):
-                    line = content_lines[curr_idx].strip()
-                    if line:
-                        window.append(normalize(line))
-                    curr_idx += 1
-                
-                if window == old_norm_lines:
-                    # マッチした範囲（i から curr_idx まで）を記録
-                    match_indices.append((i, curr_idx))
+            first_line_norm = old_norm_lines[0]
+
+            for i, line in enumerate(content_lines):
+                if normalize(line) == first_line_norm:
+                    is_match = True
+                    match_end_idx = i
+                    old_idx_ptr = 1
+                    offset = 1
+                    while old_idx_ptr < len(old_norm_lines):
+                        if i + offset >= len(content_lines):
+                            is_match = False
+                            break
+
+                        target_line = content_lines[i + offset]
+                        target_norm = normalize(target_line)
+                        if target_norm == "":
+                            offset += 1
+                            continue
+
+                        if target_norm == old_norm_lines[old_idx_ptr]:
+                            old_idx_ptr += 1
+                            match_end_idx = i + offset
+                        else:
+                            is_match = False
+                            break
+                        offset += 1
+
+                    if is_match:
+                        match_indices.append((i, match_end_idx + 1))
 
             if len(match_indices) == 0:
-                # 診断レポートの作成
-                diff = difflib.ndiff(old_string.splitlines(), content.splitlines())
-                nearby_matches = [line for line in diff if line.startswith('  ')] # 共通行
-                
                 msg = f"Error: old_string not found in {path}\n"
-                msg += "ヒント: 完全一致もスマートマッチも見つかりませんでした。\n"
-                if len(old_lines) > 5:
-                    msg += "範囲が広すぎる可能性があります。修正したい箇所の前後2-3行に絞ってみてください。"
-                return msg
-            
-            if len(match_indices) > 1:
-                return f"Error: multiple fuzzy matches found ({len(match_indices)}). Please be more specific."
+                # ヒントの生成を強化
+                diff = list(difflib.ndiff(old_unix.splitlines(), content_unix.splitlines()))
+                nearby = [l[2:] for l in diff if l.startswith('  ') and len(l.strip()) > 10]
+                if nearby:
+                    msg += f"Hint: Similar code found:\n{nearby[0][:100]}...\n"
 
-            # 置換実行（スマートマッチ成功）
-            start, end = match_indices[0]
-            
-            # 元のインデントを維持するための簡易的な推測
-            # 最初の非空行のインデントを取得
-            original_indent = ""
-            for idx in range(start, end):
-                if content_lines[idx].strip():
-                    original_indent = content_lines[idx][:len(content_lines[idx]) - len(content_lines[idx].lstrip())]
-                    break
-            
-            # new_string の各行にベースインデントを付与
-            # new_string 内の最小インデントを計算し、それを original_indent に置き換える
-            new_lines_raw = new_string.splitlines()
-            
-            # new_string 本体の最小インデント幅を特定
-            new_indents = []
-            for l in new_lines_raw:
-                if l.strip():
-                    new_indents.append(len(l) - len(l.lstrip()))
+                # インデントの差異をチェック
+                if any(normalize(l) in [normalize(cl) for cl in content_lines] for l in old_lines if l.strip()):
+                    msg += "Hint: Content matches partially but indentation or structure differs.\n"
+
+                return msg
+
+            if len(match_indices) > 1:
+                return f"Error: Multiple matches found ({len(match_indices)}). Please provide more context."
+
+            # 置換の実行
+            start_line_idx, end_line_idx = match_indices[0]
+            first_matched_line = content_lines[start_line_idx]
+            original_indent = first_matched_line[:len(first_matched_line) - len(first_matched_line.lstrip())] if first_matched_line.strip() else ""
+
+            new_lines_list = new_unix.splitlines()
+            new_indents = [len(l) - len(l.lstrip()) for l in new_lines_list if l.strip()]
             min_new_indent = min(new_indents) if new_indents else 0
 
-            adjusted_new_lines = []
-            for line in new_lines_raw:
-                if line.strip():
-                    # 自身の相対インデントを維持しつつ、ベースインデントを付与
-                    relative_indent = line[:len(line) - len(line.lstrip())][min_new_indent:]
-                    adjusted_new_lines.append(original_indent + relative_indent + line.lstrip())
-                else:
-                    adjusted_new_lines.append("")
-            
-            new_block = "\n".join(adjusted_new_lines)
-            if content_lines[end-1].endswith('\n') and not new_block.endswith('\n'):
-                new_block += '\n'
-                
-            new_content = "".join(content_lines[:start]) + new_block + "".join(content_lines[end:])
+            replacement_lines = []
+            for line in new_lines_list:
+                if not line.strip():
+                    replacement_lines.append("")
+                    continue
+                current_indent_len = len(line) - len(line.lstrip())
+                relative_indent_len = max(0, current_indent_len - min_new_indent)
+                indent_char = "\t" if "\t" in original_indent else " "
+                indent_str = original_indent + (indent_char * relative_indent_len)
+                replacement_lines.append(indent_str + line.lstrip())
 
-        # --- ステップ3: 書き込み ---
-        # インタラクティブパッチUIの呼び出し (環境変数が設定されている場合)
+            new_block = "\n".join(replacement_lines)
+            if new_string.endswith('\n') or (end_line_idx < len(content_lines) and content_lines[end_line_idx-1].endswith('\n')):
+                new_block += '\n'
+
+            new_content = "".join(content_lines[:start_line_idx]) + new_block + "".join(content_lines[end_line_idx:])
+
+        # 3. 差分シミュレーション (Dry Run)
+        if dry_run:
+            diff = difflib.unified_diff(
+                content_unix.splitlines(),
+                new_content.splitlines(),
+                fromfile=f"a/{path}",
+                tofile=f"b/{path}",
+                lineterm=""
+            )
+            diff_text = "\n".join(diff)
+            if not diff_text:
+                return f"Simulation: No changes would be applied to {path} (content already matches)."
+            return f"Simulation Results for {path}:\n\n{diff_text}\n\nTo apply these changes, call edit_file with dry_run=False."
+
+        # 4. 書き込み実行
         if os.environ.get('MOCO_INTERACTIVE_PATCH') == '1':
             try:
                 from ..ui.patch_viewer import preview_patch, save_patch
@@ -363,12 +384,12 @@ def edit_file(path: str, old_string: str, new_string: str) -> str:
         with open(abs_path, 'w', encoding='utf-8') as f:
             f.write(new_content)
 
-        # キャッシュを無効化
         _TOKEN_CACHE.delete_by_path(abs_path)
-        return f"Successfully edited {path} using {'exact' if count == 1 else 'smart'} match."
+        return "Successfully edited file."
 
     except Exception as e:
-        return f"Error editing file: {e}"
+        import traceback
+        return f"Error editing file: {e}\n{traceback.format_exc()}"
 
 
 def execute_bash(command: str, allow_dangerous: bool = False) -> str:

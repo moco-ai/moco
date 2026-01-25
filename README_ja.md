@@ -111,6 +111,11 @@ moco skills install <github>   # GitHubからインストール
 moco skills uninstall <name>   # アンインストール
 ```
 
+
+### モバイル連携 (WhatsApp)
+
+`moco` は WhatsApp から操作可能です。詳細は `moco/src/moco/gateway/clients/whatsapp.py` を参照。
+
 ### オプション
 
 ```bash

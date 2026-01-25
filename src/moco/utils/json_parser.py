@@ -75,21 +75,39 @@ class SmartJSONParser:
         except json.JSONDecodeError:
             pass
         
-        # 5. シングルクォートをダブルクォートに変換
+        # 5. 各種表記の正規化
         try:
-            # シングルクォートで囲まれた文字列をダブルクォートに変換
-            # 注意: 文字列内のシングルクォートは考慮しない簡易実装
-            fixed = clean_text.replace("'", '"')
+            # キー部分のシングルクォートをダブルクォートに変換
+            # 例: {'key': 'value'} -> {"key": 'value'}
+            fixed = re.sub(r"([{,])\s*'([^'\" ]+)'\s*:", r'\1"\2":', clean_text)
+            
+            # 値部分のシングルクォートをダブルクォートに変換（前後に : と , または } がある場合）
+            # 例: {"key": 'value'} -> {"key": "value"}
+            fixed = re.sub(r':\s*\'([^\']*)\'\s*([,}])', r': "\1"\2', fixed)
+            
+            # 値部分のうち、クォートされていない True/False/None を Python 形式から JSON 形式へ
+            fixed = re.sub(r':\s*True\b', ': true', fixed)
+            fixed = re.sub(r':\s*False\b', ': false', fixed)
+            fixed = re.sub(r':\s*None\b', ': null', fixed)
+            
             return json.loads(fixed)
         except json.JSONDecodeError:
             pass
         
-        # 6. クォートされていないキー名にダブルクォートを追加
+        # 6. Python リテラルとしてパースを試みる (最終手段に近い)
+        try:
+            import ast
+            # ast.literal_eval は Python のリテラル（辞書、リスト、文字列、数値、True/False/None）を安全に評価できる
+            data = ast.literal_eval(clean_text)
+            # JSON 互換の型のみであることを確認（念のため）
+            return json.loads(json.dumps(data))
+        except (ValueError, SyntaxError, TypeError):
+            pass
+
+        # 7. クォートされていないキー名にダブルクォートを追加
         # 例: {path: "file.md"} → {"path": "file.md"}
         try:
-            # { または , の後にある識別子（クォートなし）にダブルクォートを追加
             fixed = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', clean_text)
-            # Python の True/False/None を JSON の true/false/null に変換
             fixed = re.sub(r'\bTrue\b', 'true', fixed)
             fixed = re.sub(r'\bFalse\b', 'false', fixed)
             fixed = re.sub(r'\bNone\b', 'null', fixed)
@@ -97,15 +115,21 @@ class SmartJSONParser:
         except json.JSONDecodeError:
             pass
         
-        # 7. シングルクォート変換とキー補完を組み合わせ
+        # 7. 複合的な修正（再帰的ではないが、よくあるパターンを網羅）
         try:
-            fixed = clean_text.replace("'", '"')
-            fixed = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', fixed)
-            fixed = re.sub(r'\bTrue\b', 'true', fixed)
-            fixed = re.sub(r'\bFalse\b', 'false', fixed)
-            fixed = re.sub(r'\bNone\b', 'null', fixed)
-            # 末尾カンマも除去
+            # 1. キーをダブルクォート
+            fixed = re.sub(r"([{,])\s*'?([a-zA-Z_][a-zA-Z0-9_]*)'?\s*:", r'\1"\2":', clean_text)
+            # 2. 値の True/False/None を変換
+            fixed = re.sub(r':\s*True\b', ': true', fixed)
+            fixed = re.sub(r':\s*False\b', ': false', fixed)
+            fixed = re.sub(r':\s*None\b', ': null', fixed)
+            # 3. リスト内の True/False/None を変換
+            fixed = re.sub(r'([\[,])\s*True\b', r'\1 true', fixed)
+            fixed = re.sub(r'([\[,])\s*False\b', r'\1 false', fixed)
+            fixed = re.sub(r'([\[,])\s*None\b', r'\1 null', fixed)
+            # 4. 末尾カンマを除去
             fixed = re.sub(r",\s*([\]}])", r"\1", fixed)
+            
             return json.loads(fixed)
         except json.JSONDecodeError as e:
             logger.debug(f"Failed to parse JSON even after cleanup. Error: {e}")

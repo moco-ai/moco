@@ -1,0 +1,18 @@
+        if text_lower == "/help":
+            help_text = """📚 moco WhatsApp ヘルプ
+
+/profile <名前> - プロファイル変更
+/provider <名前> - プロバイダ変更
+/workdir <パス> - 作業ディレクトリ変更 (短縮形: /cd)
+/stop - 実行を中断
+/new または /clear - 新しいセッション
+/status - 現在の設定を表示
+/help - このヘルプを表示
+
+例:
+/workdir .
+/profile development
+/provider openrouter
+/stop"""
+            client.reply_message(help_text, ev)
+            return
