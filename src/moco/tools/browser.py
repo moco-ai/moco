@@ -130,25 +130,40 @@ def _run_agent_browser(*args: str, timeout: int = 60) -> str:
         return f"Error: {str(e)}"
 
 
-def browser_open(url: str, headed: bool = False) -> str:
+def browser_open(url: str, headed: bool = False, attach: bool = False, port: int = 9222) -> str:
     """
     指定されたURLをブラウザで開きます。
     
     Args:
         url: 開くURL
         headed: Trueの場合、ブラウザウィンドウを表示（デバッグ用）
+        attach: Trueの場合、既存のブラウザ(9222ポート)に接続を試みる
+        port: CDPポート番号
         
     Returns:
         結果メッセージ
-        
-    Example:
-        browser_open("https://example.com")
-        browser_open("https://example.com", headed=True)  # ブラウザ表示
     """
     args = ["open", url]
-    if headed:
+    if attach:
+        args.extend(["--attach", str(port)])
+    elif headed:
         args.append("--headed")
     return _run_agent_browser(*args)
+
+
+def browser_attach(port: int = 9222) -> str:
+    """
+    既に起動しているブラウザ（リモートデバッグモード）に接続します。
+    接続後は通常の browser_* ツールで操作可能です。
+    
+    接続方法:
+    1. Chrome を完全に終了する
+    2. ターミナルから `google-chrome --remote-debugging-port=9222` で起動
+    
+    Args:
+        port: デバッグポート番号（デフォルト 9222）
+    """
+    return _run_agent_browser("attach", "--port", str(port))
 
 
 def browser_snapshot(

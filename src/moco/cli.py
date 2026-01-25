@@ -40,7 +40,7 @@ import typer
 import time
 import sys
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from .ui.theme import ThemeName, THEMES
 from .utils.env_manager import EnvManager
 
@@ -207,11 +207,14 @@ def run(
     theme: ThemeName = typer.Option(ThemeName.DEFAULT, "--theme", help="UIカラーテーマ", case_sensitive=False),
     use_optimizer: bool = typer.Option(False, "--optimizer/--no-optimizer", help="Optimizerによるエージェント自動選択"),
     working_dir: Optional[str] = typer.Option(None, "--working-dir", "-w", help="作業ディレクトリ（subagentに自動伝達）"),
+    mcp: List[str] = typer.Option([], "--mcp", help="追加のMCPサーバー (name:command:args or JSON)"),
 ):
     """タスクを実行"""
     if session and cont:
         typer.echo("Error: --session と --continue は同時に指定できません。", err=True)
         raise typer.Exit(code=1)
+
+    mcp_servers = parse_mcp_option(mcp)
 
     from .ui.layout import ui_state
     ui_state.theme = theme
@@ -250,6 +253,7 @@ def run(
         verbose=verbose,
         use_optimizer=use_optimizer,
         working_directory=working_dir,
+        mcp_servers=mcp_servers,
     )
 
     # セッション管理
@@ -527,6 +531,34 @@ def list_profiles():
         typer.echo(f"  Profiles directory not found: {profiles_dir}")
 
 
+def parse_mcp_option(mcp_list: List[str]) -> List[Dict[str, Any]]:
+    """Parse MCP command line options like 'name:command:arg1,arg2' or JSON."""
+    import json
+    servers = []
+    for item in mcp_list:
+        if item.startswith('{'):
+            try:
+                servers.append(json.loads(item))
+            except Exception as e:
+                typer.echo(f"Error parsing MCP JSON: {e}", err=True)
+            continue
+        
+        # Format: name:command:args (comma separated args)
+        parts = item.split(":", 2)
+        if len(parts) >= 2:
+            name = parts[0]
+            cmd = parts[1]
+            args = parts[2].split(",") if len(parts) > 2 else []
+            servers.append({
+                "name": name,
+                "command": cmd,
+                "args": args
+            })
+        else:
+            typer.echo(f"Invalid MCP format: {item}. Use 'name:command:arg1,arg2' or JSON.", err=True)
+    return servers
+
+
 @app.command()
 def chat(
     profile: Optional[str] = typer.Option(None, "--profile", "-p", help="使用するプロファイル", autocompletion=complete_profile),
@@ -542,6 +574,7 @@ def chat(
     new_session: bool = typer.Option(False, "--new", help="新規セッションを強制開始"),
     theme: ThemeName = typer.Option(ThemeName.DEFAULT, "--theme", help="UIカラーテーマ", case_sensitive=False),
     use_optimizer: bool = typer.Option(False, "--optimizer/--no-optimizer", help="Optimizerによるエージェント自動選択"),
+    mcp: List[str] = typer.Option([], "--mcp", help="追加のMCPサーバー (name:command:args or JSON)"),
 ):
     """対話型チャット"""
     from .ui.layout import ui_state
@@ -549,6 +582,8 @@ def chat(
     theme_config = THEMES[theme]
 
     init_environment()
+    
+    mcp_servers = parse_mcp_option(mcp)
     from rich.console import Console
 
     from .core.orchestrator import Orchestrator
@@ -968,6 +1003,7 @@ def chat(
             verbose=verbose,
             use_optimizer=use_optimizer,
             progress_callback=progress_callback if stream else None,
+            mcp_servers=mcp_servers,
         )
 
     # Context for slash commands
