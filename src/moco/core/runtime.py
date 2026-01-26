@@ -1218,8 +1218,9 @@ class AgentRuntime:
         # Z.ai doesn't support tool_stream in streaming mode for glm-4.7
         # Force non-streaming when using tools to ensure tool calls work correctly
         use_stream = self.stream
-        if self.provider == LLMProvider.ZAI and tools:
-            use_stream = False
+        # USER REQUEST: Enable streaming for Zai
+        # if self.provider == LLMProvider.ZAI and tools:
+        #     use_stream = False
 
         # Commented out max_iterations: managed by token limit
         # iterations = 0
@@ -1285,6 +1286,7 @@ class AgentRuntime:
 
                     # Process streaming response
                     collected_content = ""
+                    full_reasoning_content = "" # Buffer for fallback
                     # Accumulate OpenAI tool call deltas by index (ai_manager style)
                     # idx -> {"id": str, "name": str, "arguments": str}
                     tool_calls_dict: Dict[int, Dict[str, str]] = {}
@@ -1331,6 +1333,7 @@ class AgentRuntime:
                             reasoning_text = delta.reasoning_content
                         
                         if reasoning_text:
+                            full_reasoning_content += reasoning_text 
                             if self.progress_callback:
                                 # Via Web UI: Send batched via progress_callback
                                 self.progress_callback(
@@ -1493,8 +1496,12 @@ class AgentRuntime:
                         continue  # Next iteration
                     else:
                         # If empty, return partial response
-                        if not collected_content and self._partial_response:
-                            return self._partial_response
+                        if not collected_content:
+                             if self._partial_response:
+                                 return self._partial_response
+                             # Fallback to reasoning content (Z.ai / GLM-4.7)
+                             if full_reasoning_content:
+                                 return full_reasoning_content
                         return collected_content
                 else:
                     # Non-streaming mode
@@ -1589,7 +1596,18 @@ class AgentRuntime:
                             print(f"[Context compressed: {self._accumulated_tokens:,} tokens]")
             else:
                 # Return text response
-                return message.content or ""
+                content = message.content or ""
+                
+                # Z.ai / GLM-4.7: content might be empty but reasoning_content exists
+                if not content:
+                    # Check for direct attribute
+                    if hasattr(message, "reasoning_content") and message.reasoning_content:
+                        content = message.reasoning_content
+                    # Check in extra fields (standard OpenAI python lib behavior for unknown fields)
+                    elif hasattr(message, "model_extra") and message.model_extra and "reasoning_content" in message.model_extra:
+                        content = message.model_extra["reasoning_content"]
+                        
+                return content
 
         # If max_iterations is reached
         if self._partial_response:
