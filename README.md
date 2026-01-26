@@ -29,6 +29,7 @@ MOCO is an orchestration framework that supports multiple LLM providers (Gemini,
 - **🌐 Web UI**: Launch a browser-based chat interface with `moco ui`.
 - **📊 Task Management**: Run tasks in the background, monitor progress, and view logs.
 - **📁 Session Management**: Persistent storage, recovery, and named sessions for conversation history.
+- **💰 Cost Management**: Track token usage and estimated costs directly from the CLI with `/cost`.
 
 ### Mobile Integration
 - **📱 WhatsApp Integration**: Chat with moco agents via WhatsApp (supports text, images, and documents).
@@ -72,6 +73,7 @@ Enter `/` during a chat session to access various operations:
 *   `/tree [depth]`: Show directory structure
 *   `/model [model_name]`: View or change the current model
 *   `/profile [profile_name]`: Change the current profile
+*   `/cost [today|all]`: Show token usage and estimated cost
 *   `/clear`: Clear history and restart the session
 *   `/quit`: Exit the chat
 
