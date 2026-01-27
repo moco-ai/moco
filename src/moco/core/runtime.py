@@ -645,12 +645,10 @@ class AgentRuntime:
         parent_agent: Optional[str] = None,
         semantic_memory: Optional[SemanticMemory] = None,
         skills: Optional[List[SkillConfig]] = None,
-        memory_service = None,
-        system_prompt_override: Optional[str] = None
+        memory_service = None
     ):
         self.config = config
         self.tool_map = tool_map
-        self.system_prompt_override = system_prompt_override
         self.agent_name = agent_name
         self.name = name or agent_name
         self.verbose = verbose
@@ -658,7 +656,6 @@ class AgentRuntime:
         self.parent_agent = parent_agent
         self.skills: List[SkillConfig] = skills or []
         self.memory_service = memory_service
-        self.parent_session_id = None
         
         # Memory context (dynamically updated in run())
         self._memory_context = ""
@@ -727,7 +724,7 @@ class AgentRuntime:
                 raise ValueError("ZAI_API_KEY environment variable not set")
             self.openai_client = AsyncOpenAI(
                 api_key=zai_key,
-                base_url=os.environ.get("ZAI_BASE_URL", "https://api.z.ai/api/coding/paas/v4")
+                base_url="https://api.z.ai/api/coding/paas/v4"
             )
             self.client = None
         else:
@@ -866,7 +863,7 @@ class AgentRuntime:
         
         context_header += "---\n\n"
 
-        prompt = self.system_prompt_override if hasattr(self, 'system_prompt_override') and self.system_prompt_override else self.config.system_prompt
+        prompt = self.config.system_prompt
 
         # Injection of Skills
         if self.skills:
@@ -932,8 +929,6 @@ class AgentRuntime:
         # Cancellation check
         if session_id:
             check_cancelled(session_id)
-            if self.parent_session_id:
-                check_cancelled(self.parent_session_id)
 
         # Validate required args before logging/loop-detection (Cursor-like behavior)
         # - Avoid noisy "📝 write_file" lines when the model emits empty args
@@ -1017,13 +1012,6 @@ class AgentRuntime:
         elif func_name in self.available_tools:
             try:
                 raw_result = await _execute_tool_safely_async(self.available_tools[func_name], args_dict)
-                
-                # Check cancellation again after potentially long execution
-                if session_id:
-                    check_cancelled(session_id)
-                    if self.parent_session_id:
-                        check_cancelled(self.parent_session_id)
-                
                 result = _truncate_tool_output(raw_result, func_name)
             except Exception as e:
                 result = f"Error executing {func_name}: {e}"
@@ -1094,8 +1082,6 @@ class AgentRuntime:
         # Cancellation check
         if session_id:
             check_cancelled(session_id)
-            if self.parent_session_id:
-                check_cancelled(self.parent_session_id)
 
         # Recall from semantic memory
         self._recall_results = []
@@ -1218,9 +1204,8 @@ class AgentRuntime:
         # Z.ai doesn't support tool_stream in streaming mode for glm-4.7
         # Force non-streaming when using tools to ensure tool calls work correctly
         use_stream = self.stream
-        # USER REQUEST: Enable streaming for Zai
-        # if self.provider == LLMProvider.ZAI and tools:
-        #     use_stream = False
+        if self.provider == LLMProvider.ZAI and tools:
+            use_stream = False
 
         # Commented out max_iterations: managed by token limit
         # iterations = 0
@@ -1228,8 +1213,6 @@ class AgentRuntime:
         while True:
             if session_id:
                 check_cancelled(session_id)
-                if self.parent_session_id:
-                    check_cancelled(self.parent_session_id)
             
             # Iteration warnings commented out (managed by token limit)
             # remaining = max_iterations - iterations
@@ -1246,8 +1229,9 @@ class AgentRuntime:
                         # Use reasoning parameter for OpenRouter
                         # effort and max_tokens cannot be specified simultaneously
                         if self.provider == LLMProvider.OPENROUTER:
+                            reasoning_max_tokens = os.environ.get("MOCO_REASONING_MAX_TOKENS", "1000")
                             extra_body["reasoning"] = {
-                                "effort": "high"  # low, medium, high, xhigh
+                                "max_tokens": int(reasoning_max_tokens)
                             }
                         
                         create_kwargs = {
@@ -1286,7 +1270,6 @@ class AgentRuntime:
 
                     # Process streaming response
                     collected_content = ""
-                    full_reasoning_content = "" # Buffer for fallback
                     # Accumulate OpenAI tool call deltas by index (ai_manager style)
                     # idx -> {"id": str, "name": str, "arguments": str}
                     tool_calls_dict: Dict[int, Dict[str, str]] = {}
@@ -1333,7 +1316,6 @@ class AgentRuntime:
                             reasoning_text = delta.reasoning_content
                         
                         if reasoning_text:
-                            full_reasoning_content += reasoning_text 
                             if self.progress_callback:
                                 # Via Web UI: Send batched via progress_callback
                                 self.progress_callback(
@@ -1370,12 +1352,6 @@ class AgentRuntime:
                                     reasoning_buffer = ""
                         # Stream output text content
                         if delta.content:
-                            # Check cancellation during streaming
-                            if session_id:
-                                check_cancelled(session_id)
-                                if self.parent_session_id:
-                                    check_cancelled(self.parent_session_id)
-                            
                             if not self.progress_callback:
                                 _safe_stream_print(delta.content)
                             collected_content += delta.content
@@ -1454,12 +1430,6 @@ class AgentRuntime:
                             elif not (stripped.startswith("{") and stripped.endswith("}")):
                                 result = "Error: tool call arguments are incomplete JSON"
                             else:
-                                # ツール実行直前
-                                if session_id:
-                                    check_cancelled(session_id)
-                                    if self.parent_session_id:
-                                        check_cancelled(self.parent_session_id)
-                                
                                 # Do not execute tools until arguments are fully parseable JSON.
                                 # NOTE: Using default={} hides JSON parse failures and causes missing-required loops.
                                 args_dict = SmartJSONParser.parse(raw_args, default=None)
@@ -1467,12 +1437,6 @@ class AgentRuntime:
                                     result = "Error: tool call arguments are invalid JSON (expected a single JSON object)"
                                 else:
                                     result = await self._execute_tool_with_tracking(func_name, args_dict, session_id)
-                                
-                                # ツール実行直後
-                                if session_id:
-                                    check_cancelled(session_id)
-                                    if self.parent_session_id:
-                                        check_cancelled(self.parent_session_id)
 
                             messages.append({
                                 "role": "tool",
@@ -1496,12 +1460,8 @@ class AgentRuntime:
                         continue  # Next iteration
                     else:
                         # If empty, return partial response
-                        if not collected_content:
-                             if self._partial_response:
-                                 return self._partial_response
-                             # Fallback to reasoning content (Z.ai / GLM-4.7)
-                             if full_reasoning_content:
-                                 return full_reasoning_content
+                        if not collected_content and self._partial_response:
+                            return self._partial_response
                         return collected_content
                 else:
                     # Non-streaming mode
@@ -1597,16 +1557,11 @@ class AgentRuntime:
             else:
                 # Return text response
                 content = message.content or ""
-                
-                # Z.ai / GLM-4.7: content might be empty but reasoning_content exists
-                if not content:
-                    # Check for direct attribute
-                    if hasattr(message, "reasoning_content") and message.reasoning_content:
-                        content = message.reasoning_content
-                    # Check in extra fields (standard OpenAI python lib behavior for unknown fields)
-                    elif hasattr(message, "model_extra") and message.model_extra and "reasoning_content" in message.model_extra:
-                        content = message.model_extra["reasoning_content"]
-                        
+                # Emit progress events for non-streaming mode (e.g., ZAI with tools)
+                if content and self.progress_callback:
+                    self.progress_callback(event_type="start", agent_name=self.name)
+                    self.progress_callback(event_type="chunk", content=content, agent_name=self.name)
+                    self.progress_callback(event_type="done", agent_name=self.name)
                 return content
 
         # If max_iterations is reached
@@ -1675,8 +1630,6 @@ class AgentRuntime:
         while True:
             if session_id:
                 check_cancelled(session_id)
-                if self.parent_session_id:
-                    check_cancelled(self.parent_session_id)
 
             try:
                 if self.stream:
@@ -1692,12 +1645,6 @@ class AgentRuntime:
                     function_calls = []
 
                     for chunk in response_stream:
-                        # Check cancellation during streaming
-                        if session_id:
-                            check_cancelled(session_id)
-                            if self.parent_session_id:
-                                check_cancelled(self.parent_session_id)
-                        
                         # Get usage information
                         if chunk.usage_metadata:
                             self.last_usage = {
