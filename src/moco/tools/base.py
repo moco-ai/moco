@@ -50,6 +50,33 @@ DANGEROUS_PATTERNS: Final[list[str]] = [
 _DANGEROUS_RE = re.compile('|'.join(f'(?:{p})' for p in DANGEROUS_PATTERNS), re.IGNORECASE)
 
 
+def _find_similar_files(path: str, max_results: int = 3) -> list:
+    """類似ファイル名を検索"""
+    try:
+        abs_path = resolve_safe_path(path)
+        parent_dir = os.path.dirname(abs_path)
+        filename = os.path.basename(abs_path)
+        
+        if not os.path.exists(parent_dir):
+            # 親ディレクトリも存在しない場合、作業ディレクトリから検索
+            parent_dir = get_working_directory() or os.getcwd()
+        
+        if not os.path.isdir(parent_dir):
+            return []
+        
+        # 同じディレクトリ内のファイルを取得
+        try:
+            files = os.listdir(parent_dir)
+        except PermissionError:
+            return []
+        
+        # 類似度でソート
+        similar = difflib.get_close_matches(filename, files, n=max_results, cutoff=0.4)
+        return [os.path.join(os.path.basename(parent_dir), f) for f in similar]
+    except Exception:
+        return []
+
+
 def is_dangerous_command(command: str) -> Tuple[bool, str]:
     """コマンドが危険かどうかチェック"""
     # /dev/null へのリダイレクトを一時的に無害化（判定から除外）
@@ -75,12 +102,29 @@ def read_file(path: str, offset: int = None, limit: int = None) -> str:
 
     Returns:
         str: ファイルの内容（行番号付き）
+
+    Examples:
+        read_file("src/main.py")                    # 全体を読む
+        read_file("src/main.py", offset=100, limit=50)  # 100行目から50行
+        read_file("package.json")                   # JSON設定ファイル
+    
+    Tips:
+        - 大きなファイルは offset/limit で分割して読む
+        - バイナリファイルは読めない（テキストのみ）
     """
     try:
         # パスを解決
         abs_path = resolve_safe_path(path)
         if not os.path.exists(abs_path):
-            return f"Error: File not found: {path}"
+            msg = f"Error: File not found: {path}\n"
+            similar = _find_similar_files(path)
+            if similar:
+                msg += "\n💡 Did you mean:\n"
+                for s in similar:
+                    msg += f"  - {s}\n"
+            parent = os.path.dirname(path) or "."
+            msg += f"\n🔄 Try: list_dir('{parent}') or glob_search('**/{os.path.basename(path)}')"
+            return msg
 
         # LLM からの入力を安全にキャスト
         try:
@@ -223,7 +267,18 @@ def write_file(path: str, content: str, overwrite: bool = False) -> str:
         _TOKEN_CACHE.delete_by_path(abs_path)
 
         lines = content.count('\n') + 1
-        return f"Successfully wrote {lines} lines to {path}"
+        ext = os.path.splitext(path)[1].lower()
+        msg = f"✅ Successfully wrote {lines} lines to {path}"
+        
+        # ファイル種別に応じた次のアクション提案
+        if ext == '.py':
+            msg += f"\n\n💡 Next: execute_bash('python {path}') to test"
+        elif ext in ('.js', '.ts'):
+            msg += f"\n\n💡 Next: execute_bash('node {path}') to test"
+        elif ext == '.sh':
+            msg += f"\n\n💡 Next: execute_bash('bash {path}') to run"
+        
+        return msg
     except Exception as e:
         return f"Error writing file: {e}"
 
@@ -251,7 +306,14 @@ def edit_file(path: str, old_string: str, new_string: str, dry_run: bool = False
     try:
         abs_path = resolve_safe_path(path)
         if not os.path.exists(abs_path):
-            return f"Error: File not found: {path}"
+            msg = f"Error: File not found: {path}\n"
+            similar = _find_similar_files(path)
+            if similar:
+                msg += "\n💡 Did you mean:\n"
+                for s in similar:
+                    msg += f"  - {s}\n"
+            msg += f"\n🔄 Try: list_dir('{os.path.dirname(path) or '.'}') to find the correct file."
+            return msg
 
         file_size = os.path.getsize(abs_path)
         if file_size > MAX_EDIT_SIZE:
@@ -367,7 +429,13 @@ def edit_file(path: str, old_string: str, new_string: str, dry_run: bool = False
                 return msg
 
             if len(match_indices) > 1:
-                return f"Error: Multiple matches found ({len(match_indices)}). Please provide more context."
+                msg = f"Error: Multiple matches found ({len(match_indices)}).\n"
+                msg += "\n📍 Matches at:\n"
+                for start, end in match_indices[:5]:
+                    preview = content_lines[start].strip()[:60]
+                    msg += f"  Line {start+1}: {preview}...\n"
+                msg += "\n💡 Include more surrounding context in old_string to make it unique."
+                return msg
 
             # 置換の実行
             start_line_idx, end_line_idx = match_indices[0]
@@ -426,7 +494,19 @@ def edit_file(path: str, old_string: str, new_string: str, dry_run: bool = False
             f.write(new_content)
 
         _TOKEN_CACHE.delete_by_path(abs_path)
-        return "Successfully edited file."
+        
+        # 変更行数を計算
+        old_line_count = len(old_string.splitlines())
+        new_line_count = len(new_string.splitlines())
+        diff = new_line_count - old_line_count
+        
+        msg = f"✅ Successfully edited {path}"
+        if diff > 0:
+            msg += f" (+{diff} lines)"
+        elif diff < 0:
+            msg += f" ({diff} lines)"
+        
+        return msg
 
     except Exception as e:
         import traceback
@@ -481,6 +561,12 @@ def execute_bash(command: str, allow_dangerous: bool = False) -> str:
         return output.strip() if output else "Command executed successfully (no output)."
 
     except subprocess.TimeoutExpired:
-        return "Error: Command execution timed out (60s)."
+        return (
+            "Error: Command execution timed out (60s).\n"
+            "\n💡 Suggestions:\n"
+            "  - Use start_background() for long-running commands\n"
+            "  - Add a timeout flag if the command supports it\n"
+            "  - Break the task into smaller steps"
+        )
     except Exception as e:
         return f"Error executing command: {e}"

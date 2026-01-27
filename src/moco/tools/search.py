@@ -21,6 +21,17 @@ def grep(pattern: str, path: str = '.', recursive: bool = True,
 
     Returns:
         検索結果
+
+    Examples:
+        grep("def main", "src/")              # 関数定義を検索
+        grep("TODO|FIXME", ".")               # 複数パターン（OR）
+        grep("class.*Error", "*.py")          # 正規表現
+        grep("import", "src/", max_results=20)  # 結果数を制限
+    
+    Tips:
+        - 単純な文字列検索には grep を使用
+        - 意味的な検索には codebase_search を使用
+        - 大量の結果が出たら path を絞るか max_results を減らす
     """
     try:
         path = resolve_safe_path(path)
