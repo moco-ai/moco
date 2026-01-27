@@ -688,7 +688,7 @@ class AgentRuntime:
         if model:
             self.model_name = model
         elif self.provider == LLMProvider.OPENROUTER:
-            self.model_name = os.environ.get("OPENROUTER_MODEL", "google/gemini-3-flash-preview")
+            self.model_name = os.environ.get("OPENROUTER_MODEL", "moonshotai/kimi-k2.5")
         elif self.provider == LLMProvider.OPENAI:
             self.model_name = os.environ.get("OPENAI_MODEL", "gpt-5.1")
         elif self.provider == LLMProvider.ZAI:

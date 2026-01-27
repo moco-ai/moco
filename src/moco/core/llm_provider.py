@@ -36,7 +36,7 @@ PROVIDER_PRIORITY = [PROVIDER_ZAI, PROVIDER_OPENROUTER, PROVIDER_GEMINI]
 # プロバイダーごとのデフォルトモデル
 DEFAULT_MODELS = {
     PROVIDER_ZAI: "glm-4.7",
-    PROVIDER_OPENROUTER: "google/gemini-3-flash-preview",
+    PROVIDER_OPENROUTER: "moonshotai/kimi-k2.5",
     PROVIDER_GEMINI: "gemini-2.0-flash",
     PROVIDER_OPENAI: "gpt-4o",
 }
