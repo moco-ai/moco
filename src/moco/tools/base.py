@@ -357,6 +357,13 @@ def edit_file(path: str, old_string: str, new_string: str, dry_run: bool = False
                     for i, line in enumerate(content_lines[:10]):
                         msg += f"  {i+1}: {line.rstrip()[:70]}\n"
                 
+                # old_string が長すぎる場合のガイダンス
+                old_line_count = len([l for l in old_lines if l.strip()])
+                if old_line_count > 10:
+                    msg += f"\n🔧 old_string が長すぎます（{old_line_count}行）。\n"
+                    msg += "   → 変更したい部分の前後5行程度に絞って再試行してください。\n"
+                    msg += "   → 特にJSONファイルでは、変更するキーの周辺だけを指定してください。\n"
+                
                 return msg
 
             if len(match_indices) > 1:
