@@ -136,11 +136,15 @@ class Orchestrator:
         self.semantic_memory = SemanticMemory(db_path=db_path)
 
         # MemoryService（学習・記憶システム）の初期化
-        memory_db_path = os.getenv("MEMORY_DB_PATH", str(Path.cwd() / "data" / "memory.db"))
-        self.memory_service = MemoryService(
-            channel_id=self.profile,  # プロファイルごとに記憶を分離
-            db_path=memory_db_path
-        )
+        # MOCO_MEMORY_SERVICE=off で無効化可能
+        if os.getenv("MOCO_MEMORY_SERVICE", "on").lower() in ("off", "false", "0"):
+            self.memory_service = None
+        else:
+            memory_db_path = os.getenv("MEMORY_DB_PATH", str(Path.cwd() / "data" / "memory.db"))
+            self.memory_service = MemoryService(
+                channel_id=self.profile,  # プロファイルごとに記憶を分離
+                db_path=memory_db_path
+            )
 
         # Ad-hoc MCP サーバー設定の変換
         additional_mcp = []

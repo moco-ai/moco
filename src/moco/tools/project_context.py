@@ -22,6 +22,10 @@ def get_project_context(path: str = None, depth: int = 2) -> str:
     # パスを安全に解決
     abs_path = resolve_safe_path(path)
     start_path = Path(abs_path).resolve()
+    
+    # ファイルパスが渡された場合は親ディレクトリを使用
+    if start_path.is_file():
+        start_path = start_path.parent
 
     # MOCO_WORKING_DIRECTORY が明示的に設定されている場合は、
     # プロジェクトルート探索をスキップして、指定されたパスをそのまま使う
