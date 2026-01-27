@@ -56,39 +56,66 @@ def _get_default_db_path() -> str:
     return str(Path.cwd() / "data" / "sessions.db")
 CHARS_PER_TOKEN = 2.5  # 日本語の場合
 
-SUMMARIZE_PROMPT = """以下の会話履歴を簡潔に要約してください。
+SUMMARIZE_PROMPT = """以下の会話履歴を構造化された要約にしてください。
 
-## 要約ルール
-1. **主要トピック**: 会話で議論された主なテーマを列挙
-2. **決定事項**: 合意された内容、結論を明記
-3. **重要な具体情報**: ファイル名、コード、数値、日付、人名などは省略せず保持
-4. **未解決の課題**: まだ完了していないタスクがあれば記載
+## 必須カテゴリ（該当するものだけ出力）
 
-## 出力形式
-- 箇条書きで簡潔に
-- 300〜500文字程度
-- 日本語で出力
+### 1. Primary Request（主要リクエスト）
+- ユーザーが最終的に達成したいこと
+
+### 2. Files and Code（ファイルとコード）
+- 読み込んだファイル: パスと概要
+- 編集したファイル: パスと変更内容
+- 作成したファイル: パスと目的
+
+### 3. Key Technical Concepts（技術概念）
+- 議論された技術・ライブラリ・パターン
+
+### 4. Errors and Fixes（エラーと修正）
+- 発生したエラー: エラーメッセージ
+- 適用した修正: 解決方法
+
+### 5. Pending Tasks（未完了タスク）
+- まだ完了していないこと
+
+## 重要ルール
+- ファイルパスは省略せず完全なパスで記載
+- コードスニペットは重要な部分のみ（10行以内）
+- 推測せず、会話に明示された情報のみ記載
 
 ## 会話履歴
 {conversation}
 
-## 要約
+## 構造化要約
 """
 
 ROLLING_SUMMARIZE_PROMPT = """以下は「過去の要約」と「新しい会話」です。
-これらを統合して、1つの新しい要約を作成してください。
+これらを統合して、構造化された新しい要約を作成してください。
 
-## 要約ルール
-1. **主要トピック**: 会話で議論された主なテーマを列挙
-2. **決定事項**: 合意された内容、結論を明記
-3. **重要な具体情報**: ファイル名、コード、数値、日付、人名などは省略せず保持
-4. **未解決の課題**: まだ完了していないタスクがあれば記載
-5. **古い情報の更新**: 新しい会話で更新された情報は、新しい内容を優先
+## 必須カテゴリ（該当するものだけ出力）
 
-## 出力形式
-- 箇条書きで簡潔に
-- 400〜600文字程度
-- 日本語で出力
+### 1. Primary Request（主要リクエスト）
+- ユーザーが最終的に達成したいこと（更新があれば反映）
+
+### 2. Files and Code（ファイルとコード）
+- 読み込んだファイル: パスと概要
+- 編集したファイル: パスと変更内容
+- 作成したファイル: パスと目的
+
+### 3. Key Technical Concepts（技術概念）
+- 議論された技術・ライブラリ・パターン
+
+### 4. Errors and Fixes（エラーと修正）
+- 発生したエラー: エラーメッセージ
+- 適用した修正: 解決方法
+
+### 5. Pending Tasks（未完了タスク）
+- まだ完了していないこと（完了したものは削除）
+
+## 重要ルール
+- ファイルパスは省略せず完全なパスで記載
+- 新しい情報で古い情報を更新
+- 完了したタスクは Pending から削除
 
 ## 過去の要約
 {previous_summary}
@@ -428,16 +455,15 @@ class SessionLogger:
             if not messages:
                 return []
 
-            # Check context health (keep for side effects/metrics)
-            self.context_monitor.check_health(messages)
+            # Check context health
+            health = self.context_monitor.check_health(messages)
 
-            # セッション内は全件保持（Cursor方式）
-            # 要約は context_compressor で 200K トークン超えた時のみ
-            # if health["recommend_summarize"] and len(messages) > 30:
-            #     older_messages = messages[:-20]
-            #     self._update_rolling_summary(session_id, summary, older_messages)
-            #     messages = messages[-20:]
-            #     summary = self._get_rolling_summary(session_id)
+            # 構造化サマリー自動生成（メッセージが30以上で、コンテキストが大きくなったら）
+            if health["recommend_summarize"] and len(messages) > 30:
+                older_messages = messages[:-20]
+                self._update_rolling_summary(session_id, summary, older_messages)
+                messages = messages[-20:]
+                summary = self._get_rolling_summary(session_id)
 
             result = []
 
@@ -584,11 +610,19 @@ class SessionLogger:
 
             client = genai.Client(api_key=api_key)
 
-            # Build conversation text
+            # Build conversation text (include tool calls)
             conversation_lines = []
             for msg in messages:
-                role = "ユーザー" if msg["role"] == "user" else "アシスタント"
-                conversation_lines.append(f"{role}: {msg['content'][:500]}")
+                role = msg.get("role", "assistant")
+                content = msg.get("content", "")[:1000]  # 長めに取得（ツール結果含む）
+                
+                if role == "user":
+                    conversation_lines.append(f"ユーザー: {content}")
+                elif role == "tool":
+                    # ツール呼び出しは [TOOL] プレフィックスで識別
+                    conversation_lines.append(f"ツール: {content}")
+                else:
+                    conversation_lines.append(f"アシスタント: {content}")
             new_conversation = "\n".join(conversation_lines)
 
             # Build prompt
