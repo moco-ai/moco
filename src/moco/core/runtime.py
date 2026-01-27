@@ -1243,9 +1243,8 @@ class AgentRuntime:
                             "stream": True,
                             "stream_options": {"include_usage": True},
                         }
-                        # Set parallel_tool_calls only for non-OpenRouter providers
-                        if self.provider != LLMProvider.OPENROUTER:
-                            create_kwargs["parallel_tool_calls"] = True
+                        # Enable parallel_tool_calls (OpenRouter models like kimi-k2.5 support this)
+                        create_kwargs["parallel_tool_calls"] = True
                         
                         # Use reasoning_effort for OpenAI o1/o3
                         if self.provider != LLMProvider.OPENROUTER:
@@ -1256,7 +1255,6 @@ class AgentRuntime:
                         
                         response = await self.openai_client.chat.completions.create(**create_kwargs)
                     else:
-                        # parallel_tool_calls might not be supported on OpenRouter/Bedrock
                         create_kwargs = {
                             "model": self.model_name,
                             "messages": messages,
@@ -1264,10 +1262,8 @@ class AgentRuntime:
                             "temperature": 0.7,
                             "stream": True,
                             "stream_options": {"include_usage": True},
+                            "parallel_tool_calls": True,
                         }
-                        # Set parallel_tool_calls only for non-OpenRouter providers
-                        if self.provider != LLMProvider.OPENROUTER:
-                            create_kwargs["parallel_tool_calls"] = True
                         response = await self.openai_client.chat.completions.create(**create_kwargs)
 
                     # Process streaming response
@@ -1276,7 +1272,8 @@ class AgentRuntime:
                     # idx -> {"id": str, "name": str, "arguments": str}
                     tool_calls_dict: Dict[int, Dict[str, str]] = {}
                     # Buffering thinking text (mitigation for fine chunks in GLM, etc.)
-                    reasoning_buffer = ""
+                    reasoning_buffer = ""  # For display purposes
+                    collected_reasoning = ""  # Always capture for models like kimi-k2.5
                     reasoning_header_shown = False
 
                     async for chunk in response:
@@ -1318,6 +1315,9 @@ class AgentRuntime:
                             reasoning_text = delta.reasoning_content
                         
                         if reasoning_text:
+                            # Always capture reasoning for models like kimi-k2.5 that require it
+                            collected_reasoning += reasoning_text
+                            
                             if self.progress_callback:
                                 # Via Web UI: Send batched via progress_callback
                                 self.progress_callback(
@@ -1325,33 +1325,29 @@ class AgentRuntime:
                                     content=reasoning_text,
                                     agent_name=self.name
                                 )
-                            else:
+                            elif self.verbose:
                                 # CLI direct execution: Show thinking process only in verbose mode
-                                if self.verbose and not self.progress_callback:
-                                    # Buffer and flush at periods, newlines, or a certain number of characters
-                                    reasoning_buffer += reasoning_text
-                                    # Show header only once
-                                    if not reasoning_header_shown:
-                                        _safe_stream_print("\n💭 [Thinking...]\n")
-                                        reasoning_header_shown = True
-                                    # Flush conditions: period, newline, or 80+ characters
-                                    while len(reasoning_buffer) >= 80 or any(c in reasoning_buffer for c in '.\n'):
-                                        # If there is a period or newline, output until there
-                                        flush_pos = -1
-                                        for i, c in enumerate(reasoning_buffer):
-                                            if c in '.\n':
-                                                flush_pos = i + 1
-                                                break
-                                        if flush_pos == -1 and len(reasoning_buffer) >= 80:
-                                            flush_pos = 80
-                                        if flush_pos > 0:
-                                            _safe_stream_print(reasoning_buffer[:flush_pos])
-                                            reasoning_buffer = reasoning_buffer[flush_pos:]
-                                        else:
+                                # Buffer and flush at periods, newlines, or a certain number of characters
+                                reasoning_buffer += reasoning_text
+                                # Show header only once
+                                if not reasoning_header_shown:
+                                    _safe_stream_print("\n💭 [Thinking...]\n")
+                                    reasoning_header_shown = True
+                                # Flush conditions: period, newline, or 80+ characters
+                                while len(reasoning_buffer) >= 80 or any(c in reasoning_buffer for c in '.\n'):
+                                    # If there is a period or newline, output until there
+                                    flush_pos = -1
+                                    for i, c in enumerate(reasoning_buffer):
+                                        if c in '.\n':
+                                            flush_pos = i + 1
                                             break
-                                else:
-                                    # Do not use thinking buffer if not in verbose mode
-                                    reasoning_buffer = ""
+                                    if flush_pos == -1 and len(reasoning_buffer) >= 80:
+                                        flush_pos = 80
+                                    if flush_pos > 0:
+                                        _safe_stream_print(reasoning_buffer[:flush_pos])
+                                        reasoning_buffer = reasoning_buffer[flush_pos:]
+                                    else:
+                                        break
                         # Stream output text content
                         if delta.content:
                             if not self.progress_callback:
@@ -1412,11 +1408,15 @@ class AgentRuntime:
                                 }
                             })
 
-                        messages.append({
+                        assistant_msg = {
                             "role": "assistant",
                             "content": collected_content or "",
                             "tool_calls": tool_calls_list
-                        })
+                        }
+                        # Include reasoning_content for models like kimi-k2.5 that require it
+                        if collected_reasoning:
+                            assistant_msg["reasoning_content"] = collected_reasoning
+                        messages.append(assistant_msg)
 
                         for tc in tool_calls_list:
                             func_name = tc["function"]["name"]
@@ -1476,7 +1476,7 @@ class AgentRuntime:
                         }
                         if self.provider != LLMProvider.OPENROUTER:
                             create_kwargs["reasoning_effort"] = "medium"
-                            create_kwargs["parallel_tool_calls"] = True
+                        create_kwargs["parallel_tool_calls"] = True
                         response = await self.openai_client.chat.completions.create(**create_kwargs)
                     else:
                         create_kwargs = {
@@ -1484,9 +1484,8 @@ class AgentRuntime:
                             "messages": messages,
                             "tools": tools,
                             "temperature": 0.7,
+                            "parallel_tool_calls": True,
                         }
-                        if self.provider != LLMProvider.OPENROUTER:
-                            create_kwargs["parallel_tool_calls"] = True
                         response = await self.openai_client.chat.completions.create(**create_kwargs)
                     # usage recording
                     if hasattr(response, "usage") and response.usage:
@@ -1509,7 +1508,7 @@ class AgentRuntime:
             # Check for tool calls (non-streaming)
             if message.tool_calls:
                 # Add assistant message
-                messages.append({
+                assistant_msg = {
                     "role": "assistant",
                     "content": message.content or "",
                     "tool_calls": [
@@ -1523,7 +1522,14 @@ class AgentRuntime:
                         }
                         for tc in message.tool_calls
                     ]
-                })
+                }
+                # Include reasoning_content for models like kimi-k2.5 that require it
+                # Note: OpenRouter returns 'reasoning' but expects 'reasoning_content' in the request
+                if hasattr(message, 'reasoning') and message.reasoning:
+                    assistant_msg["reasoning_content"] = message.reasoning
+                elif hasattr(message, 'reasoning_content') and message.reasoning_content:
+                    assistant_msg["reasoning_content"] = message.reasoning_content
+                messages.append(assistant_msg)
 
                 # Tool execution (parallelized)
                 async def execute_one(tc):
