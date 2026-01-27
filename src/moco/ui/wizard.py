@@ -3,7 +3,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt, Confirm
-from .env_manager import EnvManager
+from ..utils.env_manager import EnvManager
 
 console = Console()
 
@@ -53,7 +53,8 @@ class SetupWizard:
         # Step 3: API Key (Optional check)
         # 簡易的にチェックが必要な場合はここに追加可能だが、一旦基本のみ
 
-        console.print("\n" + Panel.fit(
+        console.print()
+        console.print(Panel.fit(
             "[bold green]✨ セットアップが完了しました！[/bold green]\n"
             "設定は [dim].env[/dim] ファイルに保存されました。",
             border_style="green"
