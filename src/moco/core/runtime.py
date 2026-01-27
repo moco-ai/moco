@@ -1025,18 +1025,23 @@ class AgentRuntime:
         # Context limit check
         result = self._update_context_usage(result)
         
-        # Session logging: Record tool call and result for context recovery
+        # Transcript logging: Record full tool call and result for context recovery
         if self.session_logger and session_id:
             try:
-                # Format: [TOOL] name(args) -> result (truncated)
-                args_summary = ", ".join(f"{k}={repr(v)[:50]}" for k, v in list(args_dict.items())[:3])
-                result_preview = str(result)[:500] if result else "(empty)"
-                tool_log = f"[TOOL] {func_name}({args_summary})\n→ {result_preview}"
-                self.session_logger.log_agent_message(
+                # Log tool call
+                args_json = json.dumps(args_dict, ensure_ascii=False, default=str)
+                self.session_logger.append_to_transcript(
                     session_id,
-                    "tool",  # Use "tool" role for tool calls
-                    tool_log,
-                    agent_id=self.agent_name
+                    "tool_call",
+                    f"{func_name} with arguments {args_json}",
+                    agent_name=self.agent_name
+                )
+                # Log full result (no truncation for transcript)
+                self.session_logger.append_to_transcript(
+                    session_id,
+                    "tool_result",
+                    str(result) if result else "(empty)",
+                    agent_name=self.agent_name
                 )
             except Exception:
                 pass  # Don't fail on logging errors

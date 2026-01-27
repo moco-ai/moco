@@ -156,11 +156,48 @@ class SessionLogger:
         self.db_path = db_path or _get_default_db_path()
         self._lock = threading.RLock()
         self.context_monitor = ContextHealthMonitor()
+        # Transcript directory (same parent as db)
+        self.transcript_dir = Path(self.db_path).parent / "transcripts"
         try:
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+            self.transcript_dir.mkdir(parents=True, exist_ok=True)
             self._init_db()
         except Exception as e:
             logger.error(f"SessionLogger init failed: {e}")
+    
+    def get_transcript_path(self, session_id: str) -> Path:
+        """Get the transcript file path for a session."""
+        return self.transcript_dir / f"{session_id}.txt"
+    
+    def append_to_transcript(self, session_id: str, entry_type: str, content: str, agent_name: str = None):
+        """Append an entry to the session transcript file.
+        
+        Args:
+            session_id: Session ID
+            entry_type: Type of entry (user, assistant, tool_call, tool_result, thinking)
+            content: Content to append
+            agent_name: Optional agent name
+        """
+        try:
+            transcript_path = self.get_transcript_path(session_id)
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            agent_prefix = f" ({agent_name})" if agent_name else ""
+            
+            with open(transcript_path, "a", encoding="utf-8") as f:
+                if entry_type == "tool_call":
+                    f.write(f"\n[{timestamp}] [Tool call]{agent_prefix} {content}\n")
+                elif entry_type == "tool_result":
+                    f.write(f"[Tool result]\n{content}\n")
+                elif entry_type == "user":
+                    f.write(f"\n{'='*60}\n[{timestamp}] USER:\n{content}\n")
+                elif entry_type == "assistant":
+                    f.write(f"\n[{timestamp}] ASSISTANT{agent_prefix}:\n{content}\n")
+                elif entry_type == "thinking":
+                    f.write(f"\n[{timestamp}] [Thinking]{agent_prefix}\n{content}\n")
+                else:
+                    f.write(f"\n[{timestamp}] [{entry_type}]{agent_prefix}:\n{content}\n")
+        except Exception as e:
+            logger.debug(f"Failed to append to transcript: {e}")
 
     def _get_connection(self, timeout: float = 10.0) -> sqlite3.Connection:
         """データベース接続を取得し、PRAGMAを設定する。"""
