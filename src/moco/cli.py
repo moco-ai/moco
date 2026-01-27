@@ -1492,14 +1492,62 @@ def skills_info():
 
 
 @app.command("version")
-def version():
+def version(
+    detailed: bool = typer.Option(False, "--detailed", "-d", help="依存関係のバージョンも表示"),
+):
     """バージョン表示"""
-    from importlib.metadata import version as get_version
+    from importlib.metadata import version as get_version, PackageNotFoundError
+    from rich.console import Console
+    from rich.table import Table
+    
+    console = Console()
+    
     try:
         v = get_version("moco")
-    except Exception:
+    except PackageNotFoundError:
         v = "0.2.0"
-    typer.echo(f"Moco v{v}")
+    
+    if not detailed:
+        typer.echo(f"Moco v{v}")
+        return
+    
+    # 詳細表示モード
+    table = Table(title=f"Moco v{v}", border_style="cyan")
+    table.add_column("Package", style="cyan")
+    table.add_column("Version")
+    
+    # コア依存関係
+    core_deps = [
+        "typer",
+        "rich",
+        "pydantic",
+        "pyyaml",
+        "fastapi",
+        "uvicorn",
+        "sqlmodel",
+        "alembic",
+        "httpx",
+        "aiohttp",
+        "openai",
+        "google-generativeai",
+        "google-genai",
+        "tiktoken",
+        "numpy",
+        "faiss-cpu",
+        "python-dotenv",
+        "PyGithub",
+        "networkx",
+        "prompt_toolkit",
+    ]
+    
+    for dep in core_deps:
+        try:
+            dep_version = get_version(dep)
+            table.add_row(dep, dep_version)
+        except PackageNotFoundError:
+            table.add_row(dep, "[dim]not installed[/dim]")
+    
+    console.print(table)
 
 
 # --- Tasks Subcommands ---
