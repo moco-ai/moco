@@ -645,7 +645,8 @@ class AgentRuntime:
         parent_agent: Optional[str] = None,
         semantic_memory: Optional[SemanticMemory] = None,
         skills: Optional[List[SkillConfig]] = None,
-        memory_service = None
+        memory_service = None,
+        system_prompt_override: Optional[str] = None
     ):
         self.config = config
         self.tool_map = tool_map
@@ -656,6 +657,7 @@ class AgentRuntime:
         self.parent_agent = parent_agent
         self.skills: List[SkillConfig] = skills or []
         self.memory_service = memory_service
+        self.system_prompt_override = system_prompt_override
         
         # Memory context (dynamically updated in run())
         self._memory_context = ""
@@ -863,7 +865,7 @@ class AgentRuntime:
         
         context_header += "---\n\n"
 
-        prompt = self.config.system_prompt
+        prompt = self.system_prompt_override or self.config.system_prompt
 
         # Injection of Skills
         if self.skills:

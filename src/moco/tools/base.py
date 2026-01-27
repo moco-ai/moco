@@ -235,12 +235,18 @@ def edit_file(path: str, old_string: str, new_string: str, dry_run: bool = False
 
     Args:
         path (str): 編集するファイルのパス
-        old_string (str): 置換対象の文字列
+        old_string (str): 置換対象の文字列（短くユニークな部分を指定）
         new_string (str): 置換後の文字列
         dry_run (bool, optional): Trueの場合、実際に書き込まずに差分を表示します。
 
     Returns:
         str: 実行結果メッセージまたは差分
+
+    ベストプラクティス（重要）:
+        - old_string は短くユニークな部分だけを指定する（5-10行程度が理想）
+        - 巨大な old_string は一致しにくい（エスケープ文字や空白の違いで失敗する）
+        - JSONファイルの場合、変更したいキーの前後数行だけを指定する
+        - 失敗した場合は read_file で実際の内容を確認し、より短い old_string で再試行する
     """
     try:
         abs_path = resolve_safe_path(path)
