@@ -868,6 +868,36 @@ class AgentRuntime:
         context_header += "---\n\n"
 
         prompt = self.system_prompt_override or self.config.system_prompt
+        
+        # 委譲に関する基本ルールを追加（orchestrator エージェントの場合）
+        if self.agent_name == "orchestrator" and "delegate_to_agent" in str(self.tool_map.keys()):
+            delegation_rules = """
+
+## サブエージェント委譲ルール（重要）
+
+委譲を実行するには、以下の**いずれか**の方法を使用：
+
+### 方法1: ツールコール（推奨）
+```
+delegate_to_agent(agent_name="code-reviewer", task="このコードをレビューして")
+```
+
+### 方法2: テキストパターン（行頭に記述）
+```
+@code-reviewer このコードをレビューして
+```
+
+### ❌ 間違った方法（委譲されない）
+- 「`@agent` に依頼する」と計画を書くだけ → 実行されない
+- バッククォート内の `@agent` → 検出されない
+- `@orchestrator:` → 自分自身への委譲は無視される
+
+### ✅ 正しい方法
+実際に委譲を実行するには、上記の方法1または方法2を**必ず実行**すること。
+計画を書くだけでは委譲は発動しない。
+
+"""
+            prompt += delegation_rules
 
         # Injection of Skills
         if self.skills:
