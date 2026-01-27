@@ -1279,11 +1279,15 @@ class AgentRuntime:
                     async for chunk in response:
                         # Get usage information (included in the last chunk)
                         if hasattr(chunk, "usage") and chunk.usage:
-                            self.last_usage = {
-                                "prompt_tokens": int(chunk.usage.prompt_tokens or 0),
-                                "completion_tokens": int(chunk.usage.completion_tokens or 0),
-                                "total_tokens": int(chunk.usage.total_tokens or 0)
-                            }
+                            try:
+                                self.last_usage = {
+                                    "prompt_tokens": int(chunk.usage.prompt_tokens or 0),
+                                    "completion_tokens": int(chunk.usage.completion_tokens or 0),
+                                    "total_tokens": int(chunk.usage.total_tokens or 0)
+                                }
+                            except (ValueError, TypeError):
+                                # Some models may return non-numeric usage data
+                                pass
 
                         delta = chunk.choices[0].delta if chunk.choices else None
                         if not delta:
@@ -1489,11 +1493,15 @@ class AgentRuntime:
                         response = await self.openai_client.chat.completions.create(**create_kwargs)
                     # usage recording
                     if hasattr(response, "usage") and response.usage:
-                        self.last_usage = {
-                            "prompt_tokens": int(response.usage.prompt_tokens or 0),
-                            "completion_tokens": int(response.usage.completion_tokens or 0),
-                            "total_tokens": int(response.usage.total_tokens or 0)
-                        }
+                        try:
+                            self.last_usage = {
+                                "prompt_tokens": int(response.usage.prompt_tokens or 0),
+                                "completion_tokens": int(response.usage.completion_tokens or 0),
+                                "total_tokens": int(response.usage.total_tokens or 0)
+                            }
+                        except (ValueError, TypeError):
+                            # Some models may return non-numeric usage data
+                            pass
             except OperationCancelled:
                 raise  # Re-raise to be handled by api.py
             except Exception as e:
