@@ -227,7 +227,8 @@ class Orchestrator:
                     parent_agent=None if name == "orchestrator" else "orchestrator",
                     semantic_memory=self.semantic_memory,
                     memory_service=self.memory_service,
-                    system_prompt_override=full_system_prompt
+                    system_prompt_override=full_system_prompt,
+                    session_logger=self.session_logger
                 )
             else:
                 self.runtimes[name] = AgentRuntime(
@@ -243,7 +244,8 @@ class Orchestrator:
                     parent_agent="orchestrator",
                     semantic_memory=self.semantic_memory,
                     memory_service=self.memory_service,
-                    system_prompt_override=full_system_prompt
+                    system_prompt_override=full_system_prompt,
+                    session_logger=self.session_logger
                 )
 
     def set_profile(self, profile: str) -> None:
@@ -1148,15 +1150,27 @@ class Orchestrator:
         # - The process current directory (pwd/os.getcwd) can differ depending on how moco is started.
         # - Tools like read_file/write_file/execute_bash resolve paths against the working directory.
         abs_workdir = str(Path(self.working_directory).resolve())
-        cwd = str(Path.cwd().resolve())
+        
+        # プロジェクト構造を自動取得（セッション開始時に1回）
+        # キャッシュキーでセッション内の重複取得を防ぐ
+        cache_key = f"_project_layout_{abs_workdir}"
+        if not hasattr(self, cache_key):
+            try:
+                from ..tools.project_context import get_project_context
+                project_layout = get_project_context(abs_workdir, depth=2)
+                setattr(self, cache_key, project_layout)
+            except Exception as e:
+                setattr(self, cache_key, f"(取得失敗: {e})")
+        
+        project_layout = getattr(self, cache_key, "")
+        
         return (
             "【作業コンテキスト】\n"
-            f"- 作業ディレクトリ（唯一の正）: `{abs_workdir}`\n"
-            f"- 現在のカレントディレクトリ（参考/ズレる場合あり）: `{cwd}`\n"
-            "\n"
-            "⛔ 禁止: 作業ディレクトリの外へ出ること。ファイル操作は必ず作業ディレクトリ内で行うこと。\n"
-            "✅ ルール: パスは必ず「作業ディレクトリ基準」で指定する（相対パス推奨）。\n"
-            "✅ 確認: 迷ったら `get_project_context()` を実行し、その Root を基準にする。\n\n"
+            f"作業ディレクトリ: `{abs_workdir}`\n\n"
+            f"## プロジェクト構造（自動取得済み - list_dir不要）\n"
+            f"{project_layout}\n\n"
+            "⛔ 禁止: list_dir を繰り返してファイルを探すこと → glob_search/grep を使え\n"
+            "✅ ルール: 上記の構造を参照し、パスは作業ディレクトリ基準で指定（相対パス推奨）\n\n"
         )
 
     def _evaluate_subagent_response(

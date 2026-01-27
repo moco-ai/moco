@@ -646,7 +646,8 @@ class AgentRuntime:
         semantic_memory: Optional[SemanticMemory] = None,
         skills: Optional[List[SkillConfig]] = None,
         memory_service = None,
-        system_prompt_override: Optional[str] = None
+        system_prompt_override: Optional[str] = None,
+        session_logger = None
     ):
         self.config = config
         self.tool_map = tool_map
@@ -658,6 +659,7 @@ class AgentRuntime:
         self.skills: List[SkillConfig] = skills or []
         self.memory_service = memory_service
         self.system_prompt_override = system_prompt_override
+        self.session_logger = session_logger
         
         # Memory context (dynamically updated in run())
         self._memory_context = ""
@@ -1022,6 +1024,22 @@ class AgentRuntime:
 
         # Context limit check
         result = self._update_context_usage(result)
+        
+        # Session logging: Record tool call and result for context recovery
+        if self.session_logger and session_id:
+            try:
+                # Format: [TOOL] name(args) -> result (truncated)
+                args_summary = ", ".join(f"{k}={repr(v)[:50]}" for k, v in list(args_dict.items())[:3])
+                result_preview = str(result)[:500] if result else "(empty)"
+                tool_log = f"[TOOL] {func_name}({args_summary})\n→ {result_preview}"
+                self.session_logger.log_agent_message(
+                    session_id,
+                    "tool",  # Use "tool" role for tool calls
+                    tool_log,
+                    agent_id=self.agent_name
+                )
+            except Exception:
+                pass  # Don't fail on logging errors
         
         # Memory: Record tool execution event
         if self.memory_service and session_id:
