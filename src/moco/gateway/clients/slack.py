@@ -30,7 +30,7 @@ logger = logging.getLogger("moco-slack")
 
 
 def filter_response_for_display(response: str) -> str:
-    """レスポンスをフィルタリング（最後のエージェントの出力のみ表示）"""
+    """レスポンスをフィルタリング（中間出力を除外し、最終結果のみ表示）"""
     if not response:
         return ""
     
@@ -48,7 +48,37 @@ def filter_response_for_display(response: str) -> str:
         else:
             return f"{last_agent}: {last_content}"
     
-    return response
+    # "## 完了" セクションを探して、その後の内容を返す
+    if "## 完了" in response:
+        parts = response.split("## 完了")
+        if len(parts) > 1:
+            final_part = parts[-1].strip()
+            # "## 完了" の後の内容を返す（空なら "## 完了" を含む最後のパート）
+            if final_part:
+                return final_part
+            # 最後のパートが空なら、## 完了 の直前のセクションから有用な内容を探す
+            for part in reversed(parts[:-1]):
+                # "## 作業内容" を除いた最後の有意義なセクション
+                lines = [l for l in part.strip().split("\n") if l.strip() and not l.strip().startswith("## 作業内容")]
+                if lines:
+                    return "\n".join(lines[-10:])  # 最後の10行を返す
+    
+    # "## 作業内容" で始まる行を除外
+    lines = response.split("\n")
+    filtered_lines = []
+    skip_section = False
+    for line in lines:
+        if line.strip().startswith("## 作業内容"):
+            skip_section = True
+            continue
+        elif line.strip().startswith("## ") and not line.strip().startswith("## 作業内容"):
+            skip_section = False
+        
+        if not skip_section:
+            filtered_lines.append(line)
+    
+    result = "\n".join(filtered_lines).strip()
+    return result if result else response
 
 # 設定
 # MOCO_API_URL は従来 http://localhost:8000/api/chat だったので、ベースURLを抽出
