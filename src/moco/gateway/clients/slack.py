@@ -199,7 +199,8 @@ def handle_command(text: str, channel: str, thread_ts: str, settings: dict):
 
     web_client.chat_postMessage(channel=channel, text=reply, thread_ts=thread_ts)
 
-if __name__ == "__main__":
+def main():
+    """Start the Slack gateway"""
     # ボットのユーザーIDを取得（ループ防止用）
     auth_test = web_client.auth_test()
     bot_user_id = auth_test["user_id"]
@@ -212,3 +213,6 @@ if __name__ == "__main__":
     
     from threading import Event
     Event().wait()
+
+if __name__ == "__main__":
+    main()

@@ -10,13 +10,27 @@ Gateway Clients - 外部メッセージングサービスとの連携
     
     # iMessage
     python -m moco.gateway.clients.imessage
+    
+    # Slack
+    python -m moco.gateway.clients.slack
 
 または CLI から:
     moco channel whatsapp
     moco channel imessage
+    moco channel slack
 """
 
-from .whatsapp import main as whatsapp_main
-from .imessage import main as imessage_main
+# Lazy imports to avoid missing dependency errors
+def whatsapp_main():
+    from .whatsapp import main
+    return main()
 
-__all__ = ["whatsapp_main", "imessage_main"]
+def imessage_main():
+    from .imessage import main
+    return main()
+
+def slack_main():
+    from .slack import main
+    return main()
+
+__all__ = ["whatsapp_main", "imessage_main", "slack_main"]
