@@ -153,9 +153,9 @@ class SlackStreamManager:
         if not new_chunks:
             return
         
-        try:
-            # 既存のチャンクを更新、必要なら新しいチャンクを追加
-            for i, chunk_text in enumerate(new_chunks):
+        # 既存のチャンクを更新、必要なら新しいチャンクを追加
+        for i, chunk_text in enumerate(new_chunks):
+            try:
                 if i < len(self.chunks):
                     # 既存メッセージを更新
                     if self.chunks[i]["content"] != chunk_text:
@@ -178,15 +178,17 @@ class SlackStreamManager:
                     })
                     if i == 0:
                         self.message_ts = result["ts"]
-            
-            self.last_update_time = now
-            
-        except Exception as e:
-            # レート制限などのエラーは無視（次の更新で再試行）
-            if "ratelimited" in str(e).lower():
-                logger.warning(f"⚠️ Rate limited, will retry")
-            else:
-                logger.error(f"⚠️ Slack更新エラー: {e}")
+            except Exception as e:
+                error_str = str(e).lower()
+                if "ratelimited" in error_str:
+                    logger.warning(f"⚠️ Rate limited on chunk {i}, will retry")
+                    time.sleep(1.0)  # レート制限時は少し待つ
+                elif "msg_too_long" in error_str:
+                    logger.error(f"⚠️ Chunk {i} too long ({len(chunk_text)} chars), skipping")
+                else:
+                    logger.error(f"⚠️ Slack更新エラー (chunk {i}): {e}")
+        
+        self.last_update_time = now
     
     def finalize(self, final_content: Optional[str] = None):
         """最終更新（ステータス行を削除）"""
@@ -195,19 +197,31 @@ class SlackStreamManager:
             if final_content is not None:
                 self.full_content = final_content
             self.status_line = ""
+            
+            logger.info(f"📝 finalize: full_content={len(self.full_content)} chars, chunks={len(self.chunks)}")
+            
             self._maybe_update_slack()
             
             # メッセージが一つも投稿されていない場合
             if not self.chunks and self.full_content:
-                try:
-                    result = web_client.chat_postMessage(
-                        channel=self.channel,
-                        text=self.full_content,
-                        thread_ts=self.thread_ts
-                    )
-                    self.message_ts = result["ts"]
-                except Exception as e:
-                    logger.error(f"⚠️ 最終投稿エラー: {e}")
+                # 長いコンテンツは分割して投稿
+                chunks_to_post = split_text_for_slack(self.full_content, limit=self.SLACK_MAX_MESSAGE_SIZE)
+                logger.info(f"📝 finalize: posting {len(chunks_to_post)} new chunks")
+                for i, chunk_text in enumerate(chunks_to_post):
+                    try:
+                        result = web_client.chat_postMessage(
+                            channel=self.channel,
+                            text=chunk_text,
+                            thread_ts=self.thread_ts
+                        )
+                        self.chunks.append({
+                            "ts": result["ts"],
+                            "content": chunk_text
+                        })
+                        if i == 0:
+                            self.message_ts = result["ts"]
+                    except Exception as e:
+                        logger.error(f"⚠️ 最終投稿エラー (chunk {i}): {e}")
 
 # ユーザーごとの設定 (メモリ保持)
 # { "channel_id:user_id": { ... } }
