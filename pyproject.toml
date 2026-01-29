@@ -48,6 +48,8 @@ mobile = [
     "python-magic",  # File type detection for media
     "qrcode",  # QR code display for WhatsApp auth
     "protobuf>=5.0.0",  # Required by neonize
+    "slack-sdk>=3.21.0",  # Slack integration
+    "slack-bolt>=1.18.0",  # Slack Socket Mode
 ]
 
 [project.scripts]
