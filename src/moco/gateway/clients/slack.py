@@ -29,8 +29,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("moco-slack")
 
 # 設定
-MOCO_API_BASE = os.getenv("MOCO_API_URL", "http://localhost:8000")
-MOCO_STREAM_URL = f"{MOCO_API_BASE.rstrip('/')}/api/chat/stream"
+# MOCO_API_URL は従来 http://localhost:8000/api/chat だったので、ベースURLを抽出
+_moco_url = os.getenv("MOCO_API_URL", "http://localhost:8000")
+# /api/chat が含まれていれば除去してベースURLを取得
+if _moco_url.endswith("/api/chat"):
+    MOCO_API_BASE = _moco_url[:-9]  # len("/api/chat") = 9
+elif _moco_url.endswith("/api/chat/"):
+    MOCO_API_BASE = _moco_url[:-10]
+else:
+    MOCO_API_BASE = _moco_url.rstrip("/")
+MOCO_STREAM_URL = f"{MOCO_API_BASE}/api/chat/stream"
 DEFAULT_PROFILE = "cursor"
 DEFAULT_PROVIDER = "openrouter"
 
