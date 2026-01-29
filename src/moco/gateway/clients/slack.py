@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Slack ↔ moco 連携 (Socket Mode) with Streaming Support
+Slack ↔ moco 連携 (Socket Mode)
 
 使い方:
 1. moco ui を起動: moco ui
@@ -12,13 +12,12 @@ Slack ↔ moco 連携 (Socket Mode) with Streaming Support
 
 import os
 import re
-import json
 import httpx
 import base64
 import logging
 import threading
 import time
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from slack_sdk import WebClient
 from slack_sdk.socket_mode import SocketModeClient
 from slack_sdk.socket_mode.request import SocketModeRequest
@@ -90,7 +89,8 @@ elif _moco_url.endswith("/api/chat/"):
     MOCO_API_BASE = _moco_url[:-10]
 else:
     MOCO_API_BASE = _moco_url.rstrip("/")
-MOCO_STREAM_URL = f"{MOCO_API_BASE}/api/chat/stream"
+# ストリーミングではなく通常のAPIを使用（WhatsAppと同じ）
+MOCO_API_URL = f"{MOCO_API_BASE}/api/chat"
 DEFAULT_PROFILE = "cursor"
 DEFAULT_PROVIDER = "openrouter"
 
@@ -145,252 +145,6 @@ def split_text_for_slack(text: str, limit: int = 1000) -> List[str]:
     return chunks
 
 
-class SlackStreamManager:
-    """Slackメッセージのリアルタイム更新を管理（ai_manager互換実装）"""
-    
-    # UTF-8マルチバイト文字（日本語）は1文字3バイト
-    # Slack制限は約4000バイトなので、1000文字程度に抑える
-    SLACK_MAX_MESSAGE_SIZE = 1000
-    UPDATE_INTERVAL = 3.0  # 秒 (レート制限対策) - ai_managerと同じ
-    RATE_LIMIT_BACKOFF = 5.0  # レート制限後の待機時間
-    
-    def __init__(self, channel: str, thread_ts: str):
-        self.channel = channel
-        self.thread_ts = thread_ts
-        self.full_content = ""
-        self.status_line = ""
-        self.stream_ts: Optional[str] = None
-        self.chunks: List[Dict[str, Any]] = []  # List of {"ts": str, "content": str}
-        self.last_update_time = 0.0
-        self._lock = threading.Lock()
-        self.is_final = False
-        self._rate_limited_until = 0.0
-        self._post_failed = False
-        self._force_update = False  # ステータス変更時に即座更新するフラグ
-    
-    def _get_ts_from_response(self, res) -> Optional[str]:
-        """Extract 'ts' from Slack response safely."""
-        if res is None:
-            return None
-        try:
-            return res.get("ts") or (res.get("message", {}).get("ts") if isinstance(res.get("message"), dict) else None)
-        except (AttributeError, TypeError, KeyError):
-            return None
-    
-    def update_content(self, chunk: str):
-        """コンテンツを追加（バッファリングのみ、Slackへの更新はfinalizeで行う）"""
-        with self._lock:
-            self.full_content += chunk
-            # ストリーミング中はステータス更新のみ（CLIと同様に中間出力は表示しない）
-            # self._maybe_update_slack()  # コメントアウト - finalizeでフィルタリングして表示
-    
-    def set_status(self, status: str, force: bool = True):
-        """ステータス行を設定
-        
-        Args:
-            status: ステータステキスト（空の場合はクリア）
-            force: True の場合、スロットリングを無視して即座に更新
-        """
-        with self._lock:
-            if status:
-                self.status_line = f"\n\n---\n⏳ {status}"
-                self._force_update = force  # ステータス変更時は即座更新
-            else:
-                self.status_line = ""
-            self._maybe_update_slack()
-    
-    def _maybe_update_slack(self):
-        """スロットリング付きでSlackを更新（ai_manager互換）"""
-        now = time.time()
-        
-        # レート制限中はスキップ
-        if now < self._rate_limited_until:
-            return
-        
-        # 初回投稿が失敗していて、まだチャンクがない場合はfinalizeまで待つ
-        if self._post_failed and not self.chunks and not self.is_final:
-            return
-        
-        # 最終更新/強制更新でなければインターバルをチェック
-        if not self.is_final and not self._force_update and (now - self.last_update_time) < self.UPDATE_INTERVAL:
-            return
-        
-        # 強制更新フラグをリセット
-        self._force_update = False
-        
-        text_to_display = self.full_content
-        if not self.is_final:
-            text_to_display += "..."
-            if self.status_line:
-                text_to_display += self.status_line
-        
-        if not text_to_display.strip():
-            return
-        
-        # テキストを分割
-        new_chunks_content = split_text_for_slack(text_to_display, limit=self.SLACK_MAX_MESSAGE_SIZE)
-        if not new_chunks_content:
-            return
-        
-        # 1. 新しいチャンクを投稿（必要な場合）
-        while len(self.chunks) < len(new_chunks_content):
-            new_chunk_index = len(self.chunks)
-            new_content = new_chunks_content[new_chunk_index]
-            try:
-                res = web_client.chat_postMessage(
-                    channel=self.channel,
-                    text=new_content,
-                    thread_ts=self.thread_ts
-                )
-                ts = self._get_ts_from_response(res)
-                if not ts:
-                    logger.error(f"⚠️ Error posting new chunk {new_chunk_index}: invalid response")
-                    self._post_failed = True
-                    return
-                self.chunks.append({"ts": ts, "content": new_content})
-                self._post_failed = False
-                # レート制限回避のため少し待つ
-                time.sleep(1.0)
-            except Exception as e:
-                error_str = str(e).lower()
-                if "ratelimited" in error_str or "429" in error_str:
-                    logger.warning(f"⚠️ Rate limited - backing off for {self.RATE_LIMIT_BACKOFF}s")
-                    self._rate_limited_until = time.time() + self.RATE_LIMIT_BACKOFF
-                else:
-                    logger.error(f"⚠️ Error posting new chunk {new_chunk_index}: {e}")
-                self._post_failed = True
-                return
-        
-        # 2. 既存のチャンクを更新
-        for i, chunk_data in enumerate(self.chunks):
-            if i < len(new_chunks_content):
-                new_content = new_chunks_content[i]
-                if new_content != chunk_data["content"]:
-                    try:
-                        web_client.chat_update(
-                            channel=self.channel,
-                            ts=chunk_data["ts"],
-                            text=new_content
-                        )
-                        self.chunks[i]["content"] = new_content
-                    except Exception as e:
-                        error_str = str(e).lower()
-                        if "ratelimited" in error_str or "429" in error_str:
-                            logger.warning(f"⚠️ Rate limited on update - backing off")
-                            self._rate_limited_until = time.time() + self.RATE_LIMIT_BACKOFF
-                        else:
-                            logger.error(f"⚠️ Error updating chunk {i}: {e}")
-        
-        self.last_update_time = now
-        
-        # stream_ts は最新のチャンクを指す
-        if self.chunks:
-            self.stream_ts = self.chunks[-1]["ts"]
-    
-    def finalize(self, final_content: Optional[str] = None):
-        """最終更新（CLIと同様にフィルタリング）"""
-        with self._lock:
-            self.is_final = True
-            if final_content is not None:
-                self.full_content = final_content
-            self.status_line = ""
-            
-            # CLIと同様に、最後のエージェントの出力のみをフィルタリング
-            filtered_content = filter_response_for_display(self.full_content)
-            logger.info(f"📝 [finalize] original: {len(self.full_content)} chars, filtered: {len(filtered_content)} chars")
-            
-            # 最終コンテンツを分割
-            final_chunks_content = split_text_for_slack(filtered_content, limit=self.SLACK_MAX_MESSAGE_SIZE)
-            if not final_chunks_content and self.chunks:
-                final_chunks_content = [""]
-            
-            logger.info(f"📝 [finalize] full_content: {len(self.full_content)} chars, split into {len(final_chunks_content)} chunks")
-            
-            # 1. 既存のチャンクを最終コンテンツで更新
-            for i, chunk_data in enumerate(self.chunks):
-                if i < len(final_chunks_content):
-                    final_chunk_text = final_chunks_content[i]
-                    if final_chunk_text != chunk_data["content"]:
-                        try:
-                            web_client.chat_update(
-                                channel=self.channel,
-                                ts=chunk_data["ts"],
-                                text=final_chunk_text
-                            )
-                            self.chunks[i]["content"] = final_chunk_text
-                        except Exception as e:
-                            logger.error(f"⚠️ Error updating final chunk {i}: {e}")
-                else:
-                    # このチャンクは不要になった
-                    try:
-                        web_client.chat_update(
-                            channel=self.channel,
-                            ts=chunk_data["ts"],
-                            text="(...)"
-                        )
-                    except Exception as e:
-                        logger.error(f"⚠️ Error clearing extra chunk {i}: {e}")
-            
-            # 2. 残りのチャンクを新規投稿
-            remaining_chunks = final_chunks_content[len(self.chunks):]
-            for i, chunk_text in enumerate(remaining_chunks, start=len(self.chunks)):
-                time.sleep(1.0)  # レート制限回避
-                try:
-                    logger.info(f"📝 [finalize] posting new chunk {i+1}/{len(final_chunks_content)}")
-                    res = web_client.chat_postMessage(
-                        channel=self.channel,
-                        text=chunk_text,
-                        thread_ts=self.thread_ts
-                    )
-                    ts = self._get_ts_from_response(res)
-                    if ts:
-                        self.chunks.append({"ts": ts, "content": chunk_text})
-                except Exception as e:
-                    logger.error(f"⚠️ Error posting final chunk {i+1}: {e}")
-            
-            # 3. ストリーミングが一度も行われなかった場合
-            if not self.chunks and final_chunks_content:
-                logger.info(f"📝 [finalize] No streaming chunks, posting {len(final_chunks_content)} chunk(s) directly")
-                for i, chunk_text in enumerate(final_chunks_content):
-                    time.sleep(1.0)
-                    try:
-                        res = web_client.chat_postMessage(
-                            channel=self.channel,
-                            text=chunk_text,
-                            thread_ts=self.thread_ts
-                        )
-                        ts = self._get_ts_from_response(res)
-                        if ts:
-                            self.chunks.append({"ts": ts, "content": chunk_text})
-                    except Exception as e:
-                        logger.error(f"⚠️ Error posting fallback chunk {i+1}: {e}")
-            
-            # 4. 最後のチャンクに完了マーカーを追加
-            if self.chunks:
-                last_chunk = self.chunks[-1]
-                completion_marker = "\n\n---\n✅ 完了"
-                updated_content = last_chunk["content"] + completion_marker
-                # 長すぎる場合は別メッセージとして投稿
-                if len(updated_content) > self.SLACK_MAX_MESSAGE_SIZE:
-                    try:
-                        web_client.chat_postMessage(
-                            channel=self.channel,
-                            text="✅ 完了",
-                            thread_ts=self.thread_ts
-                        )
-                    except Exception as e:
-                        logger.error(f"⚠️ Error posting completion marker: {e}")
-                else:
-                    try:
-                        web_client.chat_update(
-                            channel=self.channel,
-                            ts=last_chunk["ts"],
-                            text=updated_content
-                        )
-                        self.chunks[-1]["content"] = updated_content
-                    except Exception as e:
-                        logger.error(f"⚠️ Error updating with completion marker: {e}")
-
 # ユーザーごとの設定 (メモリ保持)
 # { "channel_id:user_id": { ... } }
 user_settings: Dict[str, Dict[str, Any]] = {}
@@ -436,103 +190,6 @@ def process_slack_files(files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return attachments
 
 
-def stream_moco_response(payload: Dict[str, Any], stream_manager: SlackStreamManager, settings: dict):
-    """moco APIからストリーミングでレスポンスを取得してSlackを更新"""
-    try:
-        with httpx.Client(timeout=300.0) as http:
-            with http.stream("POST", MOCO_STREAM_URL, json=payload) as response:
-                if response.status_code != 200:
-                    stream_manager.finalize(f"❌ moco エラー: {response.status_code}")
-                    return
-                
-                buffer = ""
-                current_tool = None  # 現在実行中のツール名
-                
-                for chunk in response.iter_text():
-                    buffer += chunk
-                    
-                    # SSEイベントを処理
-                    while "\n\n" in buffer:
-                        event_str, buffer = buffer.split("\n\n", 1)
-                        
-                        for line in event_str.split("\n"):
-                            if line.startswith("data: "):
-                                try:
-                                    data = json.loads(line[6:])
-                                    event_type = data.get("type")
-                                    
-                                    if event_type == "start":
-                                        # 開始イベント - session_id を取得
-                                        new_session_id = data.get("session_id")
-                                        if new_session_id:
-                                            settings["session_id"] = new_session_id
-                                    
-                                    elif event_type == "chunk":
-                                        # コンテンツチャンク
-                                        content = data.get("content", "")
-                                        stream_manager.update_content(content)
-                                    
-                                    elif event_type == "thinking":
-                                        # thinking イベントは無視（Slackでは表示しない）
-                                        pass
-                                    
-                                    elif event_type == "progress":
-                                        # 進捗イベント（ツール実行、デリゲーションなど）
-                                        event_name = data.get("event", "")
-                                        status = data.get("status", "")
-                                        tool_name = data.get("tool") or data.get("name", "")
-                                        agent = data.get("agent", "")
-                                        
-                                        if event_name == "tool":
-                                            if status == "running":
-                                                current_tool = tool_name
-                                                stream_manager.set_status(f"🔧 `{tool_name}` を実行中...")
-                                            elif status == "completed":
-                                                # ストリームをブロックしないようにステータスクリア
-                                                stream_manager.set_status("", force=False)
-                                                current_tool = None
-                                        elif event_name == "delegate":
-                                            if status == "running":
-                                                stream_manager.set_status(f"🤖 @{tool_name} に委任中...")
-                                            elif status == "completed":
-                                                stream_manager.set_status("", force=False)
-                                    
-                                    elif event_type == "recall":
-                                        # メモリ/インサイト呼び出し
-                                        recall_type = data.get("recall_type", "")
-                                        query = data.get("query", "")
-                                        if recall_type and query:
-                                            stream_manager.set_status(f"📚 {recall_type}: {query[:30]}...")
-                                    
-                                    elif event_type == "done":
-                                        # 完了
-                                        stream_manager.finalize()
-                                        return
-                                    
-                                    elif event_type == "cancelled":
-                                        # キャンセル
-                                        stream_manager.finalize("⚠️ キャンセルされました")
-                                        return
-                                    
-                                    elif event_type == "error":
-                                        # エラー
-                                        error_msg = data.get("message", "不明なエラー")
-                                        stream_manager.finalize(f"❌ エラー: {error_msg}")
-                                        return
-                                
-                                except json.JSONDecodeError:
-                                    pass
-                
-                # 残りのバッファを処理
-                stream_manager.finalize()
-                
-    except httpx.TimeoutException:
-        stream_manager.finalize("❌ タイムアウト: moco APIからの応答がありません")
-    except httpx.ConnectError:
-        stream_manager.finalize("❌ 接続エラー: moco APIに接続できません")
-    except Exception as e:
-        logger.error(f"❌ ストリーミングエラー: {e}")
-        stream_manager.finalize(f"❌ エラー: {e}")
 
 
 def handle_message(client: SocketModeClient, req: SocketModeRequest):
@@ -579,15 +236,14 @@ def handle_message(client: SocketModeClient, req: SocketModeRequest):
     files = event.get("files", [])
     attachments = process_slack_files(files)
 
-    # moco API呼び出し（ストリーミング）
+    # moco API呼び出し（WhatsAppと同じ非ストリーミング方式）
     logger.info(f"🚀 moco に送信中... User:{user} [{settings['profile']}/{settings['provider']}]")
     
     payload = {
         "message": cmd_text,
         "session_id": settings["session_id"],
         "profile": settings["profile"],
-        "provider": settings["provider"],
-        "verbose": False  # thinking を表示しない
+        "provider": settings["provider"]
     }
     # モデルが設定されている場合は追加
     if settings.get("model"):
@@ -598,19 +254,86 @@ def handle_message(client: SocketModeClient, req: SocketModeRequest):
         if not cmd_text:
             payload["message"] = "この画像について教えてください。"
 
-    # ストリーミングマネージャーを作成
-    stream_manager = SlackStreamManager(channel, thread_ts)
-    
-    # バックグラウンドでストリーミング処理
-    def run_stream():
+    # バックグラウンドでAPI呼び出し
+    def run_api_call():
         try:
-            stream_moco_response(payload, stream_manager, settings)
-            logger.info("📤 ストリーミング完了")
+            # 処理中メッセージを投稿
+            processing_msg = web_client.chat_postMessage(
+                channel=channel,
+                text="⏳ 処理中...",
+                thread_ts=thread_ts
+            )
+            processing_ts = processing_msg.get("ts")
+            
+            # タイムアウトなしでAPI呼び出し（WhatsAppと同じ）
+            with httpx.Client(timeout=None) as http:
+                response = http.post(MOCO_API_URL, json=payload)
+            
+            if response.status_code == 200:
+                data = response.json()
+                result = data.get("response", "（応答なし）")
+                new_session_id = data.get("session_id")
+                
+                # セッションID更新
+                if new_session_id:
+                    settings["session_id"] = new_session_id
+                
+                # レスポンスをフィルタリング
+                filtered_result = filter_response_for_display(result)
+                
+                # 結果を分割して投稿
+                chunks = split_text_for_slack(filtered_result, limit=1000)
+                
+                if chunks:
+                    # 処理中メッセージを最初のチャンクで更新
+                    try:
+                        web_client.chat_update(
+                            channel=channel,
+                            ts=processing_ts,
+                            text=chunks[0]
+                        )
+                    except Exception as e:
+                        logger.error(f"⚠️ メッセージ更新エラー: {e}")
+                    
+                    # 残りのチャンクを投稿
+                    for chunk in chunks[1:]:
+                        time.sleep(1.0)  # レート制限回避
+                        try:
+                            web_client.chat_postMessage(
+                                channel=channel,
+                                text=chunk,
+                                thread_ts=thread_ts
+                            )
+                        except Exception as e:
+                            logger.error(f"⚠️ チャンク投稿エラー: {e}")
+                else:
+                    # 結果が空の場合
+                    web_client.chat_update(
+                        channel=channel,
+                        ts=processing_ts,
+                        text="（応答なし）"
+                    )
+                
+                logger.info("📤 完了")
+            else:
+                error_msg = f"❌ moco エラー: {response.status_code}"
+                web_client.chat_update(
+                    channel=channel,
+                    ts=processing_ts,
+                    text=error_msg
+                )
+                logger.error(error_msg)
+                
+        except httpx.ConnectError:
+            error_msg = "❌ moco APIに接続できません"
+            web_client.chat_postMessage(channel=channel, text=error_msg, thread_ts=thread_ts)
+            logger.error(error_msg)
         except Exception as e:
-            logger.error(f"❌ ストリーミングエラー: {e}")
-            stream_manager.finalize(f"❌ エラー: {e}")
+            error_msg = f"❌ エラー: {e}"
+            web_client.chat_postMessage(channel=channel, text=error_msg, thread_ts=thread_ts)
+            logger.error(error_msg)
     
-    thread = threading.Thread(target=run_stream)
+    thread = threading.Thread(target=run_api_call)
     thread.start()
 
 def handle_command(text: str, channel: str, thread_ts: str, settings: dict):
@@ -772,7 +495,7 @@ def main():
     auth_test = web_client.auth_test()
     bot_user_id = auth_test["user_id"]
     logger.info(f"🤖 Bot User ID: {bot_user_id}")
-    logger.info(f"📡 moco API: {MOCO_STREAM_URL}")
+    logger.info(f"📡 moco API: {MOCO_API_URL}")
 
     socket_client.socket_mode_request_listeners.append(handle_message)
     
