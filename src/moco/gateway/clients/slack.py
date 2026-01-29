@@ -376,6 +376,10 @@ def handle_message(client: SocketModeClient, req: SocketModeRequest):
         "profile": settings["profile"],
         "provider": settings["provider"]
     }
+    # モデルが設定されている場合は追加
+    if settings.get("model"):
+        payload["model"] = settings["model"]
+    
     if attachments:
         payload["attachments"] = attachments
         if not cmd_text:
@@ -398,24 +402,139 @@ def handle_message(client: SocketModeClient, req: SocketModeRequest):
 
 def handle_command(text: str, channel: str, thread_ts: str, settings: dict):
     parts = text.split()
-    cmd = parts[0].lower()
+    cmd = parts[0].lower().lstrip("/")
+    args = parts[1:] if len(parts) > 1 else []
     
     reply = ""
-    if cmd in ["/clear", "/new"]:
+    
+    # セッション管理
+    if cmd in ["clear", "new"]:
         settings["session_id"] = None
-        reply = "🗑️ セッションをクリアしました"
-    elif cmd == "/profile" and len(parts) > 1:
-        settings["profile"] = parts[1]
-        reply = f"✅ プロファイルを変更: {parts[1]}"
-    elif cmd == "/provider" and len(parts) > 1:
-        settings["provider"] = parts[1]
-        reply = f"✅ プロバイダを変更: {parts[1]}"
-    elif cmd == "/status":
-        reply = f"📊 現在の設定\nプロファイル: {settings['profile']}\nプロバイダ: {settings['provider']}\nセッション: {settings['session_id'] or '(新規)'}"
-    elif cmd == "/help":
-        reply = "📚 *moco Slack ヘルプ*\n`/profile <name>` - プロファイル変更\n`/provider <name>` - プロバイダ変更\n`/new` - 新しいセッション\n`/status` - 設定表示\n`/stream on|off` - ストリーミング切替"
+        reply = "🗑️ セッションをクリアしました（新しい会話を開始）"
+    
+    # プロファイル変更
+    elif cmd == "profile":
+        if args:
+            settings["profile"] = args[0]
+            reply = f"✅ プロファイルを変更: `{args[0]}`"
+        else:
+            reply = f"📋 現在のプロファイル: `{settings['profile']}`\n使用例: `/profile cursor`"
+    
+    # プロバイダ変更
+    elif cmd == "provider":
+        if args:
+            settings["provider"] = args[0]
+            reply = f"✅ プロバイダを変更: `{args[0]}`"
+        else:
+            providers = ["openrouter", "gemini", "openai", "anthropic"]
+            reply = f"📋 現在のプロバイダ: `{settings['provider']}`\n利用可能: {', '.join(providers)}\n使用例: `/provider openrouter`"
+    
+    # モデル変更
+    elif cmd == "model":
+        if args:
+            settings["model"] = args[0]
+            reply = f"✅ モデルを変更: `{args[0]}`"
+        else:
+            current_model = settings.get("model", "(デフォルト)")
+            reply = f"📋 現在のモデル: `{current_model}`\n使用例: `/model google/gemini-2.0-flash`"
+    
+    # ステータス表示
+    elif cmd == "status":
+        session_display = settings['session_id'][:8] + "..." if settings['session_id'] else "(新規)"
+        model_display = settings.get("model", "(デフォルト)")
+        reply = (
+            f"📊 *moco 設定*\n"
+            f"• プロファイル: `{settings['profile']}`\n"
+            f"• プロバイダ: `{settings['provider']}`\n"
+            f"• モデル: `{model_display}`\n"
+            f"• セッション: `{session_display}`"
+        )
+    
+    # セッション情報
+    elif cmd == "session":
+        if settings['session_id']:
+            reply = f"📝 セッションID: `{settings['session_id']}`"
+        else:
+            reply = "📝 セッション: (未開始 - 次のメッセージで自動作成されます)"
+    
+    # ツール一覧（API経由で取得）
+    elif cmd == "tools":
+        try:
+            with httpx.Client(timeout=10.0) as http:
+                resp = http.get(f"{MOCO_API_BASE}/api/tools", params={"profile": settings["profile"]})
+                if resp.status_code == 200:
+                    data = resp.json()
+                    tools = data.get("tools", [])
+                    if tools:
+                        tool_list = "\n".join([f"• `{t}`" for t in sorted(tools)[:20]])
+                        reply = f"🔧 *利用可能なツール* ({len(tools)}個)\n{tool_list}"
+                        if len(tools) > 20:
+                            reply += f"\n... 他 {len(tools) - 20} 個"
+                    else:
+                        reply = "🔧 ツールが見つかりません"
+                else:
+                    reply = "⚠️ ツール一覧の取得に失敗しました"
+        except Exception as e:
+            reply = f"⚠️ ツール一覧の取得に失敗: {e}"
+    
+    # エージェント一覧（API経由で取得）
+    elif cmd == "agents":
+        try:
+            with httpx.Client(timeout=10.0) as http:
+                resp = http.get(f"{MOCO_API_BASE}/api/agents", params={"profile": settings["profile"]})
+                if resp.status_code == 200:
+                    data = resp.json()
+                    agents = data.get("agents", [])
+                    if agents:
+                        agent_list = "\n".join([f"• `{a['name']}`: {a.get('description', '')[:50]}" for a in agents[:10]])
+                        reply = f"🤖 *利用可能なエージェント* ({len(agents)}個)\n{agent_list}"
+                    else:
+                        reply = "🤖 エージェントが見つかりません"
+                else:
+                    reply = "⚠️ エージェント一覧の取得に失敗しました"
+        except Exception as e:
+            reply = f"⚠️ エージェント一覧の取得に失敗: {e}"
+    
+    # プロファイル一覧
+    elif cmd == "profiles":
+        try:
+            with httpx.Client(timeout=10.0) as http:
+                resp = http.get(f"{MOCO_API_BASE}/api/profiles")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    profiles = data.get("profiles", [])
+                    if profiles:
+                        current = settings["profile"]
+                        profile_list = "\n".join([f"{'→' if p == current else '•'} `{p}`" for p in sorted(profiles)])
+                        reply = f"📂 *利用可能なプロファイル*\n{profile_list}"
+                    else:
+                        reply = "📂 プロファイルが見つかりません"
+                else:
+                    reply = "⚠️ プロファイル一覧の取得に失敗しました"
+        except Exception as e:
+            reply = f"⚠️ プロファイル一覧の取得に失敗: {e}"
+    
+    # ヘルプ
+    elif cmd == "help":
+        reply = (
+            "📚 *moco Slack コマンド*\n\n"
+            "*セッション管理*\n"
+            "• `/new` `/clear` - 新しいセッションを開始\n"
+            "• `/session` - セッション情報を表示\n"
+            "• `/status` - 現在の設定を表示\n\n"
+            "*設定変更*\n"
+            "• `/profile [name]` - プロファイル表示/変更\n"
+            "• `/profiles` - プロファイル一覧\n"
+            "• `/provider [name]` - プロバイダ表示/変更\n"
+            "• `/model [name]` - モデル表示/変更\n\n"
+            "*情報*\n"
+            "• `/tools` - 利用可能なツール一覧\n"
+            "• `/agents` - 利用可能なエージェント一覧\n"
+            "• `/help` - このヘルプを表示"
+        )
+    
     else:
-        reply = f"❓ 不明なコマンド: {cmd}"
+        reply = f"❓ 不明なコマンド: `/{cmd}`\n`/help` でコマンド一覧を表示"
 
     web_client.chat_postMessage(channel=channel, text=reply, thread_ts=thread_ts)
 
