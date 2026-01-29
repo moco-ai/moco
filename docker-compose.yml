@@ -1,11 +1,9 @@
-version: "3.8"
-
 services:
   moco:
     build: .
     container_name: moco
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       # プロファイル（読み取り専用）
       - ./profiles:/app/profiles:ro
