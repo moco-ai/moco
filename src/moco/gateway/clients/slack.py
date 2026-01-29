@@ -17,7 +17,7 @@ import base64
 import logging
 import threading
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from slack_sdk import WebClient
 from slack_sdk.socket_mode import SocketModeClient
 from slack_sdk.socket_mode.request import SocketModeRequest
