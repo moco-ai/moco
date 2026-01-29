@@ -23,7 +23,7 @@ services:
       # その他設定
       - MOCO_PROFILE=${MOCO_PROFILE:-cursor}
       - LLM_PROVIDER=${LLM_PROVIDER:-openrouter}
-      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-google/gemini-2.5-flash}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-moonshotai/kimi-k2.5}
     restart: unless-stopped
     # セキュリティ制限
     security_opt:

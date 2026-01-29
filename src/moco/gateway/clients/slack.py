@@ -101,6 +101,7 @@ class SlackStreamManager:
     SLACK_MAX_MESSAGE_SIZE = 1000
     UPDATE_INTERVAL = 3.0  # 秒 (レート制限対策) - ai_managerと同じ
     RATE_LIMIT_BACKOFF = 5.0  # レート制限後の待機時間
+    STATUS_CLEAR_DELAY = 0.5  # ステータスクリア前の遅延
     
     def __init__(self, channel: str, thread_ts: str):
         self.channel = channel
@@ -114,6 +115,7 @@ class SlackStreamManager:
         self.is_final = False
         self._rate_limited_until = 0.0
         self._post_failed = False
+        self._force_update = False  # ステータス変更時に即座更新するフラグ
     
     def _get_ts_from_response(self, res) -> Optional[str]:
         """Extract 'ts' from Slack response safely."""
@@ -130,11 +132,17 @@ class SlackStreamManager:
             self.full_content += chunk
             self._maybe_update_slack()
     
-    def set_status(self, status: str):
-        """ステータス行を設定"""
+    def set_status(self, status: str, force: bool = True):
+        """ステータス行を設定
+        
+        Args:
+            status: ステータステキスト（空の場合はクリア）
+            force: True の場合、スロットリングを無視して即座に更新
+        """
         with self._lock:
             if status:
                 self.status_line = f"\n\n---\n⏳ {status}"
+                self._force_update = force  # ステータス変更時は即座更新
             else:
                 self.status_line = ""
             self._maybe_update_slack()
@@ -151,9 +159,12 @@ class SlackStreamManager:
         if self._post_failed and not self.chunks and not self.is_final:
             return
         
-        # 最終更新でなければインターバルをチェック
-        if not self.is_final and (now - self.last_update_time) < self.UPDATE_INTERVAL:
+        # 最終更新/強制更新でなければインターバルをチェック
+        if not self.is_final and not self._force_update and (now - self.last_update_time) < self.UPDATE_INTERVAL:
             return
+        
+        # 強制更新フラグをリセット
+        self._force_update = False
         
         text_to_display = self.full_content
         if not self.is_final:
@@ -380,9 +391,8 @@ def stream_moco_response(payload: Dict[str, Any], stream_manager: SlackStreamMan
                                         stream_manager.update_content(content)
                                     
                                     elif event_type == "thinking":
-                                        # 思考中（ステータス表示）- verbose相当
-                                        agent = data.get("agent", "moco")
-                                        stream_manager.set_status(f"💭 {agent} が考え中...")
+                                        # thinking イベントは無視（Slackでは表示しない）
+                                        pass
                                     
                                     elif event_type == "progress":
                                         # 進捗イベント（ツール実行、デリゲーションなど）
@@ -396,13 +406,16 @@ def stream_moco_response(payload: Dict[str, Any], stream_manager: SlackStreamMan
                                                 current_tool = tool_name
                                                 stream_manager.set_status(f"🔧 `{tool_name}` を実行中...")
                                             elif status == "completed":
-                                                stream_manager.set_status("")
+                                                # ステータスを少し遅らせてからクリア（表示時間確保）
+                                                time.sleep(stream_manager.STATUS_CLEAR_DELAY)
+                                                stream_manager.set_status("", force=False)
                                                 current_tool = None
                                         elif event_name == "delegate":
                                             if status == "running":
                                                 stream_manager.set_status(f"🤖 @{tool_name} に委任中...")
                                             elif status == "completed":
-                                                stream_manager.set_status("")
+                                                time.sleep(stream_manager.STATUS_CLEAR_DELAY)
+                                                stream_manager.set_status("", force=False)
                                     
                                     elif event_type == "recall":
                                         # メモリ/インサイト呼び出し
@@ -493,7 +506,8 @@ def handle_message(client: SocketModeClient, req: SocketModeRequest):
         "message": cmd_text,
         "session_id": settings["session_id"],
         "profile": settings["profile"],
-        "provider": settings["provider"]
+        "provider": settings["provider"],
+        "verbose": False  # thinking を表示しない
     }
     # モデルが設定されている場合は追加
     if settings.get("model"):
