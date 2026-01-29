@@ -1,0 +1,61 @@
+version: "3.8"
+
+services:
+  moco:
+    build: .
+    container_name: moco
+    ports:
+      - "8000:8000"
+    volumes:
+      # プロファイル（読み取り専用）
+      - ./profiles:/app/profiles:ro
+      # データ永続化
+      - moco_data:/app/data
+      # ワークスペース（ユーザーの作業ディレクトリ）
+      - ${MOCO_WORKSPACE:-./workspace}:/home/moco/workspace
+    environment:
+      # LLM API キー（.envファイルから読み込み）
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Slack 連携
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
+      # その他設定
+      - MOCO_PROFILE=${MOCO_PROFILE:-cursor}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openrouter}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-google/gemini-2.5-flash}
+    restart: unless-stopped
+    # セキュリティ制限
+    security_opt:
+      - no-new-privileges:true
+    # リソース制限
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+  # Slack ゲートウェイ（オプション）
+  slack-gateway:
+    build: .
+    container_name: moco-slack
+    command: ["python", "-m", "moco.gateway.clients.slack"]
+    depends_on:
+      - moco
+    environment:
+      - MOCO_API_URL=http://moco:8000/api/chat
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - slack  # docker compose --profile slack up で起動
+
+volumes:
+  moco_data:
