@@ -101,7 +101,6 @@ class SlackStreamManager:
     SLACK_MAX_MESSAGE_SIZE = 1000
     UPDATE_INTERVAL = 3.0  # 秒 (レート制限対策) - ai_managerと同じ
     RATE_LIMIT_BACKOFF = 5.0  # レート制限後の待機時間
-    STATUS_CLEAR_DELAY = 0.5  # ステータスクリア前の遅延
     
     def __init__(self, channel: str, thread_ts: str):
         self.channel = channel
@@ -432,15 +431,13 @@ def stream_moco_response(payload: Dict[str, Any], stream_manager: SlackStreamMan
                                                 current_tool = tool_name
                                                 stream_manager.set_status(f"🔧 `{tool_name}` を実行中...")
                                             elif status == "completed":
-                                                # ステータスを少し遅らせてからクリア（表示時間確保）
-                                                time.sleep(stream_manager.STATUS_CLEAR_DELAY)
+                                                # ストリームをブロックしないようにステータスクリア
                                                 stream_manager.set_status("", force=False)
                                                 current_tool = None
                                         elif event_name == "delegate":
                                             if status == "running":
                                                 stream_manager.set_status(f"🤖 @{tool_name} に委任中...")
                                             elif status == "completed":
-                                                time.sleep(stream_manager.STATUS_CLEAR_DELAY)
                                                 stream_manager.set_status("", force=False)
                                     
                                     elif event_type == "recall":
