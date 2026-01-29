@@ -308,6 +308,32 @@ class SlackStreamManager:
                             self.chunks.append({"ts": ts, "content": chunk_text})
                     except Exception as e:
                         logger.error(f"⚠️ Error posting fallback chunk {i+1}: {e}")
+            
+            # 4. 最後のチャンクに完了マーカーを追加
+            if self.chunks:
+                last_chunk = self.chunks[-1]
+                completion_marker = "\n\n---\n✅ 完了"
+                updated_content = last_chunk["content"] + completion_marker
+                # 長すぎる場合は別メッセージとして投稿
+                if len(updated_content) > self.SLACK_MAX_MESSAGE_SIZE:
+                    try:
+                        web_client.chat_postMessage(
+                            channel=self.channel,
+                            text="✅ 完了",
+                            thread_ts=self.thread_ts
+                        )
+                    except Exception as e:
+                        logger.error(f"⚠️ Error posting completion marker: {e}")
+                else:
+                    try:
+                        web_client.chat_update(
+                            channel=self.channel,
+                            ts=last_chunk["ts"],
+                            text=updated_content
+                        )
+                        self.chunks[-1]["content"] = updated_content
+                    except Exception as e:
+                        logger.error(f"⚠️ Error updating with completion marker: {e}")
 
 # ユーザーごとの設定 (メモリ保持)
 # { "channel_id:user_id": { ... } }
