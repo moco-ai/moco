@@ -14,14 +14,12 @@ RUN useradd -m -s /bin/bash moco
 # 作業ディレクトリ
 WORKDIR /app
 
-# 依存関係をまずコピー（キャッシュ最適化）
-COPY pyproject.toml README.md ./
-
-# パッケージをインストール（編集可能モード）
-RUN pip install --no-cache-dir -e .
-
 # ソースをコピー
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
+
+# パッケージをインストール
+RUN pip install --no-cache-dir -e .
 
 # プロファイルディレクトリを作成
 RUN mkdir -p /app/profiles /app/data /home/moco/workspace && \
