@@ -51,10 +51,54 @@ web_client: Optional[WebClient] = None
 socket_client: Optional[SocketModeClient] = None
 
 
+def split_text_for_slack(text: str, limit: int = 1000) -> List[str]:
+    """
+    Slackに適したサイズにテキストを分割。
+    UTF-8マルチバイト文字（日本語など）を考慮して小さめに分割。
+    """
+    if text is None:
+        return []
+    
+    s = str(text)
+    if not s:
+        return []
+    
+    if len(s) <= limit:
+        return [s]
+    
+    chunks: List[str] = []
+    i = 0
+    n = len(s)
+    while i < n:
+        remaining = n - i
+        if remaining <= limit:
+            chunk = s[i:n]
+            if chunk:
+                chunks.append(chunk)
+            break
+        
+        window = s[i:i + limit]
+        cut = window.rfind("\n")
+        if cut <= 0:
+            # 改行がない場合はハードカット
+            chunk = window
+            i += limit
+        else:
+            chunk = window[:cut]
+            i += cut + 1  # 改行をスキップ
+        
+        if chunk:
+            chunks.append(chunk)
+    
+    return chunks
+
+
 class SlackStreamManager:
     """Slackメッセージのリアルタイム更新を管理"""
     
-    SLACK_MAX_MESSAGE_SIZE = 3500  # Slack制限は4000だが余裕を持たせる
+    # UTF-8マルチバイト文字（日本語）は1文字3バイト
+    # Slack制限は約4000バイトなので、1000文字程度に抑える
+    SLACK_MAX_MESSAGE_SIZE = 1000
     UPDATE_INTERVAL = 2.0  # 秒 (レート制限対策)
     
     def __init__(self, channel: str, thread_ts: str):
@@ -70,21 +114,7 @@ class SlackStreamManager:
     
     def _split_text(self, text: str) -> List[str]:
         """長いテキストを複数のチャンクに分割"""
-        if len(text) <= self.SLACK_MAX_MESSAGE_SIZE:
-            return [text] if text else []
-        
-        chunks = []
-        while text:
-            if len(text) <= self.SLACK_MAX_MESSAGE_SIZE:
-                chunks.append(text)
-                break
-            # 改行で分割を試みる
-            split_point = text.rfind('\n', 0, self.SLACK_MAX_MESSAGE_SIZE)
-            if split_point < self.SLACK_MAX_MESSAGE_SIZE // 2:
-                split_point = self.SLACK_MAX_MESSAGE_SIZE
-            chunks.append(text[:split_point])
-            text = text[split_point:].lstrip()
-        return chunks
+        return split_text_for_slack(text, limit=self.SLACK_MAX_MESSAGE_SIZE)
     
     def update_content(self, chunk: str):
         """コンテンツを追加してSlackを更新"""
