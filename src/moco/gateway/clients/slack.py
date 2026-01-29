@@ -234,6 +234,8 @@ def stream_moco_response(payload: Dict[str, Any], stream_manager: SlackStreamMan
                     return
                 
                 buffer = ""
+                current_tool = None  # 現在実行中のツール名
+                
                 for chunk in response.iter_text():
                     buffer += chunk
                     
@@ -247,34 +249,57 @@ def stream_moco_response(payload: Dict[str, Any], stream_manager: SlackStreamMan
                                     data = json.loads(line[6:])
                                     event_type = data.get("type")
                                     
-                                    if event_type == "chunk":
+                                    if event_type == "start":
+                                        # 開始イベント - session_id を取得
+                                        new_session_id = data.get("session_id")
+                                        if new_session_id:
+                                            settings["session_id"] = new_session_id
+                                    
+                                    elif event_type == "chunk":
                                         # コンテンツチャンク
                                         content = data.get("content", "")
                                         stream_manager.update_content(content)
                                     
                                     elif event_type == "thinking":
-                                        # 思考中（ステータス表示）
+                                        # 思考中（ステータス表示）- verbose相当
+                                        agent = data.get("agent", "moco")
+                                        stream_manager.set_status(f"💭 {agent} が考え中...")
+                                    
+                                    elif event_type == "progress":
+                                        # 進捗イベント（ツール実行、デリゲーションなど）
+                                        event_name = data.get("event", "")
+                                        status = data.get("status", "")
+                                        tool_name = data.get("tool") or data.get("name", "")
                                         agent = data.get("agent", "")
-                                        stream_manager.set_status(f"{agent} が考え中...")
+                                        
+                                        if event_name == "tool":
+                                            if status == "running":
+                                                current_tool = tool_name
+                                                stream_manager.set_status(f"🔧 `{tool_name}` を実行中...")
+                                            elif status == "completed":
+                                                stream_manager.set_status("")
+                                                current_tool = None
+                                        elif event_name == "delegate":
+                                            if status == "running":
+                                                stream_manager.set_status(f"🤖 @{tool_name} に委任中...")
+                                            elif status == "completed":
+                                                stream_manager.set_status("")
                                     
-                                    elif event_type == "tool_start":
-                                        # ツール実行開始
-                                        tool_name = data.get("name", "")
-                                        stream_manager.set_status(f"🔧 {tool_name} を実行中...")
-                                    
-                                    elif event_type == "tool_end":
-                                        # ツール実行完了
-                                        stream_manager.set_status("")
-                                    
-                                    elif event_type == "session_id":
-                                        # セッションID更新
-                                        new_session_id = data.get("session_id")
-                                        if new_session_id:
-                                            settings["session_id"] = new_session_id
+                                    elif event_type == "recall":
+                                        # メモリ/インサイト呼び出し
+                                        recall_type = data.get("recall_type", "")
+                                        query = data.get("query", "")
+                                        if recall_type and query:
+                                            stream_manager.set_status(f"📚 {recall_type}: {query[:30]}...")
                                     
                                     elif event_type == "done":
                                         # 完了
                                         stream_manager.finalize()
+                                        return
+                                    
+                                    elif event_type == "cancelled":
+                                        # キャンセル
+                                        stream_manager.finalize("⚠️ キャンセルされました")
                                         return
                                     
                                     elif event_type == "error":
