@@ -28,6 +28,28 @@ from slack_sdk.socket_mode.response import SocketModeResponse
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("moco-slack")
 
+
+def filter_response_for_display(response: str) -> str:
+    """レスポンスをフィルタリング（最後のエージェントの出力のみ表示）"""
+    if not response:
+        return ""
+    
+    # @agent: 応答 のパターンで分割
+    sections = re.split(r'(@[\w-]+):\s*', response)
+    
+    if len(sections) > 1:
+        # 最後のエージェントの結果だけを取得
+        last_agent = sections[-2] if len(sections) >= 2 else ""
+        last_content = sections[-1].strip() if sections[-1] else ""
+        
+        # orchestrator の最終回答は省略しない
+        if last_agent == "@orchestrator":
+            return last_content
+        else:
+            return f"{last_agent}: {last_content}"
+    
+    return response
+
 # 設定
 # MOCO_API_URL は従来 http://localhost:8000/api/chat だったので、ベースURLを抽出
 _moco_url = os.getenv("MOCO_API_URL", "http://localhost:8000")
@@ -126,10 +148,11 @@ class SlackStreamManager:
             return None
     
     def update_content(self, chunk: str):
-        """コンテンツを追加してSlackを更新"""
+        """コンテンツを追加（バッファリングのみ、Slackへの更新はfinalizeで行う）"""
         with self._lock:
             self.full_content += chunk
-            self._maybe_update_slack()
+            # ストリーミング中はステータス更新のみ（CLIと同様に中間出力は表示しない）
+            # self._maybe_update_slack()  # コメントアウト - finalizeでフィルタリングして表示
     
     def set_status(self, status: str, force: bool = True):
         """ステータス行を設定
@@ -235,15 +258,19 @@ class SlackStreamManager:
             self.stream_ts = self.chunks[-1]["ts"]
     
     def finalize(self, final_content: Optional[str] = None):
-        """最終更新（ai_manager互換）"""
+        """最終更新（CLIと同様にフィルタリング）"""
         with self._lock:
             self.is_final = True
             if final_content is not None:
                 self.full_content = final_content
             self.status_line = ""
             
+            # CLIと同様に、最後のエージェントの出力のみをフィルタリング
+            filtered_content = filter_response_for_display(self.full_content)
+            logger.info(f"📝 [finalize] original: {len(self.full_content)} chars, filtered: {len(filtered_content)} chars")
+            
             # 最終コンテンツを分割
-            final_chunks_content = split_text_for_slack(self.full_content, limit=self.SLACK_MAX_MESSAGE_SIZE)
+            final_chunks_content = split_text_for_slack(filtered_content, limit=self.SLACK_MAX_MESSAGE_SIZE)
             if not final_chunks_content and self.chunks:
                 final_chunks_content = [""]
             
