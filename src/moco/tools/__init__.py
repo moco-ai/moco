@@ -21,7 +21,8 @@ from .process import (
 from .skill_loader import SkillLoader, SkillConfig
 from .skill_tools import search_skills, load_skill, list_loaded_skills, execute_skill
 from .project_context import get_project_context
-from .mobile import NotifyMobileTool, RequestLocationTool
+from .mobile import NotifyMobileTool, RequestLocationTool, send_file_to_mobile, get_pending_artifacts, clear_artifacts, set_current_session
+from .scheduler import schedule_task, list_scheduled_tasks, remove_scheduled_task
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,11 @@ TOOL_MAP = {
     # モバイル通知
     "notify_mobile": NotifyMobileTool().run,
     "request_location": RequestLocationTool().run,
+    "send_file_to_mobile": send_file_to_mobile,
+    # スケジューラ
+    "schedule_task": schedule_task,
+    "list_scheduled_tasks": list_scheduled_tasks,
+    "remove_scheduled_task": remove_scheduled_task,
     # NOTE: browser_* ツールは discovery.py で自動的に読み込まれる
 }
 

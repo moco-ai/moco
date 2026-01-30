@@ -39,7 +39,7 @@ from moco.cancellation import (
     clear_cancel_event,
     OperationCancelled
 )
-from moco.tools.mobile import get_pending_artifacts, clear_artifacts
+from moco.tools.mobile import get_pending_artifacts, clear_artifacts, set_current_session
 from moco.gateway.media_processor import MediaProcessor
 from moco.utils.tunnel import setup_tunnel, stop_tunnel
 from moco.adapters.line_adapter import LINEAdapter
@@ -1027,14 +1027,15 @@ async def chat(req: ChatRequest):
     # セッション準備
     session_id, history = orchestrator._prepare_session(message, session_id)
 
-    # アーティファクトをクリア（リクエスト開始時）
-    clear_artifacts()
+    # セッションIDを設定してアーティファクトをクリア
+    set_current_session(session_id)
+    clear_artifacts(session_id)
     
     # 非同期で実行（イベントループの競合を回避）
     response = await orchestrator.process_message(message, session_id, history)
     
     # 送信待ちのアーティファクトを取得
-    artifacts = get_pending_artifacts()
+    artifacts = get_pending_artifacts(session_id)
     print(f"🔧 [api.py] artifacts取得: {len(artifacts)}件 - {artifacts}")
 
     return {

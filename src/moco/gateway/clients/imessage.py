@@ -504,9 +504,10 @@ def process_moco_request(text: str, sender: str, attachments: Optional[List[dict
                     except Exception as e:
                         print(f"❌ アーティファクト送信失敗 ({a_path}): {e}")
             
-            # テキスト返信
-            send_imessage(sender, result)
-            print(f"[{timestamp}] 📤 返信完了 ({len(result)} 文字, アーティファクト {artifact_count}件)")
+            # テキスト返信（[moco]プレフィックスを付けてループ防止）
+            reply = f"[moco] {result}"
+            send_imessage(sender, reply)
+            print(f"[{timestamp}] 📤 返信完了 ({len(reply)} 文字, アーティファクト {artifact_count}件)")
         else:
             try:
                 error_detail = response.json().get("detail", str(response.status_code))
@@ -617,7 +618,9 @@ def main():
                 # 自分の返信メッセージは無視（ループ防止）
                 if text and (text.startswith("[moco]") or text.startswith("❌") or 
                             text.startswith("🔄") or text.startswith("📱") or
-                            text.startswith("⏳") or text.startswith("🗑️")):
+                            text.startswith("⏳") or text.startswith("🗑️") or
+                            text.startswith("⚠️") or text.startswith("✅") or
+                            text.startswith("📊") or text.startswith("📁")):
                     continue
                 
                 timestamp = datetime.now().strftime("%H:%M:%S")
