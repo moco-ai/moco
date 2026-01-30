@@ -7,12 +7,13 @@ class Attachment(BaseModel):
     name: str
     path: str
     mime_type: Optional[str] = None
+    data: Optional[str] = None  # Base64 encoded data (optional, for web UI)
 
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
     profile: str = "development"
-    provider: str = "gemini"
+    provider: str = "openrouter"
     model: Optional[str] = None
     verbose: bool = False
     working_directory: Optional[str] = None

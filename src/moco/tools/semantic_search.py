@@ -51,7 +51,7 @@ except ImportError:
 # ドキュメント専用インデックス（codebase_search の .code_index とは別）
 INDEX_DIR = ".doc_index"
 OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
-GEMINI_EMBEDDING_MODEL = "text-embedding-004"
+GEMINI_EMBEDDING_MODEL = "gemini-embedding-001"
 TOKEN_LIMIT = 8000
 
 # ドキュメント・設定ファイル中心の拡張子（コードは含めない）

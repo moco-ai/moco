@@ -62,7 +62,7 @@ class MemoryService:
         router_id: Optional[str] = None,
         worker_id: Optional[str] = None,
         db_path: str = "memories/memory.db",
-        embedding_model: str = "models/text-embedding-004",
+        embedding_model: str = "gemini-embedding-001",
         feedback_threshold: int = 7,
         duplicate_threshold: float = 0.85,
         graph_enabled: bool = True

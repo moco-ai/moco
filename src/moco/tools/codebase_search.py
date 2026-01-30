@@ -44,7 +44,7 @@ except ImportError:
 
 INDEX_DIR = ".code_index"
 OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
-GEMINI_EMBEDDING_MODEL = "text-embedding-004"
+GEMINI_EMBEDDING_MODEL = "gemini-embedding-001"
 TOKEN_LIMIT = 8000  # 安全のため少し低めに設定
 
 def _get_openai_api_key() -> Optional[str]:

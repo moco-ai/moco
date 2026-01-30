@@ -17,7 +17,7 @@ except ImportError:
     genai = None
     GENAI_AVAILABLE = False
 
-DEFAULT_EMBEDDING_MODEL = "text-embedding-004"
+DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001"
 
 class SemanticMemory:
     """

@@ -442,9 +442,53 @@ def _estimate_tokens(text: str) -> int:
     """Estimate number of tokens (Simple: 4 chars ≒ 1 token)"""
     return len(text) // 4
 
+def _extract_important_info(text: str) -> str:
+    """
+    テキストから重要情報（パス、関数名、エラーなど）を抽出する。
+    要約時にこれらの情報が失われないようにする。
+    """
+    import re
+    
+    sections = []
+    
+    # ファイルパスを抽出（Unix/Windows両対応）
+    paths = set(re.findall(r'(?:/[\w.-]+)+/[\w.-]+\.[\w]+', text))  # Unix paths
+    paths.update(re.findall(r'[A-Za-z]:\\(?:[\w.-]+\\)*[\w.-]+\.[\w]+', text))  # Windows paths
+    if paths:
+        # 重複を除いて最大20個
+        unique_paths = sorted(set(paths))[:20]
+        sections.append(f"📁 Paths: {', '.join(unique_paths)}")
+    
+    # 関数・クラス名を抽出
+    functions = set(re.findall(r'(?:def|class|function|func)\s+(\w+)', text))
+    if functions:
+        sections.append(f"🔧 Functions/Classes: {', '.join(sorted(functions)[:15])}")
+    
+    # エラーメッセージを抽出
+    errors = re.findall(r'(?:Error|Exception|Failed|error|failed)[:\s].*?(?:\n|$)', text)
+    if errors:
+        unique_errors = list(dict.fromkeys(errors))[:5]  # 重複除去、最大5個
+        sections.append(f"❌ Errors: {'; '.join(e.strip() for e in unique_errors)}")
+    
+    # URL/エンドポイントを抽出
+    urls = set(re.findall(r'https?://[^\s<>"]+', text))
+    if urls:
+        sections.append(f"🔗 URLs: {', '.join(sorted(urls)[:10])}")
+    
+    # 数値データ（行数、件数など）を抽出
+    counts = re.findall(r'(\d+)\s*(?:件|個|行|files?|items?|lines?|results?|matches?)', text, re.IGNORECASE)
+    if counts:
+        sections.append(f"📊 Counts: {', '.join(counts[:10])}")
+    
+    if sections:
+        return "## 📋 Extracted Key Info\n" + "\n".join(sections) + "\n\n"
+    return ""
+
+
 def _truncate_tool_output(result: Any, tool_name: str) -> str:
     """
     If the tool output is too long, save it to a temporary file and return a reference.
+    Also extracts important information (paths, functions, errors) to preserve in summaries.
     """
     if result is None:
         return "No output"
@@ -465,13 +509,17 @@ def _truncate_tool_output(result: Any, tool_name: str) -> str:
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(result_str)
     
+    # Extract important information for summaries
+    key_info = _extract_important_info(result_str)
+    
     # Display the beginning and refer to the file for the rest
     preview = result_str[:500]
     total_lines = result_str.count('\n') + 1
     total_chars = len(result_str)
     
     return (
-        f"{preview}\n\n"
+        f"{key_info}"
+        f"## Preview\n{preview}\n\n"
         f"⚠️ OUTPUT TRUNCATED ⚠️\n"
         f"Total: {total_chars:,} chars, {total_lines:,} lines\n"
         f"Full output saved to: {filepath}\n\n"
@@ -748,6 +796,9 @@ class AgentRuntime:
         
         # Partial response (to save in case of error)
         self._partial_response = ""
+        
+        # Tool call history for this turn (reset each run())
+        self._tool_history: List[Dict[str, Any]] = []
 
         # Context limit management (reset within one run())
         self._accumulated_tokens = 0
@@ -1106,6 +1157,13 @@ delegate_to_agent(agent_name="code-reviewer", task="このコードをレビュ�
                 result=result
             )
 
+        # Record tool call in history for next turn
+        self._tool_history.append({
+            "tool": func_name,
+            "args": args_dict,
+            "result": result[:2000] if len(result) > 2000 else result  # Limit result size
+        })
+
         return result
 
     async def run(self, user_input: str, history: Optional[List[Any]] = None, session_id: Optional[str] = None) -> str:
@@ -1133,6 +1191,9 @@ delegate_to_agent(agent_name="code-reviewer", task="このコードをレビュ�
         
         # Reset tool call loop detection
         self.tool_tracker.reset()
+        
+        # Reset tool history for this turn
+        self._tool_history = []
 
         # Cancellation check
         if session_id:
@@ -1226,6 +1287,33 @@ delegate_to_agent(agent_name="code-reviewer", task="このコードをレビュ�
         """Get the latest execution metrics"""
         return self.last_usage
 
+    def get_tool_history(self) -> List[Dict[str, Any]]:
+        """Get tool call history from the last run()"""
+        return self._tool_history
+
+    def get_tool_history_summary(self) -> str:
+        """Get a summary of tool calls for logging to session history"""
+        if not self._tool_history:
+            return ""
+        
+        lines = ["[Tool Calls]"]
+        for th in self._tool_history:
+            tool = th.get("tool", "unknown")
+            args = th.get("args", {})
+            result = th.get("result", "")
+            
+            # Format args concisely
+            args_str = ", ".join(f"{k}={repr(v)[:50]}" for k, v in args.items())
+            
+            # Extract key info from result (paths, counts, etc.)
+            result_preview = result[:300] if result else ""
+            
+            lines.append(f"- {tool}({args_str})")
+            if result_preview:
+                lines.append(f"  → {result_preview}")
+        
+        return "\n".join(lines)
+
     async def _run_openai(self, user_input: str, history: Optional[List[Any]] = None, session_id: Optional[str] = None) -> str:
         """Execute agent with OpenAI GPT"""
         if history is None:
@@ -1259,7 +1347,8 @@ delegate_to_agent(agent_name="code-reviewer", task="このコードをレビュ�
         # Z.ai doesn't support tool_stream in streaming mode for glm-4.7
         # Force non-streaming when using tools to ensure tool calls work correctly
         use_stream = self.stream
-        if self.provider == LLMProvider.ZAI and tools:
+        if self.provider == LLMProvider.ZAI:
+            # ZAI はストリーミング中の tool_calls が不安定なので常に非ストリーミング
             use_stream = False
 
         # Commented out max_iterations: managed by token limit
@@ -1321,6 +1410,7 @@ delegate_to_agent(agent_name="code-reviewer", task="このコードをレビュ�
 
                     # Process streaming response
                     collected_content = ""
+                    full_reasoning_content = "" # Buffer for fallback
                     # Accumulate OpenAI tool call deltas by index (ai_manager style)
                     # idx -> {"id": str, "name": str, "arguments": str}
                     tool_calls_dict: Dict[int, Dict[str, str]] = {}
@@ -1374,7 +1464,7 @@ delegate_to_agent(agent_name="code-reviewer", task="このコードをレビュ�
                         if reasoning_text:
                             # Always capture reasoning for models like kimi-k2.5 that require it
                             collected_reasoning += reasoning_text
-                            
+                            full_reasoning_content += reasoning_text 
                             if self.progress_callback:
                                 # Via Web UI: Send batched via progress_callback
                                 self.progress_callback(
@@ -1519,8 +1609,12 @@ delegate_to_agent(agent_name="code-reviewer", task="このコードをレビュ�
                         continue  # Next iteration
                     else:
                         # If empty, return partial response
-                        if not collected_content and self._partial_response:
-                            return self._partial_response
+                        if not collected_content:
+                             if self._partial_response:
+                                 return self._partial_response
+                             # Fallback to reasoning content (Z.ai / GLM-4.7)
+                             if full_reasoning_content:
+                                 return full_reasoning_content
                         return collected_content
                 else:
                     # Non-streaming mode
@@ -1534,7 +1628,17 @@ delegate_to_agent(agent_name="code-reviewer", task="このコードをレビュ�
                         if self.provider != LLMProvider.OPENROUTER:
                             create_kwargs["reasoning_effort"] = "medium"
                         create_kwargs["parallel_tool_calls"] = True
-                        response = await self.openai_client.chat.completions.create(**create_kwargs)
+                        # ZAI: force tool calling when tools are available
+                        if self.provider == LLMProvider.ZAI and tools:
+                            create_kwargs["tool_choice"] = "required"
+                        try:
+                            response = await self.openai_client.chat.completions.create(**create_kwargs)
+                        except Exception:
+                            if self.provider == LLMProvider.ZAI and tools and "tool_choice" in create_kwargs:
+                                create_kwargs["tool_choice"] = "auto"
+                                response = await self.openai_client.chat.completions.create(**create_kwargs)
+                            else:
+                                raise
                     else:
                         create_kwargs = {
                             "model": self.model_name,
@@ -1543,7 +1647,17 @@ delegate_to_agent(agent_name="code-reviewer", task="このコードをレビュ�
                             "temperature": 0.7,
                             "parallel_tool_calls": True,
                         }
-                        response = await self.openai_client.chat.completions.create(**create_kwargs)
+                        # ZAI: force tool calling when tools are available
+                        if self.provider == LLMProvider.ZAI and tools:
+                            create_kwargs["tool_choice"] = "required"
+                        try:
+                            response = await self.openai_client.chat.completions.create(**create_kwargs)
+                        except Exception:
+                            if self.provider == LLMProvider.ZAI and tools and "tool_choice" in create_kwargs:
+                                create_kwargs["tool_choice"] = "auto"
+                                response = await self.openai_client.chat.completions.create(**create_kwargs)
+                            else:
+                                raise
                     # usage recording
                     if hasattr(response, "usage") and response.usage:
                         try:
@@ -1626,6 +1740,14 @@ delegate_to_agent(agent_name="code-reviewer", task="このコードをレビュ�
             else:
                 # Return text response
                 content = message.content or ""
+                
+                # Z.ai / GLM-4.7: content might be empty but reasoning_content exists
+                if not content:
+                    if hasattr(message, "reasoning_content") and message.reasoning_content:
+                        content = message.reasoning_content
+                    elif hasattr(message, "model_extra") and message.model_extra and "reasoning_content" in message.model_extra:
+                        content = message.model_extra["reasoning_content"]
+                
                 # Emit progress events for non-streaming mode (e.g., ZAI with tools)
                 if content and self.progress_callback:
                     self.progress_callback(event_type="start", agent_name=self.name)

@@ -39,6 +39,7 @@ from moco.cancellation import (
     clear_cancel_event,
     OperationCancelled
 )
+from moco.tools.mobile import get_pending_artifacts, clear_artifacts
 from moco.gateway.media_processor import MediaProcessor
 from moco.utils.tunnel import setup_tunnel, stop_tunnel
 from moco.adapters.line_adapter import LINEAdapter
@@ -182,6 +183,28 @@ class ApprovalManager:
         # 外部チャネル（LINE/Telegram）へプッシュ送信
         await self._push_external_notifications(approval_id, tool, args)
 
+    async def send_to_gateway(self, message: Dict[str, Any]) -> int:
+        """
+        Send a generic message to all connected gateway clients (WhatsApp, etc.).
+        
+        Args:
+            message: Dictionary containing the message payload
+            
+        Returns:
+            int: Number of clients that received the message
+        """
+        sent_count = 0
+        clients = list(self.gateway_clients.items())
+        for client_id, ws in clients:
+            try:
+                await ws.send_json(message)
+                sent_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to send to gateway client {client_id}: {e}")
+                self.gateway_clients.pop(client_id, None)
+        return sent_count
+
+
     async def _push_external_notifications(self, approval_id: str, tool: str, args: dict):
         """LINE/Telegramにプッシュ通知を送信"""
         text = f"承認リクエスト: {tool}\n引数: {json.dumps(args, ensure_ascii=False, indent=2)}"
@@ -268,7 +291,7 @@ class ApprovalManager:
 approval_manager = ApprovalManager()
 
 
-def get_orchestrator(profile: str, provider: str = "gemini", verbose: bool = False, working_directory: str = None) -> Orchestrator:
+def get_orchestrator(profile: str, provider: str = "openrouter", verbose: bool = False, working_directory: str = None) -> Orchestrator:
     """Orchestratorインスタンスを新規生成"""
     # 作業ディレクトリ: 引数 > 環境変数 > カレントディレクトリ
     work_dir = working_directory or os.getenv("MOCO_WORKING_DIRECTORY") or os.getcwd()
@@ -304,40 +327,32 @@ def process_attachments(attachments: Optional[List["Attachment"]], message: str)
     
     for att in attachments:
         try:
-            # Base64データをデコード
-            data = base64.b64decode(att.data)
-            
-            if att.type == "image":
-                # 画像: 一時ファイルに保存
-                ext = att.mime_type.split("/")[-1]
+            # pathがあればそのまま使用（WhatsApp経由など）
+            if att.path:
+                file_path = att.path
+            # dataがあればデコードして保存（Web UI経由）
+            elif att.data:
+                data = base64.b64decode(att.data)
+                ext = att.mime_type.split("/")[-1] if att.mime_type else "bin"
                 if ext == "jpeg":
                     ext = "jpg"
-                temp_path = os.path.join(
+                file_path = os.path.join(
                     _TEMP_ATTACHMENTS_DIR,
                     f"{uuid.uuid4().hex[:8]}_{att.name}"
                 )
-                with open(temp_path, "wb") as f:
+                with open(file_path, "wb") as f:
                     f.write(data)
-                temp_files.append(temp_path)
-                attachment_info.append(f"[Image: {att.name}] Path: {temp_path}")
+                temp_files.append(file_path)
             else:
-                # テキストファイル: 内容をインラインで展開
-                try:
-                    text_content = data.decode("utf-8")
-                    # 長すぎる場合は先頭のみ
-                    if len(text_content) > 10000:
-                        text_content = text_content[:10000] + "\n... (truncated)"
-                    attachment_info.append(f"[File: {att.name}]\n```\n{text_content}\n```")
-                except UnicodeDecodeError:
-                    # バイナリファイルの場合は一時ファイルに保存
-                    temp_path = os.path.join(
-                        _TEMP_ATTACHMENTS_DIR,
-                        f"{uuid.uuid4().hex[:8]}_{att.name}"
-                    )
-                    with open(temp_path, "wb") as f:
-                        f.write(data)
-                    temp_files.append(temp_path)
-                    attachment_info.append(f"[Binary File: {att.name}] Path: {temp_path}")
+                attachment_info.append(f"[Invalid attachment: {att.name}]")
+                continue
+            
+            # LLMにパスを渡す
+            if att.type == "image":
+                attachment_info.append(f"[Image: {att.name}] Path: {file_path}")
+            else:
+                attachment_info.append(f"[File: {att.name}] Path: {file_path}")
+                
         except Exception as e:
             logger.warning(f"Failed to process attachment {att.name}: {e}")
             attachment_info.append(f"[Error processing {att.name}: {e}]")
@@ -362,13 +377,14 @@ class Attachment(BaseModel):
     name: str
     path: str
     mime_type: Optional[str] = None
+    data: Optional[str] = None  # Base64 encoded data (optional, for web UI)
 
 
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
     profile: str = "development"
-    provider: str = "gemini"
+    provider: str = "openrouter"
     model: Optional[str] = None  # OpenRouter用モデル名
     verbose: bool = False
     working_directory: Optional[str] = None  # 作業ディレクトリ（セッションごとに設定可能）
@@ -1011,12 +1027,20 @@ async def chat(req: ChatRequest):
     # セッション準備
     session_id, history = orchestrator._prepare_session(message, session_id)
 
+    # アーティファクトをクリア（リクエスト開始時）
+    clear_artifacts()
+    
     # 非同期で実行（イベントループの競合を回避）
     response = await orchestrator.process_message(message, session_id, history)
+    
+    # 送信待ちのアーティファクトを取得
+    artifacts = get_pending_artifacts()
+    print(f"🔧 [api.py] artifacts取得: {len(artifacts)}件 - {artifacts}")
 
     return {
         "response": response,
-        "session_id": session_id
+        "session_id": session_id,
+        "artifacts": artifacts
     }
 
 
