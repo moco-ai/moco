@@ -78,6 +78,7 @@ def resolve_provider(provider_str: str, model: Optional[str] = None) -> tuple:
         "openrouter": LLMProvider.OPENROUTER,
         "zai": LLMProvider.ZAI,
         "gemini": LLMProvider.GEMINI,
+        "moonshot": LLMProvider.MOONSHOT,
     }
     
     if provider_name not in VALID_PROVIDERS:

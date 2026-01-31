@@ -542,6 +542,7 @@ class LLMProvider:
     OPENAI = "openai"
     OPENROUTER = "openrouter"
     ZAI = "zai"  # Z.ai GLM-4.7
+    MOONSHOT = "moonshot"  # Moonshot Kimi
 
 
 def _is_reasoning_model(model_name: str) -> bool:
@@ -549,14 +550,17 @@ def _is_reasoning_model(model_name: str) -> bool:
     
     - OpenAI: o1, o3, o4 series
     - Gemini (via OpenRouter): gemini-2.5, gemini-3 series
+    - Moonshot Kimi: kimi-k2.5, kimi-k2-thinking
     """
     model_lower = model_name.lower()
     # OpenAI reasoning models
     openai_patterns = ["o1", "o3", "o4"]
     # Gemini thinking models (via OpenRouter: google/gemini-...)
     gemini_patterns = ["gemini-2.5", "gemini-3", "gemini-2.0-flash-thinking"]
+    # Moonshot Kimi thinking models
+    kimi_patterns = ["kimi"]
     
-    all_patterns = openai_patterns + gemini_patterns
+    all_patterns = openai_patterns + gemini_patterns + kimi_patterns
     return any(pattern in model_lower for pattern in all_patterns)
 
 
@@ -742,6 +746,8 @@ class AgentRuntime:
             self.model_name = os.environ.get("OPENAI_MODEL", "gpt-5.1")
         elif self.provider == LLMProvider.ZAI:
             self.model_name = os.environ.get("ZAI_MODEL", "glm-4.7")
+        elif self.provider == LLMProvider.MOONSHOT:
+            self.model_name = os.environ.get("MOONSHOT_MODEL", "kimi-k2.5")
         else:
             self.model_name = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
 
@@ -776,6 +782,18 @@ class AgentRuntime:
             self.openai_client = AsyncOpenAI(
                 api_key=zai_key,
                 base_url="https://api.z.ai/api/coding/paas/v4"
+            )
+            self.client = None
+        elif self.provider == LLMProvider.MOONSHOT:
+            # Moonshot Kimi (OpenAI-compatible API)
+            if not OPENAI_AVAILABLE:
+                raise ImportError("OpenAI package not installed. Run: pip install openai")
+            moonshot_key = os.environ.get("MOONSHOT_API_KEY")
+            if not moonshot_key:
+                raise ValueError("MOONSHOT_API_KEY environment variable not set")
+            self.openai_client = AsyncOpenAI(
+                api_key=moonshot_key,
+                base_url="https://api.moonshot.ai/v1"
             )
             self.client = None
         else:
@@ -1223,7 +1241,7 @@ delegate_to_agent(agent_name="code-reviewer", task="このコードをレビュ�
                 if self.verbose:
                     print(f"Warning: Memory recall failed: {e}")
 
-        if self.provider in (LLMProvider.OPENAI, LLMProvider.OPENROUTER, LLMProvider.ZAI):
+        if self.provider in (LLMProvider.OPENAI, LLMProvider.OPENROUTER, LLMProvider.ZAI, LLMProvider.MOONSHOT):
             result = await self._run_openai(user_input, history, session_id=session_id)
         else:
             result = await self._run_gemini(user_input, history, session_id=session_id)
@@ -1257,6 +1275,8 @@ delegate_to_agent(agent_name="code-reviewer", task="このコードをレビュ�
                 provider_name = "openrouter"
             elif self.provider == LLMProvider.ZAI:
                 provider_name = "zai"
+            elif self.provider == LLMProvider.MOONSHOT:
+                provider_name = "moonshot"
 
             session_id = getattr(self, "_current_session_id", None)
 
@@ -1387,8 +1407,12 @@ delegate_to_agent(agent_name="code-reviewer", task="このコードをレビュ�
                         # Enable parallel_tool_calls (OpenRouter models like kimi-k2.5 support this)
                         create_kwargs["parallel_tool_calls"] = True
                         
-                        # Use reasoning_effort for OpenAI o1/o3
-                        if self.provider != LLMProvider.OPENROUTER:
+                        # Moonshot Kimi uses temperature=1.0 and max_tokens instead of reasoning_effort
+                        if self.provider == LLMProvider.MOONSHOT:
+                            create_kwargs["temperature"] = 1.0
+                            create_kwargs["max_tokens"] = 16384
+                        elif self.provider != LLMProvider.OPENROUTER:
+                            # Use reasoning_effort for OpenAI o1/o3
                             create_kwargs["reasoning_effort"] = "medium"
                         
                         if extra_body:
@@ -1400,11 +1424,14 @@ delegate_to_agent(agent_name="code-reviewer", task="このコードをレビュ�
                             "model": self.model_name,
                             "messages": messages,
                             "tools": tools,
-                            "temperature": 0.7,
+                            "temperature": 1.0 if self.provider == LLMProvider.MOONSHOT else 0.7,
                             "stream": True,
                             "stream_options": {"include_usage": True},
                             "parallel_tool_calls": True,
                         }
+                        # Moonshot Kimi requires higher max_tokens for thinking
+                        if self.provider == LLMProvider.MOONSHOT:
+                            create_kwargs["max_tokens"] = 16384
                         response = await self.openai_client.chat.completions.create(**create_kwargs)
 
                     # Process streaming response
@@ -1643,9 +1670,12 @@ delegate_to_agent(agent_name="code-reviewer", task="このコードをレビュ�
                             "model": self.model_name,
                             "messages": messages,
                             "tools": tools,
-                            "temperature": 0.7,
+                            "temperature": 1.0 if self.provider == LLMProvider.MOONSHOT else 0.7,
                             "parallel_tool_calls": True,
                         }
+                        # Moonshot Kimi requires higher max_tokens for thinking
+                        if self.provider == LLMProvider.MOONSHOT:
+                            create_kwargs["max_tokens"] = 16384
                         # ZAI: force tool calling when tools are available
                         if self.provider == LLMProvider.ZAI and tools:
                             create_kwargs["tool_choice"] = "required"

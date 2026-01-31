@@ -29,6 +29,7 @@ PROVIDER_ZAI = "zai"
 PROVIDER_OPENROUTER = "openrouter"
 PROVIDER_GEMINI = "gemini"
 PROVIDER_OPENAI = "openai"
+PROVIDER_MOONSHOT = "moonshot"
 
 # プロバイダー優先順位
 PROVIDER_PRIORITY = [PROVIDER_ZAI, PROVIDER_OPENROUTER, PROVIDER_GEMINI]
@@ -39,6 +40,7 @@ DEFAULT_MODELS = {
     PROVIDER_OPENROUTER: "moonshotai/kimi-k2.5",
     PROVIDER_GEMINI: "gemini-2.0-flash",
     PROVIDER_OPENAI: "gpt-4o",
+    PROVIDER_MOONSHOT: "kimi-k2.5",
 }
 
 # 分析用（軽量）モデル
@@ -47,6 +49,7 @@ ANALYZER_MODELS = {
     PROVIDER_OPENROUTER: "google/gemini-3-flash-preview",
     PROVIDER_GEMINI: "gemini-2.0-flash",
     PROVIDER_OPENAI: "gpt-4o-mini",
+    PROVIDER_MOONSHOT: "kimi-k2.5",
 }
 
 
@@ -61,6 +64,8 @@ def _check_api_key(provider: str) -> bool:
         return bool(os.environ.get("GENAI_API_KEY") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
     elif provider == PROVIDER_OPENAI:
         return bool(os.environ.get("OPENAI_API_KEY"))
+    elif provider == PROVIDER_MOONSHOT:
+        return bool(os.environ.get("MOONSHOT_API_KEY"))
     return False
 
 
