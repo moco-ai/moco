@@ -22,7 +22,6 @@ tools:
   - wait_for_pattern
   - delegate_to_agent
   # Skills
-  - search_skills
   - load_skill
   - list_loaded_skills
   - clear_loaded_skills
@@ -76,9 +75,15 @@ tools:
 | タスク種別 | agent_name |
 |-----------|------------|
 | コード作成・編集 | `backend-coder` |
-| ドキュメント作成 | `doc-writer` |
+| フロントエンド実装 | `frontend-coder` |
+| 仕様書・要件定義作成 | `spec-writer` |
+| 技術ドキュメント作成 | `doc-writer` |
+| UI/画像デザイン | `ui-designer` |
 | コードレビュー | `code-reviewer` |
 | テスト作成 | `unit-tester` |
+| DB設計 | `schema-designer` |
+| API設計 | `api-designer` |
+| システム設計 | `architect` |
 | 質問・調査 | `backend-coder` |
 | 何でも（迷ったら） | `backend-coder` |
 
@@ -293,10 +298,13 @@ todowrite([
 
 | タスク種別 | 作成担当 | レビュー担当 |
 |:----------|:---------|:------------|
+| 仕様書・要件定義 | @spec-writer | @code-reviewer（実装可能性確認） |
+| UI/デザイン | @ui-designer | @code-reviewer（要件適合性確認） |
 | ドキュメント | @doc-writer | @code-reviewer |
 | コード実装 | @backend-coder / @frontend-coder | @code-reviewer |
 | セキュリティ関連 | 任意 | @security-reviewer (必須) |
 | API設計 | @api-designer | @code-reviewer |
+| DB設計 | @schema-designer | @code-reviewer |
 
 **必須パターン（必ずこの順で両方呼ぶ）:**
 ```
@@ -313,12 +321,14 @@ todowrite([
 
 ## 利用可能なサブエージェント
 
-### 設計フェーズ
+### 企画・設計フェーズ
 | エージェント | 用途 |
 |-------------|------|
+| `@spec-writer` | **仕様書・要件定義書作成**（PRD、機能仕様、ユーザーストーリー） |
 | `@architect` | システム設計、技術選定、RFC/ADR作成 |
 | `@api-designer` | REST/GraphQL API設計、OpenAPI仕様 |
 | `@schema-designer` | DBスキーマ設計、マイグレーション |
+| `@ui-designer` | **UI/UXデザイン、画像生成**（モックアップ、アイコン、イラスト） |
 
 ### 実装フェーズ
 | エージェント | 用途 |
@@ -344,21 +354,43 @@ todowrite([
 ### ドキュメントフェーズ
 | エージェント | 用途 |
 |-------------|------|
-| `@doc-writer` | ドキュメント作成（README、API Doc等） |
+| `@doc-writer` | 技術ドキュメント作成（README、API Doc、CHANGELOG等） |
 
 ## オーケストレーションパターン
 
-### パターン1: 新機能開発
+### パターン1: 新機能開発（フルサイクル）
 ```
-1. @architect      → 設計ドキュメント作成
-2. @api-designer   → API仕様作成
-3. @backend-coder  → バックエンド実装
-4. @unit-tester    → ユニットテスト作成
-5. @code-reviewer  → コードレビュー
-6. @doc-writer     → ドキュメント更新
+1. @spec-writer    → 要件定義書・機能仕様書作成（完全な仕様）
+2. @ui-designer    → UIモックアップ作成（確認・修正ループ）
+3. @architect      → システム設計
+4. @schema-designer → DB設計
+5. @api-designer   → API仕様作成
+6. @backend-coder  → バックエンド実装
+7. @frontend-coder → フロントエンド実装
+8. @unit-tester    → テスト作成
+9. @code-reviewer  → コードレビュー
+10. @doc-writer    → ドキュメント更新
 ```
 
-### パターン2: バグ修正
+### パターン2: 仕様策定から実装
+```
+1. @spec-writer    → 完全な仕様書作成（モック禁止、全要素網羅）
+2. @code-reviewer  → 仕様書レビュー（実装可能性確認）
+3. @backend-coder  → 仕様書に基づき実装
+4. @code-reviewer  → 実装レビュー
+```
+
+### パターン3: UIデザイン
+```
+1. @spec-writer    → UI要件定義（画面仕様、操作フロー）
+2. @ui-designer    → デザイン作成
+   - generate_image で作成
+   - analyze_image で確認
+   - 要件と比較、必要なら再生成
+3. @code-reviewer  → デザインレビュー
+```
+
+### パターン4: バグ修正
 ```
 1. コードを分析し、バグの原因を特定
 2. @unit-tester    → バグを再現するテスト作成
@@ -366,7 +398,7 @@ todowrite([
 4. @code-reviewer  → 修正のレビュー
 ```
 
-### パターン3: リファクタリング
+### パターン5: リファクタリング
 ```
 1. @code-reviewer  → 現状の問題点を分析
 2. @refactorer     → リファクタリング実行

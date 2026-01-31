@@ -226,6 +226,11 @@ def send_imessage(recipient: str, message: str) -> bool:
         recipient: 電話番号またはメールアドレス
         message: 送信するメッセージ
     """
+    global processed_messages
+    
+    # 送信前に最新ROWIDを取得
+    before_rowid = get_latest_rowid()
+    
     # AppleScript でメッセージ送信
     # エスケープ処理
     escaped_message = message.replace('\\', '\\\\').replace('"', '\\"')
@@ -247,6 +252,11 @@ def send_imessage(recipient: str, message: str) -> bool:
         )
         
         if result.returncode == 0:
+            # 送信後に新しいROWIDを取得して処理済みに追加（ループ防止）
+            time.sleep(0.5)  # DBへの書き込みを待つ
+            after_rowid = get_latest_rowid()
+            for rid in range(before_rowid + 1, after_rowid + 1):
+                processed_messages.add(rid)
             return True
         else:
             print(f"❌ AppleScript エラー: {result.stderr}")
@@ -269,9 +279,14 @@ def send_imessage_file(recipient: str, file_path: str, caption: str = "") -> boo
         file_path: 送信するファイルのパス
         caption: キャプション（先にテキストとして送信）
     """
+    global processed_messages
+    
     # キャプションがあれば先に送信
     if caption:
         send_imessage(recipient, caption)
+    
+    # 送信前に最新ROWIDを取得
+    before_rowid = get_latest_rowid()
     
     # ファイル送信用 AppleScript
     script = f'''
@@ -292,6 +307,11 @@ def send_imessage_file(recipient: str, file_path: str, caption: str = "") -> boo
         )
         
         if result.returncode == 0:
+            # 送信後に新しいROWIDを取得して処理済みに追加（ループ防止）
+            time.sleep(0.5)  # DBへの書き込みを待つ
+            after_rowid = get_latest_rowid()
+            for rid in range(before_rowid + 1, after_rowid + 1):
+                processed_messages.add(rid)
             return True
         else:
             print(f"❌ ファイル送信 AppleScript エラー: {result.stderr}")
@@ -436,9 +456,6 @@ def process_moco_request(text: str, sender: str, attachments: Optional[List[dict
     settings["active_request_id"] = request_id
     
     try:
-        # 処理開始メッセージ
-        send_imessage(sender, "⏳ 処理を開始しました。完了までお待ちください...")
-        
         timestamp = datetime.now().strftime("%H:%M:%S")
         print(f"[{timestamp}] 🚀 moco に送信中... [{settings['profile']}/{settings['provider']}]" + 
               (f" (添付{len(attachments)}件)" if attachments else ""))

@@ -511,7 +511,7 @@ def chat(
     profile: Optional[str] = typer.Option(None, "--profile", "-p", help="使用するプロファイル", autocompletion=complete_profile),
     provider: Optional[str] = typer.Option(None, "--provider", "-P", help="LLMプロバイダ (gemini/openai/openrouter/zai) - 省略時は自動選択"),
     model: Optional[str] = typer.Option(None, "--model", "-m", help="使用するモデル名"),
-    stream: bool = typer.Option(True, "--stream/--no-stream", help="ストリーミング出力（デフォルト: オン）"),
+    stream: Optional[bool] = typer.Option(None, "--stream/--no-stream", help="ストリーミング出力（デフォルト: プロバイダ依存）"),
     subagent_stream: bool = typer.Option(False, "--subagent-stream/--no-subagent-stream", help="サブエージェント本文のストリーミング表示（デフォルト: オフ）"),
     tool_status: bool = typer.Option(True, "--tool-status/--no-tool-status", help="ツール/委譲の短いステータス行を表示（デフォルト: オン）"),
     todo_pane: bool = typer.Option(False, "--todo-pane/--no-todo-pane", help="Todo を右ペインに常時表示（デフォルト: オフ）"),
@@ -967,6 +967,13 @@ def chat(
         provider = get_available_provider()
 
     provider_enum, model = resolve_provider(provider, model)
+    # デフォルトのストリーム挙動:
+    # - ZAI: ツール呼び出しがストリーミングで不安定なためデフォルトOFF
+    # - その他: デフォルトON
+    # NOTE: LLMProvider is a simple constants class (strings), not Enum.
+    provider_name = getattr(provider_enum, "value", provider_enum)
+    if stream is None:
+        stream = (provider_name != "zai")
 
     with console.status(f"[bold cyan]Initializing Orchestrator ({profile})...[/]"):
         o = Orchestrator(

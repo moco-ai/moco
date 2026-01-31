@@ -1,0 +1,104 @@
+from typing import Dict, Any, Optional
+import os
+import sys
+from datetime import datetime, timezone, timedelta
+
+# alpaca_app のソースをインポート可能にする
+sys.path.append(os.path.join(os.getcwd(), "alpaca_app"))
+
+from moco.tools.base import Tool, tool
+from alpaca_app.src.config import get_trading_client, get_data_client
+from alpaca_app.src.data_provider import MarketDataProvider
+
+class AlpacaTool(Tool):
+    """Alpaca株式トレーディングに関するツール"""
+    
+    def __init__(self):
+        super().__init__(
+            name="alpaca_trade",
+            description="Alpaca APIを使用して株価取得、口座情報確認、注文実行を行います。"
+        )
+        self._market_data = None
+        self._trading_client = None
+
+    @property
+    def market_data(self):
+        if self._market_data is None:
+            self._market_data = MarketDataProvider()
+        return self._market_data
+
+    @property
+    def trading_client(self):
+        if self._trading_client is None:
+            self._trading_client = get_trading_client()
+        return self._trading_client
+
+    @tool
+    def get_account_summary(self) -> Dict[str, Any]:
+        """
+        Alpaca口座の要約情報（資産価値、購買力、評価損益など）を取得します。
+        
+        Returns:
+            Dict[str, Any]: 口座情報
+        """
+        try:
+            account = self.trading_client.get_account()
+            return {
+                "equity": account.equity,
+                "buying_power": account.buying_power,
+                "cash": account.cash,
+                "currency": account.currency,
+                "long_market_value": account.long_market_value,
+                "unrealized_pl": account.unrealized_intraday_pl,
+                "unrealized_plpc": account.unrealized_intraday_plpc,
+                "status": account.status
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    @tool
+    def get_stock_info(self, symbol: str) -> Dict[str, Any]:
+        """
+        特定の銘柄の最新価格と直近のニュースを取得します。
+        
+        Args:
+            symbol (str): 銘柄コード (例: 'AAPL', 'TSLA')
+            
+        Returns:
+            Dict[str, Any]: 価格とニュースのリスト
+        """
+        try:
+            price = self.market_data.get_latest_price(symbol)
+            news = self.market_data.get_latest_news(symbol, limit=3)
+            return {
+                "symbol": symbol,
+                "current_price": price,
+                "latest_news": news
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    @tool
+    def list_positions(self) -> list:
+        """
+        現在保有しているポジションの一覧を取得します。
+        
+        Returns:
+            list: 各ポジションの詳細
+        """
+        try:
+            positions = self.trading_client.get_all_positions()
+            result = []
+            for p in positions:
+                result.append({
+                    "symbol": p.symbol,
+                    "qty": p.qty,
+                    "avg_entry_price": p.avg_entry_price,
+                    "current_price": p.current_price,
+                    "market_value": p.market_value,
+                    "unrealized_pl": p.unrealized_pl,
+                    "unrealized_plpc": p.unrealized_plpc
+                })
+            return result
+        except Exception as e:
+            return [{"error": str(e)}]

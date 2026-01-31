@@ -19,7 +19,7 @@ from .process import (
     send_input,
 )
 from .skill_loader import SkillLoader, SkillConfig
-from .skill_tools import search_skills, load_skill, list_loaded_skills, execute_skill
+from .skill_tools import load_skill, list_loaded_skills, execute_skill
 from .project_context import get_project_context
 from .mobile import NotifyMobileTool, RequestLocationTool, send_file_to_mobile, get_pending_artifacts, clear_artifacts, set_current_session
 from .scheduler import schedule_task, list_scheduled_tasks, remove_scheduled_task
@@ -102,7 +102,6 @@ TOOL_MAP = {
     "wait_for_exit": wait_for_exit,
     "send_input": send_input,
     # Skills 管理
-    "search_skills": search_skills,
     "load_skill": load_skill,
     "list_loaded_skills": list_loaded_skills,
     "execute_skill": execute_skill,

@@ -45,6 +45,7 @@ def get_user_settings(sender: str) -> dict:
             "session_id": None,
             "profile": DEFAULT_PROFILE,
             "provider": DEFAULT_PROVIDER,
+            "model": None,  # None = プロバイダのデフォルトモデルを使用
             "working_dir": DEFAULT_WORKING_DIR,
             "lock": threading.Lock(),
             "active_request_id": None  # リクエストID管理（キャンセル時の復旧用）
@@ -99,7 +100,7 @@ def on_message(c: NewClient, ev: MessageEv):
     # Sender.User (自分の番号) と Chat.User (宛先の番号) が一致するか確認
     if info.MessageSource.Sender.User != info.MessageSource.Chat.User:
         return
-    
+
     # テキスト取得
     text = ""
     
@@ -146,11 +147,21 @@ def on_message(c: NewClient, ev: MessageEv):
                 print(f"📤 プロバイダ変更: {new_provider}")
             return
         
+        if text_lower.startswith("/model "):
+            new_model = text[7:].strip()
+            if new_model:
+                settings["model"] = new_model
+                client.reply_message(f"✅ モデルを変更: {new_model}", ev)
+                print(f"📤 モデル変更: {new_model}")
+            return
+        
         if text_lower == "/status":
+            model_display = settings.get('model') or '(デフォルト)'
             status = f"""📊 現在の設定
 
 プロファイル: {settings['profile']}
 プロバイダ: {settings['provider']}
+モデル: {model_display}
 作業ディレクトリ: {settings['working_dir']}
 セッション: {settings['session_id'] or '(新規)'}"""
             client.reply_message(status, ev)
@@ -227,6 +238,7 @@ def on_message(c: NewClient, ev: MessageEv):
 
 /profile <名前> - プロファイル変更
 /provider <名前> - プロバイダ変更
+/model <名前> - モデル変更
 /workdir <パス> - 作業ディレクトリ変更 (短縮形: /cd)
 /new または /clear - 新しいセッション
 /stop - 実行中のタスクを中断
@@ -234,10 +246,10 @@ def on_message(c: NewClient, ev: MessageEv):
 /help - このヘルプを表示
 
 例:
-/workdir ./data
-/profile development
 /provider openrouter
-/stop"""
+/model x-ai/grok-code-fast-1
+/profile development
+/workdir ./data"""
             client.reply_message(help_text, ev)
             return
     
@@ -344,6 +356,10 @@ def on_message(c: NewClient, ev: MessageEv):
                 "working_directory": settings["working_dir"]
             }
             
+            # モデルが指定されていれば追加
+            if settings.get("model"):
+                payload["model"] = settings["model"]
+            
             # 添付ファイルがあれば追加
             if current_attachments:
                 payload["attachments"] = current_attachments
@@ -361,6 +377,8 @@ def on_message(c: NewClient, ev: MessageEv):
                 data = response.json()
                 result = data.get("response", "（応答なし）")
                 new_session_id = data.get("session_id")
+                artifacts = data.get("artifacts", [])
+                print(f"🔍 APIレスポンス artifacts: {len(artifacts)}件 - {artifacts}")
                 
                 # セッションを保存
                 if new_session_id:
@@ -370,8 +388,48 @@ def on_message(c: NewClient, ev: MessageEv):
                 if len(result) > 4000:
                     result = result[:4000] + "\n\n... (長すぎるため省略)"
                 
+                import re
+                import os
+                
+                # アーティファクト（ツール経由で送信されたファイル）を処理
+                artifact_count = 0
+                for artifact in artifacts:
+                    a_path = artifact.get("path")
+                    a_type = artifact.get("type", "document")
+                    a_caption = artifact.get("caption", "")
+                    if a_path and os.path.exists(a_path):
+                        try:
+                            print(f"📦 アーティファクト送信中: {a_path} ({a_type})")
+                            sender_jid = info.MessageSource.Chat
+                            if a_type == "image":
+                                client.send_image(sender_jid, a_path, caption=a_caption or os.path.basename(a_path))
+                            elif a_type == "video":
+                                client.send_video(sender_jid, a_path, caption=a_caption or os.path.basename(a_path))
+                            elif a_type == "audio":
+                                # WAV等はMP3に変換してから送信
+                                audio_path = a_path
+                                if a_path.lower().endswith(('.wav', '.flac', '.aiff')):
+                                    import subprocess
+                                    import tempfile
+                                    mp3_path = os.path.join(tempfile.gettempdir(), os.path.basename(a_path).rsplit('.', 1)[0] + '.mp3')
+                                    try:
+                                        subprocess.run(['ffmpeg', '-y', '-i', a_path, '-b:a', '192k', mp3_path], 
+                                                      check=True, capture_output=True)
+                                        audio_path = mp3_path
+                                        print(f"🔄 音声変換: {a_path} → {mp3_path}")
+                                    except Exception as conv_err:
+                                        print(f"⚠️ 音声変換失敗、元ファイルで送信: {conv_err}")
+                                client.send_audio(sender_jid, audio_path)
+                            else:
+                                client.send_document(sender_jid, a_path, caption=a_caption or os.path.basename(a_path))
+                            artifact_count += 1
+                            print(f"📁 アーティファクト送信完了: {a_path}")
+                        except Exception as e:
+                            print(f"❌ アーティファクト送信失敗 ({a_path}): {e}")
+                
+                # テキスト返信
                 client.reply_message(result, ev)
-                print(f"📤 返信完了 ({len(result)} 文字)")
+                print(f"📤 返信完了 ({len(result)} 文字, アーティファクト {artifact_count}件)")
             else:
                 try:
                     error_detail = response.json().get("detail", str(response.status_code))
@@ -409,6 +467,7 @@ def main():
 ║    /workdir <パス>  - 作業ディレクトリ変更 (短縮: /cd)         ║
 ║    /profile <名前>  - プロファイル変更                         ║
 ║    /provider <名前> - プロバイダ変更                           ║
+║    /model <名前>    - モデル変更                               ║
 ║    /stop            - 実行を中断                               ║
 ║    /new             - 新しいセッション                         ║
 ║    /status          - 現在の設定を表示                         ║

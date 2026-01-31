@@ -2,7 +2,7 @@ import subprocess
 import os
 import re
 import difflib
-from typing import Tuple, Final
+from typing import Tuple, Final, Optional, Dict, Any
 try:
     from ..utils.path import resolve_safe_path, get_working_directory
     from ..core.token_cache import TokenCache
@@ -88,6 +88,12 @@ def is_dangerous_command(command: str) -> Tuple[bool, str]:
     if match:
         return True, "Potentially destructive or unauthorized command detected."
     return False, ""
+
+
+class MocoTool:
+    """Base class for Moco tools."""
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        self.config = config or {}
 
 
 def read_file(path: str, offset: int = None, limit: int = None) -> str:

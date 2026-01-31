@@ -20,7 +20,6 @@ _PROJECT_ROOT = os.path.dirname(_MOCO_ROOT)
 # - AgentRuntime only enables tools listed in each agent config (`config.tools`).
 # - These are safe, non-destructive meta-tools for skills discovery/usage.
 _IMPLICIT_SKILL_TOOLS = [
-    "search_skills",
     "load_skill",
     "list_loaded_skills",
     "execute_skill",
@@ -58,16 +57,22 @@ class AgentConfig:
 # --- Helper Functions ---
 
 def _find_profiles_dir() -> str:
-    """プロファイルディレクトリを探す（環境変数 > cwd > パッケージ内）"""
-    # 1. 環境変数
+    """プロファイルディレクトリを探す（環境変数 > 作業ディレクトリ > cwd > パッケージ内）"""
+    # 1. MOCO_PROFILES_DIR 環境変数
     env_dir = os.getenv("MOCO_PROFILES_DIR")
     if env_dir and os.path.exists(env_dir):
         return env_dir
-    # 2. カレントディレクトリ
+    # 2. MOCO_WORKING_DIRECTORY 環境変数
+    working_dir = os.getenv("MOCO_WORKING_DIRECTORY")
+    if working_dir:
+        wd_profiles = os.path.join(working_dir, "profiles")
+        if os.path.exists(wd_profiles):
+            return wd_profiles
+    # 3. カレントディレクトリ
     cwd_dir = os.path.join(os.getcwd(), "profiles")
     if os.path.exists(cwd_dir):
         return cwd_dir
-    # 3. パッケージ内（フォールバック）
+    # 4. パッケージ内（フォールバック）
     return os.path.join(_MOCO_ROOT, "profiles")
 
 
@@ -106,8 +111,7 @@ def discover_tools(profile: str, additional_mcp: Optional[List[Any]] = None) -> 
         tool_map["todoread_all"] = todoread_all
         
         # skill_tools も静的インポート（グローバルキャッシュを持つ）
-        from .skill_tools import search_skills, load_skill, list_loaded_skills, execute_skill
-        tool_map["search_skills"] = search_skills
+        from .skill_tools import load_skill, list_loaded_skills, execute_skill
         tool_map["load_skill"] = load_skill
         tool_map["list_loaded_skills"] = list_loaded_skills
         tool_map["execute_skill"] = execute_skill
@@ -115,6 +119,16 @@ def discover_tools(profile: str, additional_mcp: Optional[List[Any]] = None) -> 
         # project_context
         from .project_context import get_project_context
         tool_map["get_project_context"] = get_project_context
+        
+        # mobile tools（モバイルクライアントへのファイル送信）
+        from .mobile import send_file_to_mobile
+        tool_map["send_file_to_mobile"] = send_file_to_mobile
+        
+        # scheduler tools
+        from .scheduler import schedule_task, list_scheduled_tasks, remove_scheduled_task
+        tool_map["schedule_task"] = schedule_task
+        tool_map["list_scheduled_tasks"] = list_scheduled_tasks
+        tool_map["remove_scheduled_task"] = remove_scheduled_task
         
     # 3. MCP ツールを読み込む
     mcp_servers_config = profile_config.get("mcp_servers", []) if isinstance(profile_config, dict) else []
@@ -190,7 +204,7 @@ def _load_tools_from_dir(tools_dir: str) -> Dict[str, Callable]:
     dir_hash = abs(hash(tools_dir)) % 10000
     
     # 動的ロードから除外するファイル（グローバル状態を持つもの、または静的インポートされるもの）
-    exclude_files = {"discovery.py", "todo.py", "skill_tools.py", "skill_loader.py"}
+    exclude_files = {"discovery.py", "todo.py", "skill_tools.py", "skill_loader.py", "mobile.py", "scheduler.py"}
     
     # 相対インポートを動作させるため、親ディレクトリを sys.path に追加
     parent_dir = os.path.dirname(tools_dir)

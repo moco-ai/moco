@@ -270,7 +270,7 @@ class ContextCompressor:
     def compress_if_needed(
         self,
         messages: List[Dict[str, Any]],
-        provider: str = "gemini"
+        provider: str = "openrouter"
     ) -> Tuple[List[Dict[str, Any]], bool]:
         """
         必要に応じてメッセージリストを圧縮する。

@@ -62,6 +62,10 @@ def search_skills(query: str, include_remote: bool = True) -> str:
     # ローカルスキルをロード
     local_skills = loader.load_skills()
     
+    # スキルファイルが更新されていたらインデックス再構築
+    if loader._needs_reindex():
+        loader.rebuild_semantic_index()
+    
     # リモートスキルをセマンティック検索（翻訳機能付き）
     if include_remote:
         try:
@@ -320,7 +324,6 @@ def execute_skill(skill_name: str, tool_name: str, arguments: dict) -> str:
 
 # ツールのメタデータ（discover_tools で自動検出される形式）
 TOOLS = {
-    "search_skills": search_skills,
     "load_skill": load_skill,
     "list_loaded_skills": list_loaded_skills,
     "execute_skill": execute_skill,

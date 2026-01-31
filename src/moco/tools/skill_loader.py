@@ -18,6 +18,7 @@ import shutil
 import tempfile
 import subprocess
 import logging
+import time
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
 from .security_scanner import SecurityScanner
@@ -176,6 +177,64 @@ class SkillLoader:
         # Semantic memory for vector matching
         self._semantic_memory = None
         self._skills_indexed = False
+        self._skill_mtimes: Dict[str, float] = {}  # スキルごとの更新日時
+        self._indexed_skills: set = set()  # インデックス済みスキル名
+
+    def _get_skill_mtimes(self) -> Dict[str, float]:
+        """各スキルファイルの更新日時を取得"""
+        mtimes = {}
+        if not os.path.exists(self.skills_dir):
+            return mtimes
+        
+        search_path = os.path.join(self.skills_dir, "*", "SKILL.md")
+        for file_path in glob.glob(search_path):
+            try:
+                skill_name = os.path.basename(os.path.dirname(file_path))
+                mtimes[skill_name] = os.path.getmtime(file_path)
+            except OSError:
+                pass
+        return mtimes
+
+    def _get_index_changes(self, skills: Dict[str, Any]) -> tuple:
+        """インデックスの差分を計算（追加、更新、削除）"""
+        current_mtimes = self._get_skill_mtimes()
+        current_names = set(skills.keys())
+        indexed_names = self._indexed_skills
+        
+        # 新規追加: 現在あるがインデックスにない
+        to_add = current_names - indexed_names
+        
+        # 削除: インデックスにあるが現在ない
+        to_remove = indexed_names - current_names
+        
+        # 更新: 両方にあるが更新日時が変わった
+        to_update = set()
+        for name in current_names & indexed_names:
+            old_mtime = self._skill_mtimes.get(name, 0)
+            new_mtime = current_mtimes.get(name, 0)
+            if new_mtime > old_mtime:
+                to_update.add(name)
+        
+        return to_add, to_update, to_remove, current_mtimes
+
+    def _needs_reindex(self) -> bool:
+        """インデックスの更新が必要かチェック"""
+        if not self._skills_indexed:
+            return True
+        
+        current_mtimes = self._get_skill_mtimes()
+        current_names = set(current_mtimes.keys())
+        
+        # スキルが追加/削除された
+        if current_names != self._indexed_skills:
+            return True
+        
+        # いずれかのスキルが更新された
+        for name, mtime in current_mtimes.items():
+            if mtime > self._skill_mtimes.get(name, 0):
+                return True
+        
+        return False
 
     def load_skills(self) -> Dict[str, SkillConfig]:
         """Load all skills from the profile's skills directory"""
@@ -374,8 +433,9 @@ class SkillLoader:
             return None
 
     def _index_skills_for_semantic(self, skills: Dict[str, SkillConfig]):
-        """Index all skills for semantic search."""
-        if self._skills_indexed:
+        """Index skills for semantic search (incremental update)."""
+        # 更新が必要かチェック
+        if not self._needs_reindex():
             return
         
         memory = self._get_semantic_memory()
@@ -383,7 +443,42 @@ class SkillLoader:
             return
         
         try:
-            for name, skill in skills.items():
+            # 差分を計算
+            to_add, to_update, to_remove, current_mtimes = self._get_index_changes(skills)
+            
+            # 初回は全スキルを追加
+            if not self._skills_indexed:
+                to_add = set(skills.keys())
+                to_update = set()
+                to_remove = set()
+            
+            changes_made = False
+            
+            # 削除されたスキルをインデックスから削除
+            for name in to_remove:
+                try:
+                    memory.delete_document(f"skill:{name}")
+                    self._indexed_skills.discard(name)
+                    changes_made = True
+                    logger.debug(f"Removed skill from index: {name}")
+                except Exception:
+                    pass
+            
+            # 更新されたスキルを再インデックス（まず削除してから追加）
+            for name in to_update:
+                if name in skills:
+                    try:
+                        memory.delete_document(f"skill:{name}")
+                    except Exception:
+                        pass
+                    to_add.add(name)
+            
+            # 新規/更新スキルを追加
+            for name in to_add:
+                if name not in skills:
+                    continue
+                skill = skills[name]
+                
                 # description + name + triggers を結合してインデックス
                 text_parts = [skill.name.replace('-', ' ')]
                 if skill.description:
@@ -393,18 +488,25 @@ class SkillLoader:
                 
                 combined_text = " ".join(text_parts)
                 
-                # 既にインデックスされているか確認
                 try:
                     memory.add_document(
                         doc_id=f"skill:{name}",
                         content=combined_text,
                         metadata={"skill_name": name, "type": "skill"}
                     )
-                except Exception:
-                    pass  # 既に存在する場合はスキップ
+                    self._indexed_skills.add(name)
+                    changes_made = True
+                except Exception as e:
+                    logger.debug(f"Failed to index skill {name}: {e}")
             
+            # 状態を更新
             self._skills_indexed = True
-            logger.info(f"Indexed {len(skills)} skills for semantic search")
+            self._skill_mtimes = current_mtimes
+            
+            if changes_made:
+                added = len(to_add)
+                removed = len(to_remove)
+                logger.info(f"Skill index updated: +{added} -{removed} (total: {len(self._indexed_skills)})")
         except Exception as e:
             logger.warning(f"Failed to index skills: {e}")
 
@@ -562,6 +664,10 @@ class SkillLoader:
             with open(os.path.join(dest_path, ".source"), 'w') as f:
                 f.write(f"github:{repo}:{skill_name}@{branch}")
 
+            # インデックスを再構築
+            self._skills_indexed = False
+            logger.info(f"Rebuilding skill index after installing '{skill_name}'")
+
             return True, f"Installed '{skill_name}' from {repo}"
 
     def install_skills_from_repo(
@@ -636,6 +742,11 @@ class SkillLoader:
 
                     installed.append(skill_name)
 
+        # インストール後にインデックスを再構築
+        if installed:
+            self._skills_indexed = False
+            logger.info(f"Rebuilding skill index after installing {len(installed)} skills")
+
         return len(installed), installed
 
     def uninstall_skill(self, skill_name: str) -> Tuple[bool, str]:
@@ -652,6 +763,11 @@ class SkillLoader:
             return False, f"Skill '{skill_name}' not found"
 
         shutil.rmtree(skill_path)
+        
+        # インデックスを再構築
+        self._skills_indexed = False
+        logger.info(f"Rebuilding skill index after uninstalling '{skill_name}'")
+        
         return True, f"Uninstalled '{skill_name}'"
 
     def sync_from_registry(self, registry: str = "anthropics") -> Tuple[int, List[str]]:

@@ -135,6 +135,30 @@ class SemanticMemory:
             logger.error(f"Failed to add document {doc_id}: {e}")
             raise e
 
+    def delete_document(self, doc_id: str) -> bool:
+        """Delete a document from semantic memory."""
+        try:
+            # Remove from SQLite
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM semantic_documents WHERE doc_id = ?", (doc_id,))
+            deleted = cursor.rowcount > 0
+            conn.commit()
+            conn.close()
+            
+            # Remove from in-memory index (requires rebuild)
+            if doc_id in self.doc_ids:
+                idx = self.doc_ids.index(doc_id)
+                self.doc_ids.remove(doc_id)
+                # Note: FAISS doesn't support direct deletion, need to rebuild index
+                # For now, just remove from doc_ids list - index will be rebuilt on next search if needed
+                logger.debug(f"Removed document {doc_id} from semantic memory (index rebuild may be needed)")
+            
+            return deleted
+        except Exception as e:
+            logger.error(f"Failed to delete document {doc_id}: {e}")
+            return False
+
     def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Search for similar documents."""
         if self.index.ntotal == 0:

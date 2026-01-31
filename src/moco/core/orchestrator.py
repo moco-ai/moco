@@ -209,6 +209,33 @@ class Orchestrator:
             full_system_prompt = config.system_prompt
             if hasattr(self, 'project_memory') and self.project_memory:
                 full_system_prompt = f"{full_system_prompt}\n\n{self.project_memory}"
+            
+            # オーケストレーターにスキル一覧を追加
+            if name == "orchestrator" and hasattr(self, 'skill_loader') and self.skill_loader:
+                try:
+                    skills = self.skill_loader.load_skills()
+                    if skills:
+                        skill_list = "\n".join([
+                            f"- **{s.name}**: {s.description[:100]}..." if len(s.description) > 100 else f"- **{s.name}**: {s.description}"
+                            for s in skills.values()
+                        ])
+                        # 主要スキルのマッピング
+                        skill_guide = """
+## スキル（必要な時だけload_skillを実行）
+
+タスクに対応するスキルがあれば`load_skill("スキル名")`で読み込め。毎回リストを取得するな。
+
+- メール確認・送信・Gmail・カレンダー → `load_skill("gogcli")`
+- PDF作成 → `load_skill("pdf-creator")`
+- PowerPoint/スライド → `load_skill("pptx")`
+- ニュース要約 → `load_skill("daily-news-summary")`
+- 株取引・Alpaca → `load_skill("alpaca-trader")`
+- Slack → `load_skill("moco-slack")`
+
+上記にないスキルは`list_loaded_skills()`で確認。"""
+                        full_system_prompt = f"{full_system_prompt}\n{skill_guide}"
+                except Exception:
+                    pass  # スキル読み込み失敗時は無視
 
             if needs_delegate:
                 # delegate_to_agent ツールを追加
@@ -1182,7 +1209,7 @@ class Orchestrator:
         return (
             "【作業コンテキスト】\n"
             f"作業ディレクトリ: `{abs_workdir}`\n\n"
-            f"## プロジェクト構造（自動取得済み - list_dir不要）\n"
+            f"## プロジェクト構造（自動取得済み - list_dir/get_project_context不要）\n"
             f"{project_layout}\n"
             f"{transcript_info}\n"
             "⛔ 禁止: list_dir を繰り返してファイルを探すこと → glob_search/grep を使え\n"
@@ -1401,7 +1428,7 @@ class Orchestrator:
                     base_url="https://openrouter.ai/api/v1"
                 )
                 response = client.chat.completions.create(
-                    model=os.environ.get("OPENROUTER_MODEL", "xiaomi/mimo-v2-flash"),
+                    model=os.environ.get("OPENROUTER_MODEL", "moonshotai/kimi-k2.5"),
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=max_tokens,
                     temperature=temperature
