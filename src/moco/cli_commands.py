@@ -546,9 +546,81 @@ def handle_save(args: List[str], context: Dict[str, Any]) -> bool:
     return True
 
 def handle_cost(args: List[str], context: Dict[str, Any]) -> bool:
-    """Show cost (Not implemented)"""
+    """Show estimated cost for this session or day.
+    
+    Usage:
+      /cost          -> Current session cost
+      /cost today    -> Today's total cost
+      /cost all      -> Last 7 days breakdown by model
+    """
+    from moco.storage.usage_store import get_usage_store
+    from datetime import datetime, timezone
+    
     console = context.get('console', Console())
-    console.print("[yellow]/cost is not yet implemented.[/yellow]")
+    store = get_usage_store()
+    
+    period = args[0].lower() if args else "session"
+    
+    if period == "today":
+        # Today's total
+        stats = store.get_usage_summary(days=1)
+        title = "Today's Total Cost"
+        if stats:
+            data = stats[-1] # Latest day (today)
+        else:
+            data = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "cost_usd": 0.0}
+    elif period == "all" or period == "week":
+        # Last 7 days breakdown
+        breakdown = store.get_breakdown(days=7, group_by="model")
+        title = "Last 7 Days Cost Breakdown"
+        
+        if not breakdown:
+            console.print("[yellow]No usage data found for the last 7 days.[/yellow]")
+            return True
+            
+        table = Table(title=title, border_style="green")
+        table.add_column("Model", style="cyan")
+        table.add_column("Input", justify="right")
+        table.add_column("Output", justify="right")
+        table.add_column("Cost (USD)", justify="right", style="green")
+        
+        total_cost = 0
+        for item in breakdown:
+            table.add_row(
+                item["label"],
+                f"{item['input_tokens']:,}",
+                f"{item['output_tokens']:,}",
+                f"${item['cost_usd']:.6f}"
+            )
+            total_cost += item["cost_usd"]
+        
+        table.add_section()
+        table.add_row("Total", "", "", f"${total_cost:.6f}", style="bold")
+        console.print(table)
+        return True
+    else:
+        # Default: current session
+        session_id = context.get("session_id")
+        if not session_id:
+            console.print("[yellow]No active session to calculate cost.[/yellow]")
+            return True
+        
+        data = store.get_session_usage(session_id)
+        title = f"Current Session Cost"
+        if session_id:
+            title += f" [dim]({session_id})[/dim]"
+
+    # Display summary table for session or today
+    table = Table(title=title, border_style="green")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", justify="right")
+    
+    table.add_row("Total Cost", f"${data['cost_usd']:.6f}", style="bold green")
+    table.add_row("Total Tokens", f"{data['total_tokens']:,}")
+    table.add_row("  - Input", f"{data['input_tokens']:,}")
+    table.add_row("  - Output", f"{data['output_tokens']:,}")
+    
+    console.print(table)
     return True
 
 def handle_tools(args: List[str], context: Dict[str, Any]) -> bool:
